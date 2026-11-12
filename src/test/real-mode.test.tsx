@@ -340,3 +340,21 @@ describe('Radar never shows rows of another source or stale rows on error', () =
     expect(resolveInitialMode('?mode=test')).toBe('test');
   });
 });
+
+describe('useLoad never leaks unhandled promise rejections (CI regression)', () => {
+  it('an immediately rejected source request is handled before React subscribes', async () => {
+    const seen: unknown[] = [];
+    const onUnhandled = (reason: unknown) => seen.push(reason);
+    // Vitest runs jsdom tests in Node; the app tsconfig has no Node types, hence the local type.
+    const proc = (globalThis as unknown as { process: { on(e: string, f: (r: unknown) => void): void; off(e: string, f: (r: unknown) => void): void } }).process;
+    proc.on('unhandledRejection', onUnhandled);
+    try {
+      renderWith('/ideas/x', failingSource(new ApiError('Ошибка API (500)', 'http', 500)));
+      expect(await screen.findByRole('heading', { name: 'Не удалось загрузить данные' })).toBeInTheDocument();
+      await new Promise((r) => setTimeout(r, 20));
+      expect(seen).toEqual([]);
+    } finally {
+      proc.off('unhandledRejection', onUnhandled);
+    }
+  });
+});

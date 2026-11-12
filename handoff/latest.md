@@ -29,6 +29,8 @@ Review: https://github.com/strace42-ai/Venture-lab/pull/2#pullrequestreview-5868
 | non-blocking | Historical snapshot titles followed later renames | Entries joined the current `ideas.title`. | Migration 002 stores `title` and `slug` in `top10_entries` at snapshot time; pre-migration rows are backfilled with the title current at migration time. | `review-fixes.test.ts`: a rename after the snapshot does not change the snapshot title; the migration-002 backfill test. |
 | non-blocking | «Проверено» could read as automatic verification | — | The dossier now explains that «проверено» is a manual human review mark and that the app does not open or check links. | — |
 
+| **CI-found** | Run #4: «Unhandled Rejection: ApiError (500)» with all tests passing | `useLoad` created the request promise during render but subscribed in `useEffect`. A promise that rejected fast was briefly unhandled. This was a real app issue (an «unhandled rejection» in the browser console), not just a test flake. | The promise is converted into a never-rejecting `Settled` result (`{ok, data} \| {ok:false, error}`) at the moment it is created; the effect only reads that result (`src/data/context.ts`). | `real-mode.test.tsx` › `useLoad never leaks unhandled promise rejections`: it fails on the old code and passes on the fix; a local `npm test` ran three times with 0 unhandled. |
+
 **Migration 002 on an existing database:** applied on my local DB that already held a pre-fix synthetic snapshot: the backfill set the snapshot to `synthetic = true` and froze the titles. A legacy snapshot that mixes datasets aborts the migration with a clear instruction (`db:reset`); this case is tested.
 
 ## Primary acceptance scenario — status
@@ -133,16 +135,16 @@ Environment: Node v22.23.4 and npm 10.9.9 in a Linux container. **PostgreSQL 16 
 | `rm -rf node_modules dist && npm ci` | ✅ exit 0 |
 | `npm run lint` | ✅ exit 0, 0 warnings |
 | `npm run typecheck` (`tsc -b`: app + node + server projects) | ✅ exit 0 |
-| `TEST_DATABASE_URL=postgres://…/venture_lab_test CI=true npm test` | ✅ **8 files, 111 tests passed** (93 before the review + 18 regression) |
-| `npm test` without `TEST_DATABASE_URL` | 69 passed, 42 DB-integration tests **skipped** (in CI, `CI=true` makes a missing DB URL a hard error) |
+| `TEST_DATABASE_URL=postgres://…/venture_lab_test CI=true npm test` | ✅ **8 files, 112 tests passed, 0 unhandled errors** (93 before the review + 19 regression), run twice in a row |
+| `npm test` without `TEST_DATABASE_URL` | 70 passed, 42 DB-integration tests **skipped** (in CI, `CI=true` makes a missing DB URL a hard error) |
 | `npm run build` | ✅ exit 0 |
 | `npm audit --omit=dev` | ✅ found 0 vulnerabilities |
-| **GitHub Actions CI** (`.github/workflows/ci.yml`, Postgres 16 service) | Before the review: run #1 on `d6981af` — success. After the review fixes: see the PR checks for `6a43687` and later (result recorded in the PR description). |
+| **GitHub Actions CI** (`.github/workflows/ci.yml`, Postgres 16 service) | Before the review: run #1 on `d6981af` succeeded. After the fixes, run #4 on `372858e` **failed**: all 111 tests passed, but Vitest caught 1 unhandled promise rejection, which is treated as an error. Root cause and fix are in the table below. The run on the fixing commit is reported in the PR description. |
 | `npm audit` (incl. dev) | 1 moderate advisory chain: `minimatch` via `@typescript-eslint/typescript-estree` (lint-time only; npm's fix is a downgrade) |
 
 The test suites, by file:
 - `src/domain/scoring.test.ts` (23) and `src/test/app.test.tsx` (18): VL-001 regression, unchanged behaviour.
-- `src/test/real-mode.test.tsx` (20; +6 in review round 1: P2 Radar ×4, TEST-mode dataset scoping, 502 = unavailable):
+- `src/test/real-mode.test.tsx` (21; +7 in review round 1: P2 Radar ×4, TEST-mode dataset scoping, 502 = unavailable, and the unhandled-rejection regression found by CI):
   - REAL empty, unavailable and error states, and retry;
   - «не оценено»;
   - provenance links and review states;

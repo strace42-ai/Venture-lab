@@ -33,37 +33,42 @@ function isPromise<T>(v: Loadable<T>): v is Promise<T> {
  * Load a value from the active source. Synchronous DEMO values render immediately (no flicker);
  * REAL promises go through explicit loading → ready | error states.
  */
+type Settled<T> = { ok: true; data: T } | { ok: false; error: Error };
+
+const toError = (e: unknown): Error => (e instanceof Error ? e : new Error(String(e)));
+
 export function useLoad<T>(key: string, fn: () => Loadable<T>): LoadState<T> {
   const [tick, setTick] = useState(0);
   const retry = useRef(() => setTick((t) => t + 1)).current;
   const fullKey = `${key}#${tick}`;
-  const result = useMemo(() => {
+  const result = useMemo((): { sync: Settled<T> } | { pending: Promise<Settled<T>> } => {
     try {
-      return { value: fn() };
+      const v = fn();
+      // A promise is converted into a never-rejecting «settled» promise at the moment it is
+      // created, so a fast failure can never surface as an unhandled rejection before the effect
+      // below subscribes to it.
+      if (isPromise(v)) return { pending: v.then((data): Settled<T> => ({ ok: true, data }), (e): Settled<T> => ({ ok: false, error: toError(e) })) };
+      return { sync: { ok: true, data: v } };
     } catch (e) {
-      return { error: e instanceof Error ? e : new Error(String(e)) };
+      return { sync: { ok: false, error: toError(e) } };
     }
     // `fn` is intentionally keyed by `key` (callers pass inline closures).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fullKey]);
-  const [asyncState, setAsyncState] = useState<{ key: string; data?: T; error?: Error } | null>(null);
+  const [asyncState, setAsyncState] = useState<{ key: string; settled: Settled<T> } | null>(null);
 
   useEffect(() => {
-    if (!('value' in result) || !isPromise(result.value)) return;
+    if (!('pending' in result)) return;
     let alive = true;
-    result.value.then(
-      (data) => alive && setAsyncState({ key: fullKey, data }),
-      (error: unknown) => alive && setAsyncState({ key: fullKey, error: error instanceof Error ? error : new Error(String(error)) }),
-    );
+    void result.pending.then((settled) => {
+      if (alive) setAsyncState({ key: fullKey, settled });
+    });
     return () => {
       alive = false;
     };
   }, [result, fullKey]);
 
-  if ('error' in result && result.error) return { status: 'error', error: result.error, retry };
-  const v = (result as { value: Loadable<T> }).value;
-  if (!isPromise(v)) return { status: 'ready', data: v, retry };
-  if (!asyncState || asyncState.key !== fullKey) return { status: 'loading', retry };
-  if (asyncState.error) return { status: 'error', error: asyncState.error, retry };
-  return { status: 'ready', data: asyncState.data as T, retry };
+  const settled = 'sync' in result ? result.sync : asyncState?.key === fullKey ? asyncState.settled : null;
+  if (!settled) return { status: 'loading', retry };
+  return settled.ok ? { status: 'ready', data: settled.data, retry } : { status: 'error', error: settled.error, retry };
 }
