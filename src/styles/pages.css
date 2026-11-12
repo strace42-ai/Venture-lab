@@ -1961,3 +1961,87 @@
     padding: var(--s-5);
   }
 }
+
+/* ---------- VL-002: dossier provenance & unscored ---------- */
+.dims__rationale {
+  color: var(--text-2);
+  font-size: var(--fs-13);
+  line-height: 1.6;
+  margin-bottom: var(--s-3);
+  padding-left: var(--s-3);
+  border-left: 2px solid var(--line-3);
+}
+
+.ev__source {
+  display: grid;
+  gap: 2px;
+}
+
+.ev__note {
+  font-size: var(--fs-12);
+  color: var(--text-2);
+}
+
+.ev--checked {
+  border-style: solid;
+  border-color: rgba(95, 211, 154, 0.28);
+}
+
+.ev--rejected {
+  opacity: 0.6;
+}
+
+.ev__status {
+  height: 20px;
+  font-size: 11px;
+}
+
+.scorecard--unscored {
+  background: var(--panel);
+  border-style: dashed;
+}
+
+.unscored-ring {
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  border: 2px dashed rgba(240, 185, 85, 0.5);
+  color: var(--warn);
+  font-size: var(--fs-32);
+  font-weight: 650;
+}
+
+.scorecard__unscored {
+  font-size: var(--fs-20);
+  font-weight: 650;
+  color: var(--warn);
+}
+
+.stage-history {
+  display: grid;
+  gap: var(--s-2);
+}
+
+.stage-history li {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+
+@media (max-width: 720px) {
+  .state-panel {
+    padding: var(--s-5);
+  }
+  .mode-banner {
+    margin-bottom: var(--s-4);
+  }
+}
+
+.t-idea .synthetic-badge,
+.rcard__foot .synthetic-badge {
+  justify-self: start;
+  width: max-content;
+}

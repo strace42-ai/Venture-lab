@@ -10,10 +10,10 @@ import type {
   Assessment,
   ComponentScores,
   ConfidenceComponents,
-  CompetitorPlaceholder,
+  Competitor,
   DemoDataset,
   DimensionKey,
-  EvidencePlaceholder,
+  Evidence,
   ISODate,
   Idea,
   RawScore,
@@ -39,16 +39,37 @@ function as(assessedAt: ISODate, scores: Tuple12, confidence: ConfidenceComponen
   return { assessedAt, modelVersion: SCORING_MODEL_VERSION, assessor, scores: sc(scores), confidence, reason };
 }
 
-function ev(market: 'west' | 'ru', dimension: DimensionKey, claim: string): EvidencePlaceholder {
-  return { market, dimension, claim, sourceStatus: 'not_attached', supportType: 'unknown' };
+let evSeq = 0;
+/** Demo claim with NO attached source: url/publisher/date are null, so it can never look verified. */
+function ev(market: 'west' | 'ru', dimension: DimensionKey, claim: string): Evidence {
+  evSeq += 1;
+  return {
+    id: `demo-ev-${evSeq}`,
+    market,
+    claim,
+    dimensions: [dimension],
+    url: null,
+    title: null,
+    publisher: null,
+    sourceType: 'unknown',
+    language: null,
+    publishedAt: null,
+    observedAt: null,
+    retrievedAt: null,
+    verificationStatus: 'unreviewed',
+    supportNote: null,
+  };
 }
 
-function comp(label: string, kind: CompetitorPlaceholder['kind'], coverage: CompetitorPlaceholder['coverage'], gap: string): CompetitorPlaceholder {
-  return { label, kind, coverage, gap, verifiedAt: null };
+let compSeq = 0;
+/** Demo competitor described by category only (no company names, never verified). */
+function comp(label: string, kind: Competitor['kind'], coverage: Competitor['coverage'], gap: string): Competitor {
+  compSeq += 1;
+  return { id: `demo-comp-${compSeq}`, name: label, market: 'ru', url: null, kind, coverage, gap, observedAt: null, evidenceIds: [] };
 }
 
 /** Fixture shape: stage history may be omitted when the idea never changed stage. */
-type IdeaFixture = Omit<Idea, 'stageHistory'> & { stageHistory?: StageChange[] };
+type IdeaFixture = Omit<Idea, 'stageHistory' | 'synthetic'> & { stageHistory?: StageChange[]; demo: true };
 
 const ideaFixtures: IdeaFixture[] = [
   {
@@ -619,16 +640,25 @@ const ideaFixtures: IdeaFixture[] = [
   },
 ];
 
-const ideas: Idea[] = ideaFixtures.map((f) => ({
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- drop the fixture-only `demo` marker
+const ideas: Idea[] = ideaFixtures.map(({ demo: _demo, ...f }) => ({
   ...f,
+  synthetic: true,
   stageHistory: f.stageHistory ?? [{ at: f.createdAt, stage: f.stage }],
 }));
 
+const SNAPSHOT_DATES: ISODate[] = ['2026-10-29', '2026-11-05', '2026-11-12'];
+
 export const demoData: DemoDataset = {
+  mode: 'demo',
   isDemo: true,
+  // Current ranking at the latest fixture snapshot; movement vs the previous one, reconstructed
+  // from append-only assessment/stage history (DEMO has no database of stored snapshots).
+  rankAsOf: SNAPSHOT_DATES[SNAPSHOT_DATES.length - 1]!,
+  baseline: { kind: 'reconstruct', asOf: SNAPSHOT_DATES[SNAPSHOT_DATES.length - 2]! },
   asOf: '2026-11-12',
   modelVersion: SCORING_MODEL_VERSION,
-  snapshotDates: ['2026-10-29', '2026-11-05', '2026-11-12'],
+  snapshotDates: SNAPSHOT_DATES,
   ideas,
   researchRuns: [
     {

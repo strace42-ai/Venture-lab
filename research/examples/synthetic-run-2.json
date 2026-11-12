@@ -1,0 +1,165 @@
+{
+  "schemaVersion": "vl-research-1",
+  "runId": "synthetic-example-2026-11-10",
+  "researchedAt": "2026-11-10",
+  "source": "synthetic-test",
+  "synthetic": true,
+  "reviewedBy": "VL-002 test fixture",
+  "title": "Синтетический пример №2 — пересмотр оценки, отклонение, новая идея",
+  "coverage": "СИНТЕТИЧЕСКИЙ ТЕСТОВЫЙ ПРИМЕР: не исследование, не факт. Ссылки ведут на зарезервированные домены example.org/example.com.",
+  "limitations": "Проверка append-only истории: предыдущие оценки и срезы не должны измениться.",
+  "markets": [
+    "SMB-сервисы",
+    "EdTech",
+    "HoReCa"
+  ],
+  "ideas": [
+    {
+      "externalId": "test-invoice-reminders",
+      "title": "Тест: напоминания об оплате счетов для фрилансеров",
+      "pitch": "Синтетическая идея: автоматические вежливые напоминания клиентам о неоплаченных счетах.",
+      "segment": "B2B",
+      "category": "SMB-сервисы",
+      "targetPersona": "Фрилансер или микростудия с 5–20 клиентами (вымышленная персона)",
+      "problem": "Тестовый тезис: просроченные счета требуют ручных напоминаний.",
+      "whyNow": "Тестовая гипотеза для проверки отображения поля «почему сейчас».",
+      "thesis": "Синтетический тезис для проверки импорта и рейтинга.",
+      "monetization": "Подписка (гипотеза)",
+      "priceHypothesis": "гипотеза не проверена",
+      "nextAction": "Только тест: проверить отображение досье.",
+      "riskFlags": [
+        "demandUnverified"
+      ],
+      "sources": [
+        {
+          "id": "w1",
+          "region": "west",
+          "claim": "ТЕСТ: на западном рынке существует категория сервисов напоминаний об оплате.",
+          "url": "https://example.org/synthetic/invoice-category",
+          "title": "Synthetic test page",
+          "publisher": "example.org (тест)",
+          "sourceType": "unknown",
+          "observedAt": "2026-11-04",
+          "dimensions": [
+            "westernNeed"
+          ],
+          "verificationStatus": "checked"
+        },
+        {
+          "id": "r3",
+          "region": "ru",
+          "claim": "ТЕСТ: новое синтетическое наблюдение по каналу дистрибуции.",
+          "url": "https://example.com/synthetic/channel",
+          "publisher": "example.com (тест)",
+          "sourceType": "primary_data",
+          "observedAt": "2026-11-09",
+          "dimensions": [
+            "distribution"
+          ],
+          "verificationStatus": "unreviewed"
+        }
+      ],
+      "assessment": {
+        "assessedAt": "2026-11-10",
+        "assessor": "VL-002 test fixture",
+        "rubricVersion": "v1.0",
+        "scores": {
+          "westernNeed": 4,
+          "westernPay": 3,
+          "ruWeakness": 3,
+          "ruUnmetJob": 3,
+          "monetization": 4,
+          "speedToPilot": 4,
+          "mvpFeasible": 5,
+          "fastTest": 4,
+          "distribution": 4,
+          "retention": 4,
+          "defensibility": 2,
+          "riskManageable": 4
+        },
+        "confidence": {
+          "completeness": 50,
+          "corroboration": 35,
+          "recency": 85,
+          "reliability": 45,
+          "russiaValidation": 35
+        },
+        "founderFit": {
+          "skills": 8,
+          "access": 5,
+          "timeToSale": 6,
+          "motivation": 3,
+          "synergy": 3
+        },
+        "rationale": "Синтетическая ревизия: дистрибуция повышена после тестового наблюдения r3.",
+        "evidenceIds": [
+          "w1",
+          "r3"
+        ],
+        "revisionReason": "Тест: новое наблюдение по каналу дистрибуции"
+      }
+    },
+    {
+      "externalId": "test-tutor-groups",
+      "title": "Тест: групповые занятия для частных репетиторов",
+      "pitch": "Синтетическая идея: будет отклонена во втором тестовом прогоне.",
+      "segment": "B2C",
+      "category": "EdTech",
+      "stage": "rejected",
+      "stageReason": "Тест: отклонено для проверки неизменности прошлых срезов",
+      "sources": []
+    },
+    {
+      "externalId": "test-coffee-waste",
+      "title": "Тест: учёт списаний для кофеен",
+      "pitch": "Синтетическая новая идея второго прогона.",
+      "segment": "B2B",
+      "category": "HoReCa",
+      "sources": [
+        {
+          "id": "w1",
+          "region": "west",
+          "claim": "ТЕСТ: категория учёта списаний в общепите.",
+          "url": "https://example.org/synthetic/waste",
+          "publisher": "example.org (тест)",
+          "sourceType": "unknown",
+          "observedAt": "2026-11-09",
+          "dimensions": [
+            "westernNeed"
+          ],
+          "verificationStatus": "unreviewed"
+        }
+      ],
+      "assessment": {
+        "assessedAt": "2026-11-10",
+        "assessor": "VL-002 test fixture",
+        "rubricVersion": "v1.0",
+        "scores": {
+          "westernNeed": 3,
+          "westernPay": 3,
+          "ruWeakness": 4,
+          "ruUnmetJob": 4,
+          "monetization": 3,
+          "speedToPilot": 3,
+          "mvpFeasible": 3,
+          "fastTest": 4,
+          "distribution": 3,
+          "retention": 5,
+          "defensibility": 2,
+          "riskManageable": 4
+        },
+        "confidence": {
+          "completeness": 30,
+          "corroboration": 20,
+          "recency": 90,
+          "reliability": 35,
+          "russiaValidation": 20
+        },
+        "rationale": "Синтетическое обоснование новой тестовой идеи второго прогона.",
+        "evidenceIds": [
+          "w1"
+        ]
+      }
+    }
+  ]
+}

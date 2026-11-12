@@ -23,7 +23,7 @@ Venture Lab не должен превращаться в «таблицу ид�
 Открой репозиторий `strace42-ai/Venture-lab`. Прочитай `CLAUDE.md` и `tasks/current-task.md`, затем связанные документы. Выполняй только текущий scope в отдельной ветке, проверяй результат, делай commit/push и PR. В конце обнови `handoff/latest.md`. Не выдумывай результаты проверок.
 
 ## Состояние
-**VL-001 принят и объединён с main; текущая задача — VL-002 (Research Engine Foundation).** Реализован фронтенд-каркас на React + TypeScript + Vite с типизированным синтетическим набором данных: Обзор, Радар, Досье идеи и намеренные заглушки остальных разделов. Бэкенда, авторизации и внешних интеграций нет. Данные из предыдущих исследовательских отчётов, оценки и показатели конкурентов не считаются проверенными фактическими данными приложения до отдельного импорта с источниками.
+**VL-002 — Research Engine Foundation (PR на ревью).** Работает вертикальная цепочка: проверенный JSON-файл исследования (`vl-research-1`) → dry-run и импорт одной транзакцией → локальный PostgreSQL с append-only историей → расчёт рейтинга той же доменной логикой `src/domain` → отображение в интерфейсе (режим REAL) → неизменяемые срезы ТОП-10. Демо-набор VL-001 доступен как отдельный режим DEMO; режимы никогда не смешиваются. Нет авторизации, публичного API, деплоя, платных API и автоматического сбора исследований.
 
 ## Принципы
 1. **Evidence first:** каждое серьёзное утверждение — со ссылкой, датой и уровнем уверенности.
@@ -32,33 +32,72 @@ Venture Lab не должен превращаться в «таблицу ид�
 4. **Small vertical slices:** сначала качественный интерфейс на честно помеченных демоданных, потом хранилище, интеграции и автоматизация.
 5. **Safe by default:** никаких секретов в Git, никакой отправки приватных данных в сторонние API без согласованного подхода.
 
-## Разработка (VL-001)
+## Разработка
 
-Требования: Node.js ≥ 18 (проверено на Node 22), npm.
+### Требования
+- **Node.js ≥ 20.19** (проверено на Node 22) и npm.
+- **Docker** с `docker compose` — для локального PostgreSQL 16. Можно использовать и свой локальный PostgreSQL ≥ 14 — тогда задайте `DATABASE_URL` / `TEST_DATABASE_URL` (см. `.env.example`).
 
+### Быстрый старт (REAL-режим, пустая база → импорт → интерфейс)
 ```bash
-npm install        # зависимости
-npm run dev        # dev-сервер Vite → http://localhost:5173
-npm run build      # typecheck (tsc -b) + production-сборка в dist/
-npm run preview    # локальный просмотр сборки → http://localhost:4173
-npm run lint       # ESLint, 0 предупреждений
-npm run typecheck  # только TypeScript
-npm test           # Vitest: математика скоринга, ранжирование, UI-взаимодействия
+npm install
+npm run db:up                 # PostgreSQL 16 на 127.0.0.1:5433 (+ база venture_lab_test для тестов)
+npm run db:migrate            # миграции (повторный запуск безопасен)
+npm run dev:all               # API 127.0.0.1:8787 + UI http://127.0.0.1:5173 (одной командой)
 ```
+Откройте http://127.0.0.1:5173 — режим REAL покажет «Исследования ещё не импортированы».
+
+Импорт исследования (по умолчанию dry-run — ничего не пишет):
+```bash
+npm run research:validate -- research/examples/synthetic-run-1.json          # только схема, без БД
+npm run research:import   -- research/examples/synthetic-run-1.json          # diff с базой
+npm run research:import   -- research/examples/synthetic-run-1.json --apply  # запись одной транзакцией
+npm run research:snapshot -- --as-of 2026-11-06 --apply                      # явный неизменяемый срез ТОП-10
+npm run research:import   -- research/examples/synthetic-run-2.json --apply  # пересмотр оценки, отклонение, новая идея
+```
+Обновите страницу: в REAL-режиме видны импортированные идеи (синтетические помечены «Тестовые данные»), досье со ссылками на источники, датами и статусом проверки; движение в рейтинге считается относительно последнего сохранённого среза.
+
+Реальные исследования кладите в `research/inbox/` (формат — [docs/research-import-format.md](docs/research-import-format.md)).
+
+### Режимы DEMO / REAL
+- Переключатель «Источник данных» в боковой панели/меню, баннер режима вверху каждой страницы.
+- Приоритет: `?mode=demo|real` в URL → сохранённый выбор → `VITE_DATA_MODE` → `real`.
+- REAL при недоступном API/БД показывает ошибку с инструкцией, а **не** подменяет данные демо-набором.
+
+### Скрипты
+| Команда | Что делает |
+|---|---|
+| `npm run dev` / `npm run api` / `npm run dev:all` | UI (Vite, проксирует `/api`) / локальный API / оба |
+| `npm run build`, `npm run preview` | typecheck + сборка / просмотр сборки (тоже с прокси на API) |
+| `npm run lint`, `npm run typecheck` | ESLint (0 предупреждений), TypeScript (UI + server) |
+| `npm test` | все тесты; интеграционные с БД требуют `TEST_DATABASE_URL`, иначе пропускаются локально (в CI — обязательны) |
+| `npm run test:unit`, `npm run test:integration` | только UI/домен; только server (PostgreSQL) |
+| `npm run db:up`, `db:down`, `db:migrate`, `db:status` | контейнер БД, миграции |
+| `npm run db:reset -- --yes` | **удаляет все данные** локальной БД и пересоздаёт схему (только localhost) |
+
+Интеграционные тесты: `TEST_DATABASE_URL=postgres://venture_lab:venture_lab_local@127.0.0.1:5433/venture_lab_test npm test` — каждый тестовый файл работает в собственной временной схеме и удаляет её.
+
+### Архитектура
+```
+research/inbox/*.json ──► server/cli/research.ts ──► server/research/{schema,importer,snapshot}.ts
+                           (validate / dry-run / --apply)          │ Zod + одна транзакция
+                                                                   ▼
+                                                    PostgreSQL (append-only, триггеры)
+                                                                   │
+                     server/research/repository.ts  ◄──────────────┘  (загрузка в доменную модель)
+                                   │
+                     server/api/app.ts (Fastify, 127.0.0.1, GET-only) ── src/domain/* (scoring, selectors)
+                                   │ /api/*                                ▲ та же логика
+                     src/data/source.ts  REAL: createApiSource   DEMO: createDemoSource(demoData)
+                                   └──────────► страницы React (Обзор / Радар / Досье)
+```
+Выбор технологий: **Fastify 5** (лёгкий, быстрый `inject` для тестов), **pg 8** + явный SQL (прозрачные ограничения и транзакции без ORM), **Zod 4** (строгая валидация импорта и параметров API), **tsx** (запуск TypeScript-сервера без отдельной сборки), собственный раннер миграций с контрольными суммами (forward-only; откат локально — `db:reset`).
 
 ### Структура
 ```
-src/
-  domain/      типы, модель оценки v1.0 (scoring.ts), выборки и KPI (selectors.ts), подписи
-  data/        DEMO-набор (demo.ts, isDemo + asOf) и провайдер данных
-  components/  оболочка (сайдбар, топбар, мобильная навигация), UI-примитивы, лидерборд, карта возможностей
-  pages/       Обзор, Радар, Досье, заглушки разделов
-  styles/      дизайн-токены и стили
-  test/        UI-тесты (Testing Library)
-docs/screenshots/  скриншоты 1440/1280/390 px
+server/      config, db (pool, migrate, migrations/*.sql), research (schema, importer, snapshot, repository), api, cli, test
+src/domain/  типы, модель оценки v1.0, выборки и view-модели — общие для UI и API
+src/data/    DEMO-фикстура, источники данных (demo/api), выбор режима
+research/    inbox/ (реальные проверенные файлы), examples/ (два синтетических примера)
+docs/        продуктовые документы, research-import-format.md, screenshots/
 ```
-
-### Принципы данных
-- Баллы, ранги, движение в рейтинге и KPI **вычисляются** в `src/domain` из сырых оценок 0–5 — в фикстурах нет готовых итогов.
-- Движение показывается только относительно сохранённого предыдущего среза (`snapshotDates`).
-- Все данные синтетические и помечены «Демо»; источники не привязаны, конкуренты описаны категориями.

@@ -1,0 +1,21 @@
+# Local development database only. Bound to 127.0.0.1; credentials are local dev defaults, not secrets.
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: venture_lab
+      POSTGRES_USER: venture_lab
+      POSTGRES_PASSWORD: venture_lab_local
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - vl_pgdata:/var/lib/postgresql/data
+      - ./scripts/db-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U venture_lab -d venture_lab"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  vl_pgdata:

@@ -222,7 +222,7 @@ describe('demo dataset', () => {
     expect(demoData.ideas.length).toBeGreaterThanOrEqual(12);
     expect(new Set(demoData.ideas.map((i) => i.id)).size).toBe(demoData.ideas.length);
     expect(new Set(demoData.ideas.map((i) => i.slug)).size).toBe(demoData.ideas.length);
-    expect(demoData.ideas.every((i) => i.demo === true)).toBe(true);
+    expect(demoData.ideas.every((i) => i.synthetic === true)).toBe(true);
   });
 
   it('keeps assessments append-only (chronological) for every idea', () => {
@@ -264,7 +264,7 @@ describe('demo dataset', () => {
     const q = radarRows(demoData, { ...base, q: 'репетитор' });
     expect(q.map((r) => r.idea.id)).toEqual(['idea-03']);
     const conf = radarRows(demoData, { ...base, sort: 'confidence' });
-    for (let i = 1; i < conf.length; i++) expect(conf[i - 1]!.confidence).toBeGreaterThanOrEqual(conf[i]!.confidence);
+    for (let i = 1; i < conf.length; i++) expect(conf[i - 1]!.confidence!).toBeGreaterThanOrEqual(conf[i]!.confidence!);
     const recent = radarRows(demoData, { ...base, sort: 'recent' });
     for (let i = 1; i < recent.length; i++) expect(recent[i - 1]!.idea.updatedAt >= recent[i]!.idea.updatedAt).toBe(true);
   });

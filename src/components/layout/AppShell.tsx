@@ -1,10 +1,14 @@
 import { ChevronsLeft, ChevronsRight, Menu, MoreHorizontal, Search, X } from 'lucide-react';
 import { Suspense, useEffect, useRef, useState, type FormEvent } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { useData } from '../../data/context';
+import { useDataSource } from '../../data/context';
+import { demoData } from '../../data/demo';
+import { SCORING_MODEL_VERSION } from '../../domain/scoring';
+import type { DataMode } from '../../domain/types';
 import { formatDateLong, weekday } from '../../lib/format';
 import { cx } from '../../lib/cx';
 import { DemoBadge } from '../ui/primitives';
+import { Segmented } from '../ui/Segmented';
 import { PageSkeleton } from '../ui/PageSkeleton';
 import { NAV_MAIN, NAV_SECONDARY, type NavItem } from './nav';
 
@@ -162,8 +166,8 @@ function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => void })
           <NavList items={NAV_SECONDARY} onNavigate={onClose} />
         </nav>
         <div className="drawer__foot">
-          <DemoBadge label="Демонстрационный режим" />
-          <p>Все данные синтетические. Интеграции с внешними сервисами не подключены.</p>
+          <ModeSwitch />
+          <ModeNote />
         </div>
       </div>
     </div>
@@ -188,8 +192,61 @@ function TabBar({ onMore, moreOpen }: { onMore: () => void; moreOpen: boolean })
   );
 }
 
+function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Explicit DEMO / REAL switch. Changing it never mixes data: the whole source is replaced. */
+function ModeSwitch() {
+  const { mode, setMode } = useDataSource();
+  if (!setMode) return null;
+  return (
+    <div className="mode-switch">
+      <span className="field-label">Источник данных</span>
+      <Segmented<DataMode>
+        label="Режим данных"
+        size="sm"
+        value={mode}
+        onChange={setMode}
+        options={[
+          { value: 'real', label: 'Реальные' },
+          { value: 'demo', label: 'Демо' },
+        ]}
+      />
+    </div>
+  );
+}
+
+function ModeNote() {
+  const { mode } = useDataSource();
+  return mode === 'demo' ? (
+    <p>Синтетический набор VL-001, срез на {formatDateLong(demoData.asOf)}. Не факты и не исследования.</p>
+  ) : (
+    <p>Только импортированные проверенные исследования из локальной базы. Демо-данные не подмешиваются.</p>
+  );
+}
+
+function ModeBanner() {
+  const { mode, setMode } = useDataSource();
+  const real = mode === 'real';
+  return (
+    <div className={cx('mode-banner', real ? 'mode-banner--real' : 'mode-banner--demo')} role="status">
+      <span className="mode-banner__dot" aria-hidden />
+      <strong>{real ? 'Реальные данные' : 'Демо-режим'}</strong>
+      <span className="mode-banner__text">{real ? 'локальная база исследований' : 'синтетический набор — не факты'}</span>
+      {setMode && (
+        <button type="button" className="mode-banner__switch" onClick={() => setMode(real ? 'demo' : 'real')}>
+          {real ? 'Открыть демо' : 'К реальным данным'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function AppShell() {
-  const data = useData();
+  const { mode } = useDataSource();
+  const dateIso = mode === 'demo' ? demoData.asOf : todayIso();
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [drawer, setDrawer] = useState(false);
   const location = useLocation();
@@ -223,9 +280,9 @@ export function AppShell() {
         <div className="sidebar__bottom">
           <NavList items={NAV_SECONDARY} collapsed={collapsed} />
           {!collapsed && (
-            <div className="sidebar__demo">
-              <DemoBadge label="Демо-режим" />
-              <p>Данные синтетические, срез на {formatDateLong(data.asOf)}.</p>
+            <div className={cx('sidebar__demo', mode === 'real' && 'sidebar__demo--real')}>
+              <ModeSwitch />
+              <ModeNote />
             </div>
           )}
           <button
@@ -251,16 +308,18 @@ export function AppShell() {
           </div>
           <div className="topbar__context">
             <span className="topbar__date">
-              <span className="topbar__weekday">{weekday(data.asOf)},</span> {formatDateLong(data.asOf)}
+              <span className="topbar__weekday">{weekday(dateIso)},</span> {formatDateLong(dateIso)}
             </span>
             <span className="topbar__sep" aria-hidden />
-            <span className="topbar__model">Модель оценки {data.modelVersion}</span>
+            <span className="topbar__model">Модель оценки {SCORING_MODEL_VERSION}</span>
           </div>
           <GlobalSearch key={location.pathname === '/radar' ? 'radar' : 'other'} />
           <DemoBadge label="Демо-данные" />
+          {mode === 'real' && <span className="mode-pill">Реальные данные</span>}
         </header>
 
         <main id="main" ref={mainRef} className="main" tabIndex={-1}>
+          <ModeBanner />
           <Suspense fallback={<PageSkeleton />}>
             <Outlet />
           </Suspense>

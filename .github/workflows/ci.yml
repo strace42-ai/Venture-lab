@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        # Throwaway CI-only credentials for an ephemeral container (not a secret).
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: venture_lab_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci -d venture_lab_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      CI: 'true'
+      TEST_DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/venture_lab_test
+      DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/venture_lab_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      # Unit + UI + PostgreSQL integration tests (integration suites fail, not skip, when CI=true).
+      - run: npm test
+      - run: npm run build
+      - name: CLI smoke — migrate, dry-run, apply, idempotent re-import, snapshot
+        run: |
+          npm run db:migrate
+          npm run research:validate -- research/examples/synthetic-run-1.json
+          npm run research:import -- research/examples/synthetic-run-1.json
+          npm run research:import -- research/examples/synthetic-run-1.json --apply
+          npm run research:import -- research/examples/synthetic-run-1.json --apply
+          npm run research:snapshot -- --as-of 2026-11-06 --apply
+          npm run research:import -- research/examples/synthetic-run-2.json --apply
+          npm run research:snapshot -- --as-of 2026-11-06 --apply

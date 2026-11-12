@@ -1,12 +1,13 @@
-import { AlertTriangle, ArrowUpRight, LayoutGrid, List, SearchX, X } from 'lucide-react';
-import { useMemo } from 'react';
+import { AlertTriangle, ArrowUpRight, DatabaseZap, LayoutGrid, List, SearchX, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { LoadError } from '../components/StateViews';
 import { Segmented } from '../components/ui/Segmented';
-import { Badge, ConfidenceMeter, DemoBadge, EmptyState, MovementIndicator, ScoreBar, StageBadge } from '../components/ui/primitives';
-import { useData } from '../data/context';
+import { Badge, ConfidenceMeter, DemoBadge, EmptyState, MovementIndicator, ScoreBar, Skeleton, StageBadge, SyntheticBadge } from '../components/ui/primitives';
+import { useDataSource, useLoad, useMode } from '../data/context';
 import { RISK_LABEL, STAGE_LABEL, STAGE_ORDER } from '../domain/labels';
-import { categories, hasCriticalRisk, radarRows, stagesPresent, type RadarQuery, type RadarRow, type RadarSort } from '../domain/selectors';
-import type { Category, Stage } from '../domain/types';
+import { hasCriticalRisk, type RadarQuery, type RadarRow, type RadarSort, type RadarView } from '../domain/selectors';
+import type { Stage } from '../domain/types';
 import { cx } from '../lib/cx';
 import { formatDateShort, plural } from '../lib/format';
 
@@ -15,32 +16,40 @@ type View = 'table' | 'cards';
 const SORTS: RadarSort[] = ['score', 'confidence', 'recent'];
 
 export default function RadarPage() {
-  const data = useData();
+  const { source, mode } = useDataSource();
   const [params, setParams] = useSearchParams();
 
-  const cats = useMemo(() => categories(data), [data]);
-  const stages = useMemo(() => {
-    const present = new Set(stagesPresent(data));
-    return STAGE_ORDER.filter((s) => present.has(s));
-  }, [data]);
-
-  const rawCat = params.get('cat');
   const rawStage = params.get('stage');
   const rawSort = params.get('sort');
+  const rawPage = Number(params.get('page') ?? '1');
   const query: RadarQuery = {
     q: params.get('q') ?? '',
-    category: rawCat && (cats as string[]).includes(rawCat) ? (rawCat as Category) : 'all',
-    stage: rawStage && (stages as string[]).includes(rawStage) ? (rawStage as Stage) : 'all',
+    category: params.get('cat') ?? 'all',
+    stage: rawStage && (STAGE_ORDER as string[]).includes(rawStage) ? (rawStage as Stage) : 'all',
     sort: rawSort && (SORTS as string[]).includes(rawSort) ? (rawSort as RadarSort) : 'score',
   };
+  const page = Number.isInteger(rawPage) && rawPage > 0 ? rawPage : 1;
   const view: View = params.get('view') === 'cards' ? 'cards' : 'table';
 
-  const rows = useMemo(() => radarRows(data, query), [data, query.q, query.category, query.stage, query.sort]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Debounce typing only for the network-backed REAL source.
+  const q = useDebounced(query.q, mode === 'real' ? 250 : 0);
+  const loadQuery = { ...query, q };
+  const state = useLoad(`radar:${mode}:${JSON.stringify(loadQuery)}:${page}`, () => source.radar(loadQuery, page));
+  const [lastView, setLastView] = useState<RadarView | null>(null);
+  if (state.status === 'ready' && state.data !== lastView) setLastView(state.data);
+  const data = state.status === 'ready' ? state.data : lastView;
+
+  const cats = data?.categories ?? [];
+  const stages = useMemo(() => {
+    const present = new Set(data?.stages ?? []);
+    return STAGE_ORDER.filter((s) => present.has(s) || s === query.stage);
+  }, [data, query.stage]);
 
   function update(key: string, value: string, defaultValue: string) {
     const next = new URLSearchParams(params);
     if (value === defaultValue || value === '') next.delete(key);
     else next.set(key, value);
+    if (key !== 'page' && key !== 'view') next.delete('page');
     setParams(next, { replace: true });
   }
 
@@ -50,8 +59,12 @@ export default function RadarPage() {
     const next = new URLSearchParams();
     if (query.sort !== 'score') next.set('sort', query.sort);
     if (view !== 'table') next.set('view', view);
+    if (params.get('mode')) next.set('mode', params.get('mode')!);
     setParams(next, { replace: true });
   }
+
+  const rows = data?.rows ?? [];
+  const isReal = mode === 'real';
 
   return (
     <div className="page page--radar">
@@ -62,7 +75,9 @@ export default function RadarPage() {
         </div>
         <h1 className="display display--sm">Все идеи, оценки и уверенность</h1>
         <p className="page-head__lede">
-          Поиск, фильтры и сортировка работают по локальному демо-набору. Ранг — позиция в общем рейтинге на {formatDateShort(data.asOf)}; отклонённые идеи видны, но не ранжируются.
+          {isReal
+            ? 'Импортированные идеи из локальной базы исследований. Ранг — позиция в текущем рейтинге; идеи без оценки помечены «не оценено», отклонённые видны, но не ранжируются.'
+            : 'Поиск, фильтры и сортировка работают по локальному демо-набору. Ранг — позиция в общем рейтинге; отклонённые идеи видны, но не ранжируются.'}
         </p>
       </header>
 
@@ -89,7 +104,7 @@ export default function RadarPage() {
           </label>
           <select id="radar-cat" className="select" value={query.category} onChange={(e) => update('cat', e.target.value, 'all')}>
             <option value="all">Все</option>
-            {cats.map((c) => (
+            {(cats.includes(query.category) || query.category === 'all' ? cats : [...cats, query.category]).map((c) => (
               <option key={c} value={c}>
                 {c}
               </option>
@@ -126,9 +141,30 @@ export default function RadarPage() {
         </div>
       </div>
 
+      {state.status === 'error' && !data ? (
+        <LoadError error={state.error} onRetry={state.retry} />
+      ) : !data ? (
+        <div className="panel" aria-busy="true">
+          <div className="panel__body radar-loading">
+            <span className="sr-only">Загрузка…</span>
+            {Array.from({ length: 6 }, (_, i) => (
+              <Skeleton key={i} h={22} />
+            ))}
+          </div>
+        </div>
+      ) : data.totalAll === 0 && isReal ? (
+        <div className="panel">
+          <EmptyState icon={<DatabaseZap size={22} />} title="Исследования ещё не импортированы">
+            База реальных исследований пуста. Импортируйте проверенный JSON (<code>npm run research:import -- &lt;файл&gt; --apply</code>) — подробности на странице «Обзор».
+          </EmptyState>
+        </div>
+      ) : (
+      <>
       <div className="results-bar">
         <p className="results-bar__count" aria-live="polite">
-          <span className="num">{rows.length}</span> {plural(rows.length, 'идея', 'идеи', 'идей')} из {data.ideas.length}
+          <span className="num">{data.total}</span> {plural(data.total, 'идея', 'идеи', 'идей')} из {data.totalAll}
+          {state.status === 'loading' && <span className="muted small"> · обновление…</span>}
+          {state.status === 'error' && <span className="tone-danger small"> · ошибка обновления</span>}
           {filtersActive && (
             <button type="button" className="chip-btn" onClick={reset}>
               <X size={12} aria-hidden /> Сбросить фильтры
@@ -159,7 +195,7 @@ export default function RadarPage() {
               </button>
             }
           >
-            Под эти условия не подходит ни одна идея из демо-набора. Отсутствие результата не означает отсутствия рынка.
+            {isReal ? 'Под эти условия не подходит ни одна импортированная идея.' : 'Под эти условия не подходит ни одна идея из демо-набора.'} Отсутствие результата не означает отсутствия рынка.
           </EmptyState>
         </div>
       ) : (
@@ -172,15 +208,49 @@ export default function RadarPage() {
           </ul>
         </div>
       )}
+      {data.total > data.pageSize && (
+        <nav className="pager" aria-label="Страницы радара">
+          <button type="button" className="btn btn--ghost" disabled={page <= 1} onClick={() => update('page', String(page - 1), '1')}>
+            Назад
+          </button>
+          <span className="muted num">
+            {(page - 1) * data.pageSize + 1}–{Math.min(page * data.pageSize, data.total)} из {data.total}
+          </span>
+          <button type="button" className="btn btn--ghost" disabled={page * data.pageSize >= data.total} onClick={() => update('page', String(page + 1), '1')}>
+            Вперёд
+          </button>
+        </nav>
+      )}
+      </>
+      )}
     </div>
   );
 }
 
+function useDebounced<T>(value: T, ms: number): T {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    if (ms === 0) return;
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return ms === 0 ? value : v;
+}
+
+function Unscored() {
+  return (
+    <span className="unscored" title="Оценка по рубрике v1.0 не импортирована — балл не присваивается">
+      не оценено
+    </span>
+  );
+}
+
 function RadarTable({ rows }: { rows: RadarRow[] }) {
+  const isReal = useMode() === 'real';
   return (
     <div className="panel table-wrap">
       <table className="table">
-        <caption className="sr-only">Идеи на радаре (демо-данные)</caption>
+        <caption className="sr-only">Идеи на радаре</caption>
         <thead>
           <tr>
             <th scope="col" className="t-rank">Ранг</th>
@@ -211,6 +281,7 @@ function RadarTable({ rows }: { rows: RadarRow[] }) {
                 <td>
                   <Link to={`/ideas/${r.idea.slug}`} className="t-idea">
                     <span className="t-idea__title">{r.idea.title}</span>
+                    {r.idea.synthetic && isReal && <SyntheticBadge compact />}
                     <span className="t-idea__meta">
                       {r.idea.category} · {r.idea.segment}
                     </span>
@@ -219,13 +290,9 @@ function RadarTable({ rows }: { rows: RadarRow[] }) {
                 <td>
                   <StageBadge stage={r.idea.stage} />
                 </td>
-                <td className="t-score">
-                  <ScoreBar value={r.score} label={`Балл ${r.score}`} />
-                </td>
-                <td className="t-conf">
-                  <ConfidenceMeter value={r.confidence} />
-                </td>
-                <td className="t-fit num">{r.founderFit}</td>
+                <td className="t-score">{r.score === null ? <Unscored /> : <ScoreBar value={r.score} label={`Балл ${r.score}`} />}</td>
+                <td className="t-conf">{r.confidence === null ? <span className="muted">—</span> : <ConfidenceMeter value={r.confidence} />}</td>
+                <td className="t-fit num">{r.founderFit ?? <span className="muted" title="Founder Fit не оценён">—</span>}</td>
                 <td className="t-risk">
                   {r.idea.riskFlags.length ? (
                     <span className={cx('risk-count', crit && 'risk-count--crit')} title={r.idea.riskFlags.map((f) => RISK_LABEL[f]).join(', ')}>
@@ -249,6 +316,7 @@ function RadarTable({ rows }: { rows: RadarRow[] }) {
 
 function RadarCard({ row }: { row: RadarRow }) {
   const { idea } = row;
+  const isReal = useMode() === 'real';
   const crit = hasCriticalRisk(idea);
   return (
     <li className={cx('panel rcard', idea.stage === 'rejected' && 'is-dim')}>
@@ -266,16 +334,17 @@ function RadarCard({ row }: { row: RadarRow }) {
       <div className="rcard__metrics">
         <div>
           <span className="rcard__mlabel">Балл</span>
-          <ScoreBar value={row.score} label={`Балл ${row.score}`} />
+          {row.score === null ? <Unscored /> : <ScoreBar value={row.score} label={`Балл ${row.score}`} />}
         </div>
         <div>
           <span className="rcard__mlabel">Уверенность</span>
-          <ConfidenceMeter value={row.confidence} />
+          {row.confidence === null ? <span className="muted">—</span> : <ConfidenceMeter value={row.confidence} />}
         </div>
       </div>
       <div className="rcard__foot">
         <Badge>{idea.category}</Badge>
         <Badge>{idea.segment}</Badge>
+        {idea.synthetic && isReal && <SyntheticBadge compact />}
         {crit && (
           <Badge tone="danger" icon={<AlertTriangle size={12} aria-hidden />}>
             Требует ревью

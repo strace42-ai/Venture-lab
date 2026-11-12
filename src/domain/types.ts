@@ -1,6 +1,7 @@
 /**
- * Domain types for Venture Lab.
- * Mirrors docs/data-contracts.md at the granularity needed for VL-001 (demo-only UI).
+ * Domain types for Venture Lab — shared by the UI (DEMO + REAL) and the local API/importer.
+ * Mirrors docs/data-contracts.md and docs/research-engine-contract.md.
+ * Pure types only: no DOM, no Node APIs.
  */
 
 export type ISODate = string; // YYYY-MM-DD
@@ -43,17 +44,8 @@ export interface FounderFitComponents {
 
 export type Segment = 'B2B' | 'B2C';
 
-export type Category =
-  | 'LegalTech'
-  | 'E-commerce'
-  | 'HRTech'
-  | 'ConTech'
-  | 'FinTech'
-  | 'EdTech'
-  | 'GovTech'
-  | 'SMB-сервисы'
-  | 'HealthTech'
-  | 'HoReCa';
+/** Free-text category. DEMO uses a fixed set; REAL takes what the reviewed research declares. */
+export type Category = string;
 
 export type Stage =
   | 'discovered'
@@ -84,6 +76,7 @@ export type RiskFlag =
 export interface StageChange {
   at: ISODate;
   stage: Stage;
+  reason?: string | null;
 }
 
 /** Append-only assessment record. */
@@ -93,26 +86,52 @@ export interface Assessment {
   assessor: string;
   scores: ComponentScores;
   confidence: ConfidenceComponents;
+  /** Founder fit recorded with this assessment (REAL). DEMO keeps it on the idea. */
+  founderFit?: FounderFitComponents | null;
   reason: string;
+  /** Evidence ids the assessment relies on (REAL imports require ≥ 1). */
+  evidenceIds?: string[];
+  unknowns?: string[];
 }
 
 export type EvidenceMarket = 'west' | 'ru';
+export type SourceType = 'independent' | 'company_self_report' | 'primary_data' | 'unknown';
+export type VerificationStatus = 'unreviewed' | 'checked' | 'rejected';
 
-/** Evidence placeholder. In demo mode no source is attached and that must be visible. */
-export interface EvidencePlaceholder {
+/**
+ * A source-linked claim. In DEMO no source is attached (url = null) and that must be visible.
+ * A claim without url + publisher + observedAt can never be shown as checked.
+ */
+export interface Evidence {
+  id: string;
   market: EvidenceMarket;
   claim: string;
-  dimension: DimensionKey;
-  sourceStatus: 'not_attached';
-  supportType: 'independent' | 'self_report' | 'unknown';
+  dimensions: DimensionKey[];
+  url: string | null;
+  title: string | null;
+  publisher: string | null;
+  sourceType: SourceType;
+  language: string | null;
+  publishedAt: ISODate | null;
+  observedAt: ISODate | null;
+  retrievedAt: ISODate | null;
+  verificationStatus: VerificationStatus;
+  supportNote: string | null;
 }
 
-export interface CompetitorPlaceholder {
-  label: string;
-  kind: 'direct' | 'adjacent' | 'substitute';
-  coverage: 'high' | 'partial' | 'low' | 'unknown';
-  gap: string;
-  verifiedAt: ISODate | null;
+export type CompetitorKind = 'direct' | 'adjacent' | 'substitute';
+export type Coverage = 'high' | 'partial' | 'low' | 'unknown';
+
+export interface Competitor {
+  id: string;
+  name: string;
+  market: EvidenceMarket;
+  url: string | null;
+  kind: CompetitorKind;
+  coverage: Coverage;
+  gap: string | null;
+  observedAt: ISODate | null;
+  evidenceIds: string[];
 }
 
 export interface ValidationPlan {
@@ -136,22 +155,24 @@ export interface Idea {
   stage: Stage;
   createdAt: ISODate;
   updatedAt: ISODate;
-  primaryProblem: string;
-  targetPersona: string;
-  offer: string;
-  nextAction: string;
-  thesis: string;
-  whyNow: string;
-  evidence: EvidencePlaceholder[];
-  competitors: CompetitorPlaceholder[];
+  primaryProblem: string | null;
+  targetPersona: string | null;
+  offer: string | null;
+  nextAction: string | null;
+  thesis: string | null;
+  whyNow: string | null;
+  evidence: Evidence[];
+  competitors: Competitor[];
   riskFlags: RiskFlag[];
-  founderFit: FounderFitComponents;
-  validationPlan: ValidationPlan;
-  /** Chronological, append-only. Last element = current assessment. */
+  /** DEMO-only founder fit on the idea; REAL stores it per assessment. */
+  founderFit: FounderFitComponents | null;
+  validationPlan: ValidationPlan | null;
+  /** Chronological, append-only. Last element = current assessment. May be empty (unscored). */
   assessments: Assessment[];
   /** Chronological, append-only stage transitions. Used to reconstruct past rankings. */
   stageHistory: StageChange[];
-  demo: true;
+  /** True for DEMO fixtures and for explicitly synthetic test imports. */
+  synthetic: boolean;
 }
 
 export interface ResearchRun {
@@ -162,6 +183,7 @@ export interface ResearchRun {
   rejectedCandidates: number;
   sourcesReviewed: number;
   conclusion: string;
+  synthetic?: boolean;
 }
 
 export type ExperimentStatus = 'planned' | 'running' | 'completed';
@@ -210,15 +232,42 @@ export interface ActivityEntry {
   ideaId?: string;
 }
 
-export interface DemoDataset {
-  isDemo: true;
+export type DataMode = 'demo' | 'real';
+
+/** One ranked row of a previous snapshot, used as the movement baseline. */
+export interface BaselineEntry {
+  ideaId: string;
+  rank: number;
+  score: number;
+}
+
+/**
+ * Movement baseline.
+ * - `stored`: an immutable TOP-10 snapshot row set read from the database (REAL).
+ * - `reconstruct`: derive the previous ranking from append-only history at `asOf` (DEMO fixture).
+ */
+export type RankBaseline =
+  | { kind: 'stored'; snapshotId: string; asOf: ISODate; entries: BaselineEntry[] }
+  | { kind: 'reconstruct'; asOf: ISODate };
+
+export interface Dataset {
+  mode: DataMode;
+  /** Date the data describes (DEMO fixture date / REAL «today»). */
   asOf: ISODate;
   modelVersion: string;
-  /** Snapshot dates (ascending). Ranks at each are derived, never stored by hand. */
-  snapshotDates: ISODate[];
+  /** Date at which the current ranking is computed. */
+  rankAsOf: ISODate;
+  baseline: RankBaseline | null;
   ideas: Idea[];
   researchRuns: ResearchRun[];
   experiments: Experiment[];
   builds: BuildProject[];
   activity: ActivityEntry[];
+}
+
+export interface DemoDataset extends Dataset {
+  mode: 'demo';
+  isDemo: true;
+  /** Snapshot dates (ascending). Ranks at each are derived, never stored by hand. */
+  snapshotDates: ISODate[];
 }
