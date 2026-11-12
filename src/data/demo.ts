@@ -17,6 +17,7 @@ import type {
   ISODate,
   Idea,
   RawScore,
+  StageChange,
 } from '../domain/types';
 
 type Tuple12 = [RawScore, RawScore, RawScore, RawScore, RawScore, RawScore, RawScore, RawScore, RawScore, RawScore, RawScore, RawScore];
@@ -46,7 +47,10 @@ function comp(label: string, kind: CompetitorPlaceholder['kind'], coverage: Comp
   return { label, kind, coverage, gap, verifiedAt: null };
 }
 
-const ideas: Idea[] = [
+/** Fixture shape: stage history may be omitted when the idea never changed stage. */
+type IdeaFixture = Omit<Idea, 'stageHistory'> & { stageHistory?: StageChange[] };
+
+const ideaFixtures: IdeaFixture[] = [
   {
     id: 'idea-01',
     slug: 'marketplace-review-replies',
@@ -90,6 +94,7 @@ const ideas: Idea[] = [
       as('2026-11-04', [4, 4, 3, 4, 4, 4, 4, 4, 4, 4, 2, 3], cf(55, 45, 85, 55, 35), 'Добавлены наблюдения о жалобах селлеров (источники не привязаны — демо).'),
       as('2026-11-11', [4, 4, 4, 4, 4, 5, 4, 5, 4, 4, 2, 3], cf(60, 50, 90, 55, 45), 'Найден понятный формат быстрого теста; уточнён консьерж-оффер.'),
     ],
+    stageHistory: [{ at: '2026-10-21', stage: 'scored' }, { at: '2026-11-11', stage: 'validation_planned' }],
     demo: true,
   },
   {
@@ -176,6 +181,7 @@ const ideas: Idea[] = [
       as('2026-10-07', [4, 3, 3, 4, 3, 4, 5, 5, 4, 4, 2, 4], cf(50, 40, 70, 50, 40), 'Первичная оценка.'),
       as('2026-11-05', [4, 3, 3, 4, 3, 4, 5, 5, 4, 4, 2, 4], cf(60, 50, 80, 55, 55), 'Повышена уверенность после первых 6 интервью (демо).'),
     ],
+    stageHistory: [{ at: '2026-10-07', stage: 'scored' }, { at: '2026-11-03', stage: 'validating' }],
     demo: true,
   },
   {
@@ -417,6 +423,7 @@ const ideas: Idea[] = [
       as('2026-10-03', [5, 4, 3, 3, 2, 2, 3, 4, 3, 2, 1, 1], cf(50, 45, 70, 55, 30), 'Первичная оценка.'),
       as('2026-11-01', [5, 4, 3, 3, 2, 2, 2, 3, 3, 2, 1, 1], cf(55, 50, 75, 55, 40), 'Доступ к данным оценён как блокер; поставлено на паузу.'),
     ],
+    stageHistory: [{ at: '2026-10-03', stage: 'scored' }, { at: '2026-11-01', stage: 'paused' }],
     demo: true,
   },
   {
@@ -528,6 +535,7 @@ const ideas: Idea[] = [
       as('2026-11-05', [3, 3, 4, 3, 3, 3, 3, 3, 3, 5, 2, 4], cf(35, 25, 90, 40, 25), 'Первичная оценка.'),
       as('2026-11-12', [4, 3, 4, 3, 4, 3, 3, 3, 3, 5, 3, 4], cf(40, 30, 95, 40, 25), 'Уточнены сценарии использования и защитимость (данные по точкам).'),
     ],
+    stageHistory: [{ at: '2026-11-05', stage: 'discovered' }, { at: '2026-11-12', stage: 'researching' }],
     demo: true,
   },
   {
@@ -564,6 +572,7 @@ const ideas: Idea[] = [
       as('2026-10-05', [4, 4, 2, 2, 3, 3, 4, 4, 3, 3, 1, 4], cf(55, 50, 70, 55, 50), 'Первичная оценка.'),
       as('2026-10-30', [4, 4, 1, 1, 3, 3, 4, 4, 3, 3, 1, 4], cf(65, 60, 80, 60, 60), 'Решение: отклонить — насыщенный рынок (демо).', 'Основатель (демо)'),
     ],
+    stageHistory: [{ at: '2026-10-05', stage: 'scored' }, { at: '2026-10-30', stage: 'rejected' }],
     demo: true,
   },
   {
@@ -609,6 +618,11 @@ const ideas: Idea[] = [
     demo: true,
   },
 ];
+
+const ideas: Idea[] = ideaFixtures.map((f) => ({
+  ...f,
+  stageHistory: f.stageHistory ?? [{ at: f.createdAt, stage: f.stage }],
+}));
 
 export const demoData: DemoDataset = {
   isDemo: true,

@@ -6,17 +6,25 @@ import { AppRoutes } from '../App';
 import { DataProvider } from '../data/DataContext';
 import { demoData } from '../data/demo';
 import { fullRanking, radarRows } from '../domain/selectors';
+import type { DemoDataset, Experiment } from '../domain/types';
+import { verifiedPaymentsPhrase } from '../lib/format';
+
+function withVerifiedPayments(n: number): DemoDataset {
+  const exp = demoData.experiments[0]!;
+  const paid: Experiment = { ...exp, funnel: { ...exp.funnel, paymentsVerified: n } };
+  return { ...demoData, experiments: [paid, ...demoData.experiments.slice(1)] };
+}
 
 function LocationProbe() {
   const loc = useLocation();
   return <output data-testid="loc">{loc.pathname + loc.search}</output>;
 }
 
-function renderAt(path: string) {
+function renderAt(path: string, data: DemoDataset = demoData) {
   const user = userEvent.setup();
   render(
     <MemoryRouter initialEntries={[path]}>
-      <DataProvider>
+      <DataProvider data={data}>
         <AppRoutes />
         <LocationProbe />
       </DataProvider>
@@ -73,6 +81,43 @@ describe('Overview', () => {
     await user.click(within(list).getByRole('link', { name: lead.idea.title }));
     expect(await screen.findByRole('heading', { level: 1, name: lead.idea.title })).toBeInTheDocument();
     expect(screen.getByTestId('loc')).toHaveTextContent(`/ideas/${lead.idea.slug}`);
+  });
+});
+
+describe('Overview headline (regression: paid count is derived, not hardcoded)', () => {
+  it('formats zero / singular / few / many correctly', () => {
+    expect(verifiedPaymentsPhrase(0)).toBe('ни одной подтверждённой оплаты');
+    expect(verifiedPaymentsPhrase(1)).toBe('1 подтверждённая оплата');
+    expect(verifiedPaymentsPhrase(3)).toBe('3 подтверждённые оплаты');
+    expect(verifiedPaymentsPhrase(5)).toBe('5 подтверждённых оплат');
+    expect(verifiedPaymentsPhrase(21)).toBe('21 подтверждённая оплата');
+  });
+
+  it('says «ни одной» with the demo data (0 verified)', async () => {
+    renderAt('/');
+    expect(await screen.findByRole('heading', { level: 1 })).toHaveTextContent('ни одной подтверждённой оплаты');
+  });
+
+  it('reflects a positive verified-payment count in the headline and KPI', async () => {
+    renderAt('/', withVerifiedPayments(2));
+    const h1 = await screen.findByRole('heading', { level: 1 });
+    expect(h1).toHaveTextContent('2 подтверждённые оплаты');
+    expect(h1).not.toHaveTextContent('ни одной');
+    const kpis = screen.getByRole('region', { name: 'Ключевые показатели (демо)' });
+    expect(within(kpis).getByText('Подтверждённые оплаты').closest('.kpi')).toHaveTextContent('2');
+  });
+});
+
+describe('Overview strongest find (regression: no critical-risk fallback)', () => {
+  it('shows an explicit review state when no idea is eligible', async () => {
+    const allCritical: DemoDataset = {
+      ...demoData,
+      ideas: demoData.ideas.map((i) => ({ ...i, riskFlags: [...i.riskFlags, 'legal'] })),
+    };
+    renderAt('/', allCritical);
+    expect(await screen.findByRole('heading', { name: 'Нет находки без критических рисков' })).toBeInTheDocument();
+    expect(screen.getByText('Требует ревью')).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /Открыть досье/ })).not.toBeInTheDocument();
   });
 });
 

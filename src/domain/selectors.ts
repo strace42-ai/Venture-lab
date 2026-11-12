@@ -1,5 +1,5 @@
 import { CRITICAL_RISKS } from './labels';
-import { rankWithMovement, type RankedEntry } from './scoring';
+import { rankWithMovement, scoreIdea, type RankedEntry } from './scoring';
 import type { Category, DemoDataset, Experiment, ExperimentFunnel, Idea, Stage } from './types';
 
 export const HIGH_SCORE = 70;
@@ -27,13 +27,19 @@ export function hasCriticalRisk(idea: Idea): boolean {
   return idea.riskFlags.some((r) => CRITICAL_RISKS.has(r));
 }
 
+/** Eligible for «strongest find»: no critical risk and not paused. */
+export function isFindEligible(e: RankedEntry): boolean {
+  return !hasCriticalRisk(e.idea) && e.idea.stage !== 'paused';
+}
+
 /**
- * Strongest find = highest-ranked idea without a critical risk flag.
+ * Strongest find = highest-ranked eligible idea. There is deliberately NO fallback:
+ * if every ranked idea has a critical risk or is paused, the result is `undefined`
+ * and the UI must show an explicit «требует ревью» state instead.
  * (A high score never overrides a critical risk — scoring-model.md.)
  */
 export function strongestFind(data: DemoDataset): RankedEntry | undefined {
-  const ranking = fullRanking(data);
-  return ranking.find((e) => !hasCriticalRisk(e.idea) && e.idea.stage !== 'paused') ?? ranking[0];
+  return fullRanking(data).find(isFindEligible);
 }
 
 const ACTIVE_BUILD_STAGES: ReadonlySet<Stage> = new Set<Stage>(['building']);
@@ -126,9 +132,9 @@ export function radarRows(data: DemoDataset, query: RadarQuery): RadarRow[] {
   const rows: RadarRow[] = data.ideas.map((idea) => {
     const entry = byId.get(idea.id) ?? null;
     if (entry) return { idea, score: entry.score, confidence: entry.confidence, founderFit: entry.founderFit, rank: entry.rank, entry };
-    // Excluded from ranking — still compute honest numbers for display.
-    const s = rankWithMovement([{ ...idea, stage: 'scored' }], data.asOf, null)[0];
-    return { idea, score: s?.score ?? 0, confidence: s?.confidence ?? 0, founderFit: s?.founderFit ?? 0, rank: null, entry: null };
+    // Excluded from ranking (e.g. rejected) — still show its honest current numbers.
+    const s = scoreIdea(idea);
+    return { idea, score: s.score, confidence: s.confidence, founderFit: s.founderFit, rank: null, entry: null };
   });
 
   const filtered = rows.filter((r) => {

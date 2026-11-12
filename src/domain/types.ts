@@ -80,6 +80,12 @@ export type RiskFlag =
   | 'highCogs'
   | 'competitionUnverified';
 
+/** Append-only lifecycle transition. The last entry must equal `Idea.stage`. */
+export interface StageChange {
+  at: ISODate;
+  stage: Stage;
+}
+
 /** Append-only assessment record. */
 export interface Assessment {
   assessedAt: ISODate;
@@ -143,6 +149,8 @@ export interface Idea {
   validationPlan: ValidationPlan;
   /** Chronological, append-only. Last element = current assessment. */
   assessments: Assessment[];
+  /** Chronological, append-only stage transitions. Used to reconstruct past rankings. */
+  stageHistory: StageChange[];
   demo: true;
 }
 

@@ -14,6 +14,8 @@ import {
   scoreIdea,
 } from './scoring';
 import { computeKpis, fullRanking, radarRows, strongestFind, topN } from './selectors';
+import { stageAsOf } from './scoring';
+import type { DemoDataset } from './types';
 import type { ComponentScores, Idea, RawScore } from './types';
 
 function scores(v: RawScore): ComponentScores {
@@ -22,13 +24,15 @@ function scores(v: RawScore): ComponentScores {
 
 function makeIdea(id: string, overrides: Partial<Idea> = {}, s: ComponentScores = scores(3), assessedAt = '2026-11-01'): Idea {
   const base = demoData.ideas[0]!;
+  const stage = overrides.stage ?? 'scored';
   return {
     ...base,
     id,
     slug: id,
-    stage: 'scored',
+    stage,
     riskFlags: [],
     assessments: [{ ...base.assessments[0]!, assessedAt, scores: s }],
+    stageHistory: [{ at: '2026-10-01', stage }],
     ...overrides,
   };
 }
@@ -128,6 +132,86 @@ describe('ranking', () => {
     expect(up[0]!.movement).toEqual({ kind: 'up', by: 1, previousRank: 2 });
     // No previous snapshot → no movement is claimed.
     expect(rankWithMovement([a, b], '2026-11-12', null).every((e) => e.movement.kind === 'new')).toBe(true);
+  });
+});
+
+describe('stage history (regression: past snapshots must not be rewritten)', () => {
+  it('keeps an idea rejected AFTER the previous snapshot in that snapshot', () => {
+    // Rejected on 11-10: it was #1 on 11-05 and must stay #1 there.
+    const top = makeIdea('top', {
+      stage: 'rejected',
+      stageHistory: [
+        { at: '2026-10-01', stage: 'scored' },
+        { at: '2026-11-10', stage: 'rejected' },
+      ],
+    }, scores(5));
+    const a = makeIdea('a', {}, scores(4));
+    const b = makeIdea('b', {}, scores(3));
+
+    const prev = rankIdeas([top, a, b], '2026-11-05').map((x) => x.idea.id);
+    expect(prev).toEqual(['top', 'a', 'b']);
+
+    const now = rankWithMovement([top, a, b], '2026-11-12', '2026-11-05');
+    expect(now.map((e) => e.idea.id)).toEqual(['a', 'b']);
+    expect(now[0]!.movement).toEqual({ kind: 'up', by: 1, previousRank: 2 });
+    expect(now[1]!.movement).toEqual({ kind: 'up', by: 1, previousRank: 3 });
+  });
+
+  it('does not rank an idea in a snapshot before its first recorded stage', () => {
+    const late = makeIdea('late', { stageHistory: [{ at: '2026-11-08', stage: 'discovered' }] }, scores(5), '2026-11-01');
+    expect(stageAsOf(late, '2026-11-05')).toBeUndefined();
+    expect(rankIdeas([late], '2026-11-05')).toHaveLength(0);
+    expect(rankIdeas([late], '2026-11-12')).toHaveLength(1);
+  });
+
+  it('re-includes an idea that was un-paused/re-opened only from that date', () => {
+    const reopened = makeIdea('re', {
+      stage: 'scored',
+      stageHistory: [
+        { at: '2026-10-01', stage: 'scored' },
+        { at: '2026-10-20', stage: 'rejected' },
+        { at: '2026-11-09', stage: 'scored' },
+      ],
+    }, scores(3), '2026-10-01');
+    expect(rankIdeas([reopened], '2026-10-15')).toHaveLength(1);
+    expect(rankIdeas([reopened], '2026-11-01')).toHaveLength(0);
+    expect(rankIdeas([reopened], '2026-11-12')).toHaveLength(1);
+  });
+
+  it('demo: every stage history is chronological and ends at the current stage', () => {
+    for (const idea of demoData.ideas) {
+      const dates = idea.stageHistory.map((c) => c.at);
+      expect([...dates].sort()).toEqual(dates);
+      expect(idea.stageHistory[idea.stageHistory.length - 1]!.stage).toBe(idea.stage);
+    }
+  });
+});
+
+describe('strongest find (regression: no unsafe fallback)', () => {
+  function withIdeas(ideas: Idea[]): DemoDataset {
+    return { ...demoData, ideas, experiments: [], builds: [], activity: [] };
+  }
+
+  it('returns undefined when every ranked idea has a critical risk', () => {
+    const data = withIdeas([
+      makeIdea('x', { riskFlags: ['legal'] }, scores(5)),
+      makeIdea('y', { riskFlags: ['lockedApi'] }, scores(4)),
+    ]);
+    expect(fullRanking(data)).toHaveLength(2);
+    expect(strongestFind(data)).toBeUndefined();
+  });
+
+  it('returns undefined when the only non-critical idea is paused', () => {
+    const data = withIdeas([
+      makeIdea('crit', { riskFlags: ['legal'] }, scores(5)),
+      makeIdea('p', { stage: 'paused' }, scores(4)),
+    ]);
+    expect(strongestFind(data)).toBeUndefined();
+  });
+
+  it('skips a higher-ranked critical idea in favour of a lower eligible one', () => {
+    const data = withIdeas([makeIdea('crit', { riskFlags: ['legal'] }, scores(5)), makeIdea('ok', {}, scores(2))]);
+    expect(strongestFind(data)!.idea.id).toBe('ok');
   });
 });
 

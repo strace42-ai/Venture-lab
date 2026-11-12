@@ -7,6 +7,7 @@ import type {
   ISODate,
   Idea,
   RawScore,
+  Stage,
 } from './types';
 
 export const SCORING_MODEL_VERSION = 'v1.0';
@@ -151,12 +152,30 @@ export function compareRank(a: ScoredIdea, b: ScoredIdea): number {
   );
 }
 
-export const EXCLUDED_FROM_RANKING = new Set(['rejected']);
+export const EXCLUDED_FROM_RANKING: ReadonlySet<Stage> = new Set<Stage>(['rejected']);
 
+/**
+ * Lifecycle stage the idea had on `date`, from its append-only stage history.
+ * `undefined` = the idea had no recorded stage yet (did not exist in that snapshot).
+ */
+export function stageAsOf(idea: Idea, date: ISODate): Stage | undefined {
+  let found: Stage | undefined;
+  for (const c of idea.stageHistory) {
+    if (c.at <= date) found = c.stage;
+  }
+  return found;
+}
+
+/**
+ * Rank all ideas as they were on `asOf` (or as they are now when omitted).
+ * Both the assessment AND the lifecycle stage are taken as of that date, so a later
+ * status change (e.g. rejection) never rewrites an earlier snapshot.
+ */
 export function rankIdeas(ideas: Idea[], asOf?: ISODate): ScoredIdea[] {
   const scored: ScoredIdea[] = [];
   for (const idea of ideas) {
-    if (EXCLUDED_FROM_RANKING.has(idea.stage)) continue;
+    const stage = asOf ? stageAsOf(idea, asOf) : idea.stage;
+    if (!stage || EXCLUDED_FROM_RANKING.has(stage)) continue;
     const a = asOf ? assessmentAsOf(idea, asOf) : currentAssessment(idea);
     if (!a) continue;
     scored.push(scoreIdea(idea, a));
@@ -177,8 +196,10 @@ export interface RankedEntry extends ScoredIdea {
 }
 
 /**
- * Derive the full ranking at `current` and compare it with the stored snapshot at `previous`.
- * Movement is only claimed when the idea existed in the previous snapshot.
+ * Derive the full ranking at `current` and compare it with the snapshot at `previous`.
+ * The previous snapshot is reconstructed deterministically from append-only assessments and
+ * stage history (no record is ever rewritten), so it equals what was ranked on that date.
+ * Movement is only claimed when the idea was ranked in the previous snapshot.
  */
 export function rankWithMovement(ideas: Idea[], current: ISODate, previous: ISODate | null): RankedEntry[] {
   const now = rankIdeas(ideas, current);

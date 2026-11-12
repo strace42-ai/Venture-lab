@@ -10,7 +10,7 @@ import { BUILD_STAGE_LABEL, EXPERIMENT_STATUS_LABEL, RISK_LABEL, confidenceBand 
 import { HIGH_CONFIDENCE, HIGH_SCORE, computeKpis, fullRanking, hasCriticalRisk, ideaById, strongestFind, sumFunnel } from '../domain/selectors';
 import type { RankedEntry } from '../domain/scoring';
 import type { Segment, Stage } from '../domain/types';
-import { formatDateLong, formatDateShort, formatTime, pct, plural, relativeDay } from '../lib/format';
+import { formatDateLong, formatDateShort, formatTime, pct, plural, relativeDay, verifiedPaymentsPhrase } from '../lib/format';
 import { cx } from '../lib/cx';
 
 type TopSort = 'rank' | 'confidence' | 'movement';
@@ -51,7 +51,7 @@ export default function OverviewPage() {
         <h1 className="display">
           {kpis.rankable} {plural(kpis.rankable, 'идея', 'идеи', 'идей')} в рейтинге.{' '}
           <span className="display__muted">
-            {strong} {plural(strong, 'сильная и обоснованная', 'сильные и обоснованные', 'сильных и обоснованных')}, ни одной подтверждённой оплаты.
+            {strong} {plural(strong, 'сильная и обоснованная', 'сильные и обоснованные', 'сильных и обоснованных')}, {verifiedPaymentsPhrase(kpis.verifiedPaidSignals)}.
           </span>
         </h1>
         <p className="page-head__lede">
@@ -60,14 +60,14 @@ export default function OverviewPage() {
       </header>
 
       <div className="grid grid--hero">
-        {lead ? <HeroFind entry={lead} asOf={data.asOf} /> : <Panel title="Сильнейшая находка">Нет оценённых идей.</Panel>}
+        {lead ? <HeroFind entry={lead} asOf={data.asOf} /> : <NoEligibleFind ranked={ranking.length} />}
         <ResearchPulse />
       </div>
 
       <section className="grid grid--kpi" aria-label="Ключевые показатели (демо)">
         <Kpi icon={<Layers size={16} />} label="Идей на радаре" value={kpis.totalIdeas} sub={`${kpis.rankable} в рейтинге · +${kpis.newThisWeek} за неделю`} />
         <Kpi icon={<Target size={16} />} label="Сильные и обоснованные" value={kpis.highConfidenceLeads} sub={`балл ≥ ${HIGH_SCORE} и уверенность ≥ ${HIGH_CONFIDENCE}`} tone="accent" />
-        <Kpi icon={<Beaker size={16} />} label="Эксперименты идут" value={kpis.liveExperiments} sub={`+${kpis.plannedExperiments} запланирован`} />
+        <Kpi icon={<Beaker size={16} />} label="Эксперименты идут" value={kpis.liveExperiments} sub={`+${kpis.plannedExperiments} ${plural(kpis.plannedExperiments, 'запланирован', 'запланировано', 'запланировано')}`} />
         <Kpi icon={<Hammer size={16} />} label="Активные сборки" value={kpis.activeBuilds} sub={`${kpis.buildSpecs} в спецификации`} />
         <Kpi
           icon={<BadgeCheck size={16} />}
@@ -114,7 +114,7 @@ export default function OverviewPage() {
           footer={
             <>
               <span className="muted">
-                Движение — относительно среза {formatDateShort(data.snapshotDates[data.snapshotDates.length - 2] ?? data.asOf)}. Отклонённые идеи не ранжируются.
+                Движение — относительно среза {formatDateShort(data.snapshotDates[data.snapshotDates.length - 2] ?? data.asOf)}, восстановленного из неизменяемой истории оценок и стадий. Отклонённые идеи не ранжируются.
               </span>
               <Link to="/radar" className="link-cta">
                 Весь радар <ArrowRight size={14} aria-hidden />
@@ -169,6 +169,38 @@ function Kpi({ icon, label, value, sub, tone = 'neutral' }: { icon: ReactNode; l
       <div className="kpi__value num">{value}</div>
       <div className="kpi__sub">{sub}</div>
     </div>
+  );
+}
+
+/** Explicit state when no ranked idea is eligible (all critical-risk or paused). */
+function NoEligibleFind({ ranked }: { ranked: number }) {
+  return (
+    <section className="panel hero hero--empty" aria-labelledby="hero-title">
+      <div className="hero__content">
+        <div className="eyebrow hero__eyebrow">
+          Сильнейшая находка дня
+          <DemoBadge compact />
+        </div>
+        <h2 id="hero-title" className="hero__title">
+          {ranked === 0 ? 'Пока нет оценённых идей' : 'Нет находки без критических рисков'}
+        </h2>
+        <p className="hero__pitch">
+          {ranked === 0
+            ? 'Как только появится первая оценка по модели, здесь будет сильнейшая возможность дня.'
+            : `Все ${ranked} ${plural(ranked, 'идея', 'идеи', 'идей')} в рейтинге либо имеют критический риск, либо стоят на паузе. Высокий балл не отменяет критический риск — нужно ревью основателя.`}
+        </p>
+        <div className="hero__cta">
+          <Link to="/radar" className="btn btn--ghost">
+            Открыть радар <ArrowRight size={16} aria-hidden />
+          </Link>
+        </div>
+      </div>
+      <aside className="hero__score hero__score--review" aria-label="Статус">
+        <Badge tone="danger" icon={<ShieldAlert size={12} aria-hidden />}>
+          {ranked === 0 ? 'Нет данных' : 'Требует ревью'}
+        </Badge>
+      </aside>
+    </section>
   );
 }
 

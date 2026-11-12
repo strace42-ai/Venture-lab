@@ -111,6 +111,15 @@
   flex-wrap: wrap;
 }
 
+.hero--empty {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.hero__score--review {
+  min-width: 0;
+  align-content: start;
+}
+
 .hero__score {
   position: relative;
   display: grid;
@@ -1736,10 +1745,56 @@
 }
 
 @media (max-width: 720px) {
+  /* --- Mobile first screen: verdict + strongest find with score above the fold --- */
+  .page--overview .page-head {
+    gap: var(--s-2);
+    padding: 0;
+  }
+  .page--overview .display {
+    font-size: 1.375rem;
+    line-height: 1.22;
+    letter-spacing: -0.02em;
+  }
+  .page--overview .page-head__lede {
+    display: none;
+  }
   .hero {
     grid-template-columns: minmax(0, 1fr);
-    padding: var(--s-5);
-    gap: var(--s-5);
+    padding: var(--s-4);
+    gap: var(--s-3);
+  }
+  /* Flatten the content wrapper so the score can sit right under the title. */
+  .hero .hero__content {
+    display: contents;
+  }
+  .hero__eyebrow {
+    order: 1;
+  }
+  .hero__title {
+    order: 2;
+    font-size: 1.25rem;
+  }
+  .hero > .hero__score {
+    order: 3;
+  }
+  .hero__cta {
+    order: 4;
+  }
+  .hero__pitch {
+    order: 5;
+    font-size: var(--fs-14);
+  }
+  .hero__tags {
+    order: 6;
+  }
+  .hero__facts {
+    order: 7;
+  }
+  .hero__cta .muted {
+    display: none;
+  }
+  .hero__score--review {
+    order: 2;
   }
   .hero__score {
     grid-template-columns: auto 1fr 1fr;
@@ -1750,15 +1805,19 @@
     gap: var(--s-4);
   }
   .hero__score .ring {
-    width: 88px !important;
-    height: 88px !important;
+    width: 76px !important;
+    height: 76px !important;
   }
   .hero__score .ring svg {
-    width: 88px;
-    height: 88px;
+    width: 76px;
+    height: 76px;
   }
   .hero__score .ring__value {
-    font-size: 1.75rem;
+    font-size: 1.5rem;
+  }
+  .hero__score .ring__caption {
+    margin-top: 2px;
+    font-size: 9px;
   }
   .hero__metric {
     justify-items: start;

@@ -56,3 +56,9 @@ export function pct(part: number, whole: number): string {
   if (whole === 0) return '—';
   return `${Math.round((part / whole) * 100)}%`;
 }
+
+/** Headline fragment for human-verified payments. Never hardcoded: derived from the count. */
+export function verifiedPaymentsPhrase(n: number): string {
+  if (n <= 0) return 'ни одной подтверждённой оплаты';
+  return `${n} ${plural(n, 'подтверждённая оплата', 'подтверждённые оплаты', 'подтверждённых оплат')}`;
+}
