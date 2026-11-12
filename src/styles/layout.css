@@ -537,7 +537,8 @@
   .topbar__brand-m .brand__text {
     display: none;
   }
-  .topbar > .demo-badge {
+  .topbar > .demo-badge,
+  .topbar > .mode-pill {
     display: none;
   }
   .grid--three {

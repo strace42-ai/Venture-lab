@@ -1,184 +1,250 @@
 # Venture Lab — Latest implementation handoff
 
-**Task:** VL-001 / Dashboard Foundation (`tasks/current-task.md`, Version 1.0)
-**Status:** IMPLEMENTED + REVIEW ROUND 1 FIXED. Awaiting re-review and founder approval. **Not merged.**
+**Task:** VL-002 / Research Engine Foundation (`tasks/current-task.md`, Version 1.0)
+**Status:** IMPLEMENTED + REVIEW ROUND 1 FIXED. Awaiting re-audit and founder approval. **Not merged.**
 **As of:** 2026-11-12
 **Implementer:** Claude Code
+(The previous VL-001 handoff is in git history and in `tasks/done/VL-001-dashboard-foundation.md`.)
 
 ## Git
 | | |
 |---|---|
-| Base | `main` @ `79cc6328fc45510461dcb47a89ccf29e4d0ae38a` |
-| Feature branch | `claude/vl-001-dashboard-foundation` |
-| Implementation commit | `89d4c43fd4047805eda9a9dc0f4d76c2336c20f2` |
-| First handoff commit | `09fbcc5bea1972bf4cbf85844c1744378a681f1e` (the commit ChatGPT reviewed) |
-| Review-fix commit | `cf0107684b403896ddf1cd02c2e1c866a356db67` |
+| Base | `main` @ `60f7d00` (includes the merged VL-001 and the VL-002 docs) |
+| Feature branch | `claude/vl-002-research-engine` |
+| Implementation commit | `d6981af155101b15ea77c87bf3ea3ba4dfe44871` |
+| Commit audited by ChatGPT | `0d761dc70403d6cfcdfc3f5fcf816da88075fb72` |
+| Review-fix commit | `6a43687782756a43a983f5f8ddafa0177a71775e` |
 | Handoff update | the next commit on the same branch, which updates this file |
-| PR | https://github.com/strace42-ai/Venture-lab/pull/1 |
+| PR | https://github.com/strace42-ai/Venture-lab/pull/2 |
 
-## Review round 1 — ChatGPT findings and fixes
-Review: https://github.com/strace42-ai/Venture-lab/pull/1#pullrequestreview-5867911877 (on `09fbcc5`).
+## Review round 1 — ChatGPT findings and root-cause fixes
+Review: https://github.com/strace42-ai/Venture-lab/pull/2#pullrequestreview-5868393820 (on `0d761dc`).
 
-| # | Finding | Fix | Regression tests |
+| # | Finding | Root cause | Fix (architecture) | Regression tests |
+|---|---|---|---|---|
+| **P1a** | Synthetic and real ideas mix in «Реальные данные» | Every read path loaded all rows. The importer only guarded against a *same-externalId* collision. | **The dataset is an explicit dimension of every read.** `loadIdeas`, `loadResearchRuns`, `loadSnapshot`, `listSnapshots`, `loadDataset` and `createSnapshot` all require `dataset: 'real' \| 'test'`, and no «all» option exists. Every API endpoint takes `?dataset=` (default `real`, anything else → 400). **Migration 002** adds DB-level guarantees through composite foreign keys: an idea ↔ its first and last research run, a snapshot entry ↔ its idea ↔ its snapshot. As a result a cross-dataset link cannot exist even through raw SQL. Snapshots are unique per (dataset, date). The UI gets a third explicit mode, **«Тестовые импорты»** (`?mode=test`), with its own banner; REAL shows only `human-reviewed` research. CLI: `research:snapshot --dataset real\|test` (default `real`). | `review-fixes.test.ts` › P1a (4 tests): synthetic and real imports in one PostgreSQL DB. REAL ranking, KPIs, runs, evidence, snapshots and every API endpoint contain no synthetic rows. A test idea is 404 in REAL. `dataset=all` → 400. Raw-SQL cross-dataset INSERT/UPDATE is rejected by FKs. UI: a TEST source sends `dataset=test` on every request; TEST mode is labelled. CI smoke asserts that the REAL snapshot is empty after synthetic imports. |
+| **P1b** | TOP-10 movement resets after today's snapshot | The baseline was the latest snapshot `as_of ≤ today`, so the ranking was compared with itself. | The baseline is the latest stored snapshot **strictly before** `rankAsOf`. Behaviour is defined and documented: before today's snapshot, after it, and for later imports the same day, the comparison is always with the previous stored snapshot. `/api/top10` also returns `latestSnapshot.entries` with movement computed against the stored snapshot before it (`comparedTo`), via the shared `compareToBaseline` in `src/domain/scoring.ts`. | `review-fixes.test.ts` › P1b: yesterday's snapshot → reorder plus a new idea → today's snapshot. DB and API keep up/down/new against yesterday (not «same»). A later import the same day is still compared with yesterday, and today's snapshot stays unchanged. |
+| **P1c** | A partial update erases the accumulated dossier | `ideaContent` turned absent fields into `null`/`[]`, and the UPDATE overwrote all columns. | **PATCH semantics** (`mergeIdeaContent`): an absent key keeps the stored value; an explicit `null`/`[]` clears it, with a warning naming the fields; required fields are always replaced. Schema defaults that turned absence into `[]` or «Россия» were removed. The dry-run lists exactly which fields change. Root cause of the same class, also fixed: an assessment in a short update could not cite earlier evidence, because refs were checked only within the file. Refs now resolve against the file **plus** the evidence already stored for the idea; an unknown ref still rejects the file. | `review-fixes.test.ts` › P1c (3 tests): a short update keeps every dossier field and list and counts as «unchanged» while the assessment is appended; explicit null/[] clears with a warning and the old value stays in `idea_revisions`; a new idea gets defaults. `import.test.ts`: an unknown ref rejects the whole file, and a ref to earlier stored evidence is accepted. |
+| **P1/P2** | Radar shows stale DEMO rows under REAL | `lastView` was cached without regard to the source, and stale rows were shown on error. | (1) Pages **remount on every source change** (`<Suspense key={mode}>` in `AppShell`), so no page-local state can cross sources. (2) The Radar reuses the previous result **only while the same source is loading**, the cache is tagged with its source, and an error shows the error without stale rows. (3) Gateway 502/503/504 (dev proxy with the API stopped) map to «API недоступен». | `real-mode.test.tsx` (5 tests): DEMO→REAL on /radar with the API down (error, no demo rows); DEMO→REAL while REAL is still loading (loading state, no demo rows); REAL→DEMO (no REAL rows leak); a failed refresh in the same source shows the error, not old rows; 502 without JSON → unavailable. Verified manually in Chromium: `docs/screenshots/vl-002/radar-demo-to-real-api-down-1440.png`. |
+| non-blocking | Historical snapshot titles followed later renames | Entries joined the current `ideas.title`. | Migration 002 stores `title` and `slug` in `top10_entries` at snapshot time; pre-migration rows are backfilled with the title current at migration time. | `review-fixes.test.ts`: a rename after the snapshot does not change the snapshot title; the migration-002 backfill test. |
+| non-blocking | «Проверено» could read as automatic verification | — | The dossier now explains that «проверено» is a manual human review mark and that the app does not open or check links. | — |
+
+| **CI-found** | Run #4: «Unhandled Rejection: ApiError (500)» with all tests passing | `useLoad` created the request promise during render but subscribed in `useEffect`. A promise that rejected fast was briefly unhandled. This was a real app issue (an «unhandled rejection» in the browser console), not just a test flake. | The promise is converted into a never-rejecting `Settled` result (`{ok, data} \| {ok:false, error}`) at the moment it is created; the effect only reads that result (`src/data/context.ts`). | `real-mode.test.tsx` › `useLoad never leaks unhandled promise rejections`: it fails on the old code and passes on the fix; a local `npm test` ran three times with 0 unhandled. |
+
+**Migration 002 on an existing database:** applied on my local DB that already held a pre-fix synthetic snapshot: the backfill set the snapshot to `synthetic = true` and froze the titles. A legacy snapshot that mixes datasets aborts the migration with a clear instruction (`db:reset`); this case is tested.
+
+## Primary acceptance scenario — status
+| # | Scenario step | Status | Evidence |
 |---|---|---|---|
-| 1 | The Overview headline hardcoded «ни одной подтверждённой оплаты», even though the paid KPI is derived | New `verifiedPaymentsPhrase(n)` in `src/lib/format.ts` builds the phrase from `kpis.verifiedPaidSignals`, with Russian plural forms. `OverviewPage` uses it. | `src/test/app.test.tsx`: the plural table (0/1/3/5/21); the demo data renders «ни одной»; a dataset with 2 verified payments renders «2 подтверждённые оплаты» in the headline, «ни одной» does not appear, and the KPI tile shows 2 |
-| 2 | Past rankings were recomputed with the *current* `idea.stage`, so an idea rejected today disappeared retroactively from yesterday's ranking | Added an append-only `Idea.stageHistory: StageChange[]` and `stageAsOf(idea, date)`. `rankIdeas(ideas, asOf)` now uses the stage **and** the assessment as of that date, and an idea with no recorded stage yet is not ranked. Demo fixtures gained histories, e.g. idea-13 scored → rejected on 30 Oct, idea-09 → paused on 1 Nov. The UI and comments now describe the previous snapshot as *reconstructed from immutable assessment and stage history*, not as a stored snapshot. The Radar no longer fakes `stage:'scored'` to score excluded ideas. | `src/domain/scoring.test.ts`: an idea rejected after the previous snapshot stays #1 in that snapshot, and the other ideas show "up" movement against it; no rank before the first recorded stage; a reject → reopen sequence ranks correctly at three dates; every demo stage history is chronological and ends at the current stage |
-| 3 | `strongestFind` fell back to `ranking[0]`, which could surface a critical-risk idea as the strongest find | The fallback is removed: the function returns `undefined` when no ranked idea is eligible (not critical, not paused). The Overview then shows an explicit «Нет находки без критических рисков / Требует ревью» panel with a link to the Radar and no «Открыть досье» CTA. | `scoring.test.ts`: all-critical → undefined; critical + paused → undefined; a higher-ranked critical idea is skipped for a lower eligible one. `app.test.tsx`: an all-critical dataset renders the review state and no dossier CTA |
-| polish | At 390px the headline and lede were too tall, so meaningful data fell below the first screen | At ≤720px: smaller verdict headline (22px), the lede is hidden on Overview, and the strongest-find card is reordered (title → score ring + confidence + rank → «Открыть досье» CTA → pitch → tags → facts) with a smaller ring. Measured at 390×844: the ring ends at y=410px and the CTA at y=483px, both above the tab bar at 780px. At 360×740 the CTA also sits above the tab bar at 676px. | Visual: `docs/screenshots/overview-390-first-screen.png` and `overview-390.png` |
+| 1 | A fresh project starts with an empty REAL database, and the UI says nothing has been imported | ✅ | `docs/screenshots/vl-002/real-empty-*.png`; test `REAL mode — empty database`; API test `empty database` |
+| 2 | Drop an approved JSON into `research/inbox/`, or import an explicitly synthetic sample | ✅ | `research/examples/synthetic-run-{1,2}.json` (synthetic, example.org/example.com only). Since the review they go to the isolated **TEST** dataset (`?mode=test`). |
+| 3 | A dry-run validates without writing and shows inserts, updates, rejects, sources and conflicts; `--apply` persists | ✅ | CLI output below; test `dry-run reports the diff but writes nothing` |
+| 4 | Imported ideas appear in the Radar; the dossier shows evidence names, clickable URLs, dates, verification state and competitors | ✅ | Same views for REAL and TEST. Screenshots use TEST (`test-radar-1440.png`, `test-dossier-1440.png`) because no real research exists yet; the REAL rendering is covered by UI test `dossier shows source links with provenance…` |
+| 5 | The unchanged rubric v1.0 scores the idea; rank, confidence and Founder Fit stay separate; an unassessed idea is not 0 | ✅ | test `REAL scores and ranking match the unchanged VL-001 rubric`; «не оценено» in Radar and dossier |
+| 6 | An explicit dated snapshot is unchanged by a later reassessment or rejection; movement is computed against the previous stored snapshot | ✅ | tests `a later reassessment and rejection never rewrite a stored snapshot…` and P1b `yesterday snapshot → … → today snapshot` |
+| 7 | Re-importing the same file creates no duplicates and no history change; data survives a restart | ✅ | tests `re-importing the exact same file is a no-op`, `data survives a restart`; manual API restart below |
+| 8 | Switching to DEMO brings back the VL-001 fixture, visibly labelled, and the modes never mix | ✅ | tests `switching from DEMO to REAL replaces all data`, `labels follow the mode`, the P2 Radar tests; `demo-overview-*.png` |
 
-The demo ranking is unchanged by these fixes: same order, scores and movement as before.
-Also fixed: the KPI sub-label «+1 запланирован» now uses plural forms.
+## Architecture
+```
+research/inbox/*.json ─► server/cli/research.ts  validate | import [--apply] | snapshot [--dataset real|test] [--apply]
+                               │
+                               ▼
+               server/research/schema.ts   (Zod, strict vl-research-1)
+               server/research/importer.ts (plan = read-only diff; apply = 1 transaction + advisory lock)
+               server/research/snapshot.ts (explicit, idempotent, full ranking as of date)
+                               │
+                               ▼
+                    PostgreSQL 16 (migrations 001_research_engine, 002_dataset_isolation)
+     ideas ─┬─ idea_revisions        stage_transitions        assessments (raw 0–5|null, no totals)
+            ├─ evidence ── evidence_reviews                   competitors (ru/west)
+            └─ research_runs ── import_runs (run_id UNIQUE, sha256 checksum)
+     top10_snapshots ── top10_entries          (append-only tables: UPDATE/DELETE → trigger error)
+     dataset = ideas.synthetic / research_runs.synthetic / top10_*.synthetic, linked by composite FKs
+                               │
+               server/research/repository.ts  (every read scoped to ONE dataset; baseline = latest snapshot < today)
+                               │
+               server/api/app.ts  Fastify, 127.0.0.1, GET-only, CORS allow-list, Zod params
+                     /api/health /api/overview /api/ideas /api/ideas/:id /api/research-runs /api/top10   (?dataset=real|test)
+                               │       ▲ src/domain/{scoring,selectors}.ts — single source of truth
+                               ▼       │ (buildOverview / buildRadarView / buildIdeaDetail used by BOTH)
+               src/data/source.ts  REAL/TEST: createApiSource(dataset)   DEMO: createDemoSource(demoData)
+                               │
+               src/data/DataContext.tsx (mode real|test|demo: ?mode → saved → VITE_DATA_MODE → real)
+               AppShell: <Suspense key={mode}> — pages remount on every source change
+                               ▼
+               Overview / Radar / Dossier pages (loading · empty · error · ready)
+```
+**Domain reorganisation (explained):**
+- `src/domain/types.ts` was generalised. Evidence and competitors now carry real provenance; descriptive fields, validation plan and founder fit became nullable; `synthetic` replaced `demo: true`.
+- New `Dataset` with `mode`, `rankAsOf` and `baseline` (`stored` snapshot | `reconstruct` for DEMO).
+- `rankAgainstBaseline` was added. `rankIdeas` skips unscored ideas.
+- View-model builders (`buildOverview`, `buildRadarView`, `buildIdeaDetail`) moved into `selectors.ts`, so the API and the DEMO adapter share them.
+- All 41 VL-001 tests still pass. The only test edits were mechanical: `demo` → `synthetic`, and a non-null assertion on the now-nullable `confidence`.
 
-## What was built
-**Stack:** React 18.3, TypeScript 5.6 (strict, with `noUncheckedIndexedAccess`) and Vite 8. Also React Router 7, Lucide icons and Inter Variable (self-hosted through @fontsource, Cyrillic included). Styles are hand-written CSS built on design tokens (`src/styles/tokens.css`). There is no UI kit and no chart library: the chart is hand-built SVG. The app has 5 runtime dependencies.
+## Migrations
+- `server/db/migrations/001_research_engine.sql`: every table, CHECK constraint, unique key, index and append-only trigger (`vl_forbid_mutation`).
+- `server/db/migrations/002_dataset_isolation.sql`:
+  - composite FKs that isolate datasets;
+  - snapshots unique per (dataset, date);
+  - frozen `title`/`slug` in snapshot entries;
+  - backfill of existing rows. The append-only triggers are disabled only inside this migration transaction and re-enabled at its end (tested).
+- Runner `server/db/migrate.ts`:
+  - forward-only;
+  - each file runs in its own transaction under an advisory lock;
+  - SHA-256 of each applied file is stored in `schema_migrations`, and a modified applied file is a hard error.
+- Rollback / rebuild for local development: `npm run db:reset -- --yes`. This drops the schema and re-migrates, and refuses non-local database hosts.
 
-1. **App shell**
-   - Desktop sidebar that collapses. Its state is kept in localStorage, and every access is wrapped in try/catch.
-   - Sticky topbar showing the date context, the scoring model version, a global search and a «Демо-данные» marker. The search is focused with the `/` hotkey and opens Radar with `?q=`.
-   - Below 1024px, a hamburger drawer and a bottom tab bar (Обзор, Радар, Валидация, Ещё). The drawer traps focus, closes on Esc, locks page scroll and restores focus when it closes.
-   - Skip link, visible focus rings, reduced-motion support.
-   - Routes are lazy-loaded and show a skeleton while loading.
-2. **Overview** (`/`)
-   - Editorial headline computed from the data: «13 идей в рейтинге. 2 сильные и обоснованные, ни одной подтверждённой оплаты.»
-   - Hero «Сильнейшая находка дня»: the highest-ranked idea that has no critical risk flag.
-   - Research pulse with a freshness indicator.
-   - 5 KPI tiles: ideas on radar, strong and well-evidenced, live experiments, active builds, verified payments. Every tile is labelled «демо».
-   - **Top-10 leaderboard.** Each row shows rank, movement vs the previous snapshot, a score bar, a 5-segment confidence meter, a score sparkline and a risk count. It has a B2B/B2C filter and re-sorts by rank, confidence or movement. The whole row opens the dossier.
-   - **Opportunity map** (score × evidence confidence) with thresholds at 70/60. Points can be focused with the keyboard and open the dossier. Ideas with a critical risk are drawn with a dashed red outline.
-   - Idea pipeline by stage.
-   - Validation funnel with the denominator for each step and a «pending ≠ paid» note.
-   - Build status with a checklist.
-   - Demo agent journal, labelled «не live-статусы».
-3. **Radar** (`/radar`)
-   - Search over title, pitch, category and persona. Category and stage filters. Sort by score, confidence or recency. Table ↔ cards toggle.
-   - All of this state is kept in the URL (`q`, `cat`, `stage`, `sort`, `view`).
-   - Results count, plus an empty state with a reset button.
-   - Below 900px the table collapses into cards.
-   - Rejected ideas are shown dimmed and are not ranked.
-4. **Idea dossier** (`/ideas/:slug`)
-   - Thesis, problem, persona, offer, why now.
-   - A scorecard that keeps three numbers apart: **market score**, **evidence confidence**, and **founder fit** (0–40, not used in ranking).
-   - All **12 dimensions**, each with raw 0–5 pips, weighted points out of the maximum, and the rubric question. An unknown (`null`) component is shown as «?» with an explanation.
-   - Confidence breakdown with its weights.
-   - Risk flags. A critical flag adds «Требует ревью».
-   - Western and Russian evidence placeholders, each marked «источник не привязан».
-   - Russian competitor matrix described by category (no company names), with «проверено: нет».
-   - First validation plan with a success threshold and a stop rule.
-   - Append-only assessment history with deltas.
-   - A not-found state for unknown slugs.
-5. **Demo data** (`src/data/demo.ts`)
-   - `isDemo: true`, `asOf: '2026-11-12'`.
-   - 14 distinct synthetic ideas across 10 categories: one rejected, one paused, and one with an unknown component.
-   - Each idea has 1–3 append-only assessments.
-   - 3 research runs, 2 experiments (0 verified payments, 1 pending), 1 build spec, 6 activity entries.
-   - **No totals, ranks, movement or KPIs are stored.** All of them are derived in `src/domain/scoring.ts` and `selectors.ts`.
-6. **Scoring model v1.0** (`src/domain/scoring.ts`)
-   - Fixed weights; a test asserts they sum to 100.
-   - Contribution = max × raw / 5. Only the final total is rounded.
-   - An unknown component counts as 0 points but is flagged.
-   - Confidence weights are 30/25/15/20/10. Founder fit is capped at 0–40.
-   - Tie-break order: score → confidence → first-payment feasibility (speedToPilot) → id.
-   - A snapshot's ranking uses each idea's latest assessment on or before that date.
-   - Movement is shown only against a stored previous snapshot. Otherwise the idea is shown as «Новая».
-7. **Placeholders** for Validation, Build Studio, Portfolio, Research Journal and Settings. Each page explains what will appear, in which sprint, and the honesty rule that applies, and says «намеренная заглушка, а не сломанная функция». Each also has a hatched structure sketch labelled «макет». There is also a 404 page.
-8. A developer section in the README, and lint, typecheck, test and build scripts.
-
-### Design decisions and why
-- **One accent colour (cyan-blue #5cc8ff) on near-black layered panels**, with hairline borders and neutral semantic colours. The demo marker uses its own muted lilac with a dashed border. It is easy to spot everywhere and can't be confused with success, warning or danger.
-- **Score and confidence use visibly different instruments**: a continuous bar vs a 5-segment meter. This is the product's core distinction. The opportunity map shows the «high score, thin evidence» quadrant explicitly.
-- **A computed editorial headline instead of a generic «Welcome back».** It states the honest situation up front, including 0 verified payments.
-- **No chart library.** One meaningful chart does not justify about 100 kB. Hand-built SVG stays accessible and easy to theme.
-
-## Intentionally NOT built (per exclusions)
-- Backend, database, auth, payments.
-- GitHub API, any LLM or agent API, crawlers or research jobs, deployment.
-- Saved views, editing settings, experiment CRUD.
-- Persistence of anything except the sidebar-collapsed preference.
+## Security and cost notes
+- **Cost:** no paid API, no cloud, no deploy. The only infrastructure is a local PostgreSQL in Docker.
+- **API exposure:**
+  - The API binds to loopback only; `loadConfig` throws on a non-loopback `API_HOST`.
+  - GET/HEAD only. CORS is an explicit allow-list of local UI origins.
+  - Responses carry `no-store`, `nosniff` and `default-src 'none'` headers.
+  - Errors return no stack traces, and a database outage returns 503.
+- **Import:**
+  - Files are read only from inside `research/`, as regular `.json` files of at most 5 MB; symlink escapes are blocked by realpath.
+  - URLs must be http(s), may not contain credentials, and lose their fragment.
+  - Control characters are rejected, and all text is rendered by React as plain text.
+  - In the UI, external links are opened only for http(s), with `rel="noopener noreferrer nofollow"`.
+- **Credentials:**
+  - Local dev only: compose `venture_lab/venture_lab_local`, bound to 127.0.0.1.
+  - CI uses a throwaway `ci/ci` for an ephemeral service container.
+  - No secrets are committed; `.env*` is ignored apart from `.env.example`.
+- **Data:** no data is sent to third-party AI APIs. No payments or customer data are imported.
 
 ## Files
-- **New:** `package.json`, `package-lock.json`, `index.html`, `vite.config.ts`, `tsconfig*.json`, `eslint.config.js`, `.gitignore`, `public/favicon.svg`, `src/**` (domain, data, components, pages, styles, tests), `docs/screenshots/*.png` (12 files).
-- **Modified:** `README.md` (state + developer section), `handoff/latest.md` (this file).
+- **New:**
+  - `server/` — config, db, research, api, cli, test
+  - `src/data/{source,mode}.ts`, `src/components/StateViews.tsx`, `src/test/real-mode.test.tsx`
+  - `research/examples/*.json`, `research/inbox/README.md`
+  - `docs/research-import-format.md`, `docs/screenshots/vl-002/*` (15 images)
+  - review round 1: `server/db/migrations/002_dataset_isolation.sql`, `server/test/review-fixes.test.ts`
+  - `docker-compose.yml`, `scripts/db-init/01-test-db.sql`, `scripts/dev-all.mjs`
+  - `.github/workflows/ci.yml`, `.env.example`, `tsconfig.server.json`
+- **Modified:**
+  - `src/domain/{types,scoring,selectors,labels}.ts`, `src/data/{demo,context}.ts`, `src/data/DataContext.tsx`
+  - pages `Overview` / `Radar` / `Idea`, `AppShell`, `primitives`, styles
+  - `README.md`, `package.json` (+ lock), `vite.config.ts` (API proxy), `eslint.config.js`, `tsconfig*.json`, `.gitignore`
 
-## Verification actually run (Node v22.23.4, npm 10.9.9, Linux container)
-Re-run in full after the review fixes (on `cf01076`), starting from `rm -rf node_modules dist && npm ci`. Every command exited 0. `npm audit --omit=dev`: found 0 vulnerabilities.
+## Verification actually run
+Environment: Node v22.23.4 and npm 10.9.9 in a Linux container. **PostgreSQL 16 ran natively** on 127.0.0.1:54329, because there is no Docker daemon in this environment.
 
 | Command | Result |
 |---|---|
-| `rm -rf node_modules dist && npm ci` | ✅ installed (with an audit notice, see Known limitations) |
-| `npm run lint` (`eslint . --max-warnings=0`) | ✅ exit 0, 0 warnings |
-| `npm run typecheck` (`tsc -b`) | ✅ exit 0 |
-| `npm test` (`vitest run`) | ✅ **2 files, 41 tests passed** (30 originally + 11 regression tests) |
-| `npm run build` | ✅ exit 0. Main chunk ≈251 kB (≈81.5 kB gzip); pages are split into lazy chunks |
+| `rm -rf node_modules dist && npm ci` | ✅ exit 0 |
+| `npm run lint` | ✅ exit 0, 0 warnings |
+| `npm run typecheck` (`tsc -b`: app + node + server projects) | ✅ exit 0 |
+| `TEST_DATABASE_URL=postgres://…/venture_lab_test CI=true npm test` | ✅ **8 files, 112 tests passed, 0 unhandled errors** (93 before the review + 19 regression), run twice in a row |
+| `npm test` without `TEST_DATABASE_URL` | 70 passed, 42 DB-integration tests **skipped** (in CI, `CI=true` makes a missing DB URL a hard error) |
+| `npm run build` | ✅ exit 0 |
+| `npm audit --omit=dev` | ✅ found 0 vulnerabilities |
+| **GitHub Actions CI** (`.github/workflows/ci.yml`, Postgres 16 service) | Before the review: run #1 on `d6981af` succeeded. After the fixes, run #4 on `372858e` **failed**: all 111 tests passed, but Vitest caught 1 unhandled promise rejection, which is treated as an error. Root cause and fix are in the table below. Run #5 on `5678fcd` (the fix) **succeeded**: lint, typecheck, 112 tests with a Postgres service and 0 unhandled errors, build, and the CLI smoke test including the «REAL snapshot is empty» isolation assertion — https://github.com/strace42-ai/Venture-lab/actions/runs/43165764567 |
+| `npm audit` (incl. dev) | 1 moderate advisory chain: `minimatch` via `@typescript-eslint/typescript-estree` (lint-time only; npm's fix is a downgrade) |
 
-**Domain tests cover:**
-- Weights sum to 100.
-- Contribution math, including the RangeError for out-of-range input.
-- Rounding only the final total, in a case where rounding each component would give a different result.
-- Unknown-component handling.
-- Confidence weights.
-- Founder fit cap, and that founder fit stays out of the score.
-- The full tie-break chain.
-- Rejected ideas and ideas not yet assessed are excluded from ranking.
-- Movement: new, same, up, down, and «no previous snapshot ⇒ no movement claimed».
-- Dataset integrity: at least 12 ideas with unique ids and slugs, demo flags, chronological assessments.
-- Top-10 equals the first 10 of the full ranking.
-- Strongest find skips ideas with a critical risk.
-- Radar filters and sorts.
+The test suites, by file:
+- `src/domain/scoring.test.ts` (23) and `src/test/app.test.tsx` (18): VL-001 regression, unchanged behaviour.
+- `src/test/real-mode.test.tsx` (21; +7 in review round 1: P2 Radar ×4, TEST-mode dataset scoping, 502 = unavailable, and the unhandled-rejection regression found by CI):
+  - REAL empty, unavailable and error states, and retry;
+  - «не оценено»;
+  - provenance links and review states;
+  - non-http links never rendered;
+  - API source error mapping and query building;
+  - mode resolution, DEMO→REAL switch with no leak, and mode-correct labels.
+- `server/test/migrations.test.ts` (6): clean migrate, repeatable, tampered checksum, append-only triggers, DB check constraints, reset/rebuild.
+- `server/test/import.test.ts` (17; the «unknown evidence ref» case moved from schema-only to a DB test, which also checks refs to earlier stored evidence):
+  - examples valid; malformed JSON; aggregate scores rejected;
+  - 15 invalid-input cases (javascript: URL, credentials, impossible or future date, score 6, missing dimension, rubric v2, unknown or empty evidence refs, short rationale, synthetic mismatch, duplicate id, control chars, schema version, rejected without reason);
+  - attribution downgrade warning; safe file paths;
+  - dry-run writes nothing; first import; same-file no-op; same runId + different bytes = conflict;
+  - invalid item = no partial write; fault-injection rollback;
+  - appended revision, stage and review with earlier rows unchanged;
+  - evidence immutability conflict; back-dated assessment, slug change and real/synthetic mixing rejected;
+  - persistence across a new pool.
+- `server/test/snapshot-ranking.test.ts` (7):
+  - the VL-001 fixture imported as synthetic data gives identical scores, confidence and rank order;
+  - unscored ideas not ranked;
+  - snapshot dry-run, apply, exists, conflict, future and empty cases;
+  - snapshot unchanged after reassessment and rejection, with movement against the stored snapshot (same / new / scoreDelta);
+  - snapshot as of an earlier date;
+  - no snapshot → movement `none`;
+  - empty database → empty dataset;
+  - rubric v2 rejected.
+- `server/test/review-fixes.test.ts` (11, new): P1a ×4, P1b ×2 (incl. frozen titles), P1c ×3, migration 002 backfill and mixed-legacy refusal ×2.
+- `server/test/api.test.ts` (9, now using `?dataset=test` for the synthetic examples):
+  - non-loopback host refused; database down → 503;
+  - empty DB; overview, list with filters / sort / pagination; detail provenance; top10; research runs;
+  - 400 / 404 validation; CORS allow and deny; security headers;
+  - fresh data after an import without a restart.
 
-**UI tests cover:**
-- Top-10 renders in the computed order, with demo labels.
-- Segment filter, and re-sorting by confidence.
-- Arrow-key navigation in the segmented controls.
-- Leaderboard → dossier navigation.
-- Radar: search (and that the URL updates); category + stage filters leading to the empty state and reset; recent-sort order; query read from the URL.
-- Dossier: 12 dimensions, the three separate metrics, the unknown marker, unattached sources.
-- Not-found state; placeholder route.
-- Mobile drawer opens and closes on Esc.
-- Sidebar navigation.
-- Global search lands on Radar.
+### End-to-end CLI run after the review fixes (fresh DB after `db:reset`, verbatim summary lines)
+```
+db:reset                                         → Схема пересоздана, применены: 001_research_engine, 002_dataset_isolation
+research:import synthetic-run-1.json --apply    → ✔ Импорт записан… ℹ Синтетические данные изолированы: … только в режиме «Тестовые импорты»
+research:import synthetic-run-1.json --apply    → Статус: already-imported
+research:snapshot --dataset test --as-of 2026-11-06 --apply → Срез test-top10-2026-11-06 … создан; позиций в рейтинге: 3.
+research:import synthetic-run-2.json --apply    → Идеи +1, =2 · Оценки +2 ревизий · ✔
+research:snapshot --as-of 2026-11-06 --apply    → Набор данных: реальные исследования · На 2026-11-06 нет оценённых идей… срез не создан.
+GET /api/health                                  → {"migrations":["001_research_engine","002_dataset_isolation"],"ideas":{"real":0,"test":5}}
+GET /api/overview (REAL)                         → mode real, totalIdeas 0, ranking []
+GET /api/top10?dataset=test                      → baseline test-top10-2026-11-06; invoice-reminders same, coffee-waste new, contract-clauses same
+```
 
-### Responsive and visual QA (Playwright + Chromium, production build via `vite preview`)
-- **Automated sweep: 11 routes × 5 widths (390, 768, 1024, 1280, 1440), 55 page loads.** Re-run after the review fixes, with the same results.
-  - `documentElement.scrollWidth == clientWidth` on all 55: no horizontal overflow.
-  - No page or console errors.
-  - On mobile, buttons, inputs and tab items are at least 44px tall.
-  - The sweep found one real overflow, at 1280px in the KPI tile header. It was fixed before the commit.
-- **Manual review of the screenshots found these issues, all fixed:**
-  - Hamburger button visible on desktop (CSS specificity).
-  - Sidebar «скоро» pills clipped.
-  - Leaderboard titles truncated too aggressively.
-  - «Новая» badge colliding with titles.
-  - KPI demo badge overlapping the labels.
-  - Empty space under the map (a pipeline panel was added there).
-- **Screenshots in `docs/screenshots/`:**
-  - Desktop: `overview-1440-full`, `overview-1440-viewport`, `overview-1280-viewport`, `radar-1440-table`, `radar-1440-cards-filtered`, `dossier-1440`, `placeholder-portfolio-1440`.
-  - Mobile: `overview-390-first-screen` (new), `overview-390`, `overview-390-top10`, `radar-390`, `dossier-390`, `drawer-390`.
-  - All screenshots were regenerated after the review fixes.
+Before the review fixes (first submission):
+```
+research:import synthetic-run-1.json            → Статус: ready (dry-run: ничего не записано)
+                                                  Идеи +4 · Источники +7 (1 понижено до unreviewed) · Конкуренты +2 · Оценки +3 · Стадии +4
+research:import synthetic-run-1.json --apply    → ✔ Импорт записан в базу (одна транзакция).
+research:import synthetic-run-1.json --apply    → Статус: already-imported · = Повторный импорт того же файла — ничего не изменено.
+research:snapshot --as-of 2026-11-06 --apply    → Срез top10-2026-11-06 на 2026-11-06 создан; позиций в рейтинге: 3.
+research:import synthetic-run-2.json --apply    → Идеи +1, =2 · Источники +2, 1 смен статуса · Оценки +2 ревизий · Стадии +2, отклонено идей: 1 · ✔
+research:snapshot --as-of 2026-11-06 --apply    → Срез … уже существует — он неизменяем, ничего не сделано.
+(API restarted) GET /api/health                  → {"status":"ok","db":"up","migrations":["001_research_engine"],"ideas":5}
+GET /api/top10                                  → invoice-reminders 75 (same), coffee-waste 68 (new), contract-clauses 64 (same); latestSnapshot top10-2026-11-06
+psql: UPDATE assessments …                       → ERROR: append-only table "assessments": UPDATE is not allowed
+```
 
-**Not run / not verified:**
-- Real devices (iOS Safari, Android Chrome).
-- Firefox and WebKit engines.
-- Screen-reader pass (NVDA/VoiceOver).
-- Automated axe or Lighthouse audit.
-- Contrast measurement. Tokens were chosen to meet AA on the panel background, but nothing was measured.
-- CI (the repository has no CI config).
+### Responsive / visual QA (Playwright + Chromium, production build via `vite preview`, live API)
+- Re-run after the review fixes: 11 routes × 5 widths (390 / 768 / 1024 / 1280 / 1440) = 55 page loads.
+  - REAL routes (empty, while the DB holds synthetic imports): overview, radar.
+  - TEST routes: overview, radar (table and cards), scored dossier, unscored dossier, missing dossier.
+  - DEMO routes: overview, radar, dossier.
+- Manual Chromium check of P2: on /radar, switching DEMO→REAL with the API up showed «Исследования ещё не импортированы» and 0 demo rows; with the API down it showed «Локальная база исследований недоступна» and 0 demo rows.
+- `scrollWidth == clientWidth` on all 55, and mobile tap targets are at least 44px.
+- The only console errors were the expected `404` responses for the intentionally missing idea.
+- Issues found while reviewing screenshots and fixed:
+  - the empty-state instruction list broke into grid cells;
+  - the mobile topbar pill squeezed the search field;
+  - the synthetic badge stretched across the table cell;
+  - DEMO showed the REAL «Тестовые данные» badge (regression test added);
+  - «new since snapshot» counted database insertion time instead of the research date.
+- Screenshots in `docs/screenshots/vl-002/` (regenerated after the fixes):
+  - REAL, empty even though the DB holds synthetic imports (this demonstrates the isolation): `real-empty-overview-1440/390`, `real-empty-radar-1440`;
+  - TEST, the synthetic import: `test-overview-1440` (+ viewport), `test-radar-1440/390`, `test-dossier-1440/390`, `test-dossier-unscored-1440`, `test-overview-390`;
+  - mode switch with three options: `drawer-mode-switch-390`;
+  - P2 check: `radar-demo-to-real-api-down-1440`;
+  - DEMO: `demo-overview-1440-viewport`, `demo-overview-390`.
 
-## Known limitations and risks
-- Past snapshots are reconstructed from append-only histories rather than persisted as Top10Snapshot rows. For immutable fixtures the result is the same, but persisting snapshots is left to VL-002 together with storage.
-- The «no eligible find» state is covered by tests only. It does not appear with the demo data, so there is no screenshot of it.
-- `npm audit`: **runtime dependencies are clean.** One moderate advisory chain remains in dev-only lint tooling (`minimatch` via `@typescript-eslint/typescript-estree`). npm's only offered fix is a downgrade, so it was left as is.
-- React 18.3 was kept because it is stable with the current testing libraries. Upgrading to React 19 is a separate decision.
-- The data provider is a static fixture behind `DataProvider` / `useData()`. That is the seam for VL-002 persistence. There are no async loading or error states yet beyond route-level lazy loading.
-- When the Top-10 is sorted by «Движение», ideas marked «Новая» come first, by convention.
-- On mobile, the topbar hides the global «Демо-данные» pill to make room for search. Every page and panel still has its own demo badge, and the drawer shows a demo-mode notice.
-- Dates and «сегодня/вчера» are computed relative to the fixture's `asOf`, not the real clock. This is intentional for a dated demo snapshot.
-- Commits are authored as `Claude <noreply@anthropic.com>`, because the repository had no git identity configured.
+**NOT run / not verified:**
+- `docker compose up` (no Docker daemon here); the compose file and init script are untested in this environment.
+- Real devices, Firefox / WebKit, screen reader, axe / Lighthouse.
+- Import of real (non-synthetic) research: none exists yet.
 
-## Recommended next task (VL-002)
-**Opportunity intelligence persistence (a Sprint 1 slice):**
-- A local API with PostgreSQL (or SQLite for development) for Idea, Assessment (append-only), Evidence (with source URL and dates) and Top10Snapshot.
-- Replace the fixture behind `useData()` with async loading plus error states.
-- An evidence attach UI in the dossier. A claim counts as attached only when it has a URL, a publisher and an observed date.
-- CSV/JSON import of human-reviewed research, with deduplication.
-- Keep `src/domain` as the single source of truth for scoring logic, for example by moving it into a shared package that the API also uses.
-- Add CI (lint, typecheck, test, build) on PRs, plus an axe accessibility check.
+## Known limitations
+- The API loads the full dataset per request and filters in memory using the shared domain selectors. That is fine for hundreds of ideas; push filtering into SQL before larger volumes.
+- Snapshot entries store the **full** ranking so that movement is exact; `/api/top10` exposes ranks ≤ 10.
+- Evidence and competitors are immutable per id: corrections need a new id. Only the verification status can change, through appended reviews.
+- Descriptive idea fields follow PATCH semantics on re-import: an absent field is kept, an explicit null/[] clears it. Every version is kept in `idea_revisions`, but there is no UI for that history yet.
+- Synthetic test imports and real research share one physical database but are separate datasets (enforced by FKs). Slugs and externalIds are still globally unique across both datasets, so a test idea can block a slug — the import then fails with a clear error.
+- Snapshot titles for rows created **before** migration 002 were backfilled with the title current at migration time; from migration 002 on, titles are frozen at snapshot time.
+- `/api/research-runs` and `/api/top10` have no dedicated UI page yet; the Research Journal is still a placeholder. The overview shows the latest runs and the snapshot baseline.
+- Dates are UTC days: assessments and stage changes count from the start of their UTC day.
+- Founder Fit for REAL data is taken from the assessment and is optional; when it is absent the UI shows «не оценено».
+- Validation plans, experiments, builds, payments and agent activity are not imported in VL-002. REAL mode shows explicit empty states for them.
+
+## Proposed VL-003 — Research operations
+1. A Research Journal page backed by `/api/research-runs` and `/api/top10`: run provenance, import diagnostics, a snapshot list and a comparison of any two snapshots.
+2. A review queue: imported claims with `unreviewed` / `unattributed` status, a local founder action to mark them checked or rejected (an appended review with an actor), and an evidence-to-dimension coverage view.
+3. Export helper: a documented prompt/template so ChatGPT can produce `vl-research-1` JSON, and a `research:lint` step with deduplication hints (exact URL/externalId matches only, no fuzzy merges).
+4. Move list filtering and pagination into SQL; add a `research:report` CLI that prints the score breakdown per idea.
+5. Investigate only an authorized export path for scheduled ChatGPT research. No autonomous ingestion.

@@ -1,15 +1,29 @@
-import { FlaskConical, Minus, MoveDown, MoveUp, Sparkles } from 'lucide-react';
+import { Beaker, FlaskConical, Minus, MoveDown, MoveUp, Sparkles } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { STAGE_LABEL, STAGE_TONE, type StageTone } from '../../domain/labels';
 import type { Movement } from '../../domain/scoring';
 import type { Stage } from '../../domain/types';
 import { cx } from '../../lib/cx';
+import { useMode } from '../../data/context';
 
+/** «Демо» marker. Rendered only in DEMO mode — REAL data is never labelled as demo (and vice versa). */
 export function DemoBadge({ label = 'Демо', title = 'Демонстрационные данные — не реальные факты', compact = false }: { label?: string; title?: string; compact?: boolean }) {
+  const mode = useMode();
+  if (mode !== 'demo') return null;
   return (
     <span className={cx('demo-badge', compact && 'demo-badge--compact')} title={title}>
       <FlaskConical aria-hidden size={compact ? 11 : 12} strokeWidth={2.2} />
       <span>{label}</span>
+    </span>
+  );
+}
+
+/** Marks explicitly synthetic test records that were imported into REAL mode. */
+export function SyntheticBadge({ compact = false }: { compact?: boolean }) {
+  return (
+    <span className={cx('demo-badge', 'synthetic-badge', compact && 'demo-badge--compact')} title="Синтетическая тестовая запись: не исследование и не факт">
+      <Beaker aria-hidden size={compact ? 11 : 12} strokeWidth={2.2} />
+      <span>Тестовые данные</span>
     </span>
   );
 }
@@ -106,6 +120,14 @@ export function ConfidenceMeter({ value, showValue = true }: { value: number; sh
 }
 
 export function MovementIndicator({ movement, scoreDelta }: { movement: Movement; scoreDelta?: number | null }) {
+  if (movement.kind === 'none') {
+    return (
+      <span className="move move--same" title="Нет сохранённого среза для сравнения — движение не показывается">
+        <span aria-hidden>·</span>
+        <span className="sr-only">Нет среза для сравнения</span>
+      </span>
+    );
+  }
   if (movement.kind === 'new') {
     return (
       <span className="move move--new" title="Новая в рейтинге — предыдущей позиции нет">

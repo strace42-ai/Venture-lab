@@ -3,22 +3,38 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Venture Lab — AI Business Command Center (VL-001 dashboard foundation, demo data only)",
+  "description": "Venture Lab \u2014 AI Business Command Center (local research engine: import \u2192 PostgreSQL \u2192 ranking \u2192 UI)",
   "scripts": {
     "dev": "vite",
+    "dev:all": "node scripts/dev-all.mjs",
+    "api": "tsx server/api/main.ts",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --pretty",
     "lint": "eslint . --max-warnings=0",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:unit": "vitest run --exclude \"server/**\"",
+    "test:integration": "vitest run server",
+    "test:watch": "vitest",
+    "db:up": "docker compose up -d db",
+    "db:down": "docker compose down",
+    "db:migrate": "tsx server/cli/db.ts migrate",
+    "db:status": "tsx server/cli/db.ts status",
+    "db:reset": "tsx server/cli/db.ts reset",
+    "research:validate": "tsx server/cli/research.ts validate",
+    "research:import": "tsx server/cli/research.ts import",
+    "research:snapshot": "tsx server/cli/research.ts snapshot"
   },
   "dependencies": {
+    "@fastify/cors": "^11.4.1",
     "@fontsource-variable/inter": "^5.1.0",
+    "fastify": "^5.12.8",
     "lucide-react": "^0.460.0",
+    "pg": "^8.23.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^7.18.5"
+    "react-router-dom": "^7.18.5",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.5",
@@ -26,6 +42,8 @@
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.1.0",
     "@testing-library/user-event": "^14.5.2",
+    "@types/node": "^22.20.5",
+    "@types/pg": "^8.23.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^6.3.0",
@@ -34,9 +52,13 @@
     "eslint-plugin-react-refresh": "^0.4.14",
     "globals": "^15.12.0",
     "jsdom": "^31.0.0",
+    "tsx": "^4.23.15",
     "typescript": "^5.6.3",
     "typescript-eslint": "^8.72.2",
     "vite": "^8.3.8",
     "vitest": "^5.1.0"
+  },
+  "engines": {
+    "node": ">=20.19"
   }
 }

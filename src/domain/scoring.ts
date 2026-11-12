@@ -6,6 +6,7 @@ import type {
   FounderFitComponents,
   ISODate,
   Idea,
+  RankBaseline,
   RawScore,
   Stage,
 } from './types';
@@ -103,9 +104,18 @@ function clamp(v: number, lo: number, hi: number): number {
 }
 
 export function currentAssessment(idea: Idea): Assessment {
-  const last = idea.assessments[idea.assessments.length - 1];
+  const last = latestAssessment(idea);
   if (!last) throw new Error(`Idea ${idea.id} has no assessment`);
   return last;
+}
+
+/** Latest assessment or `undefined` for an unscored idea (never a fabricated zero). */
+export function latestAssessment(idea: Idea): Assessment | undefined {
+  return idea.assessments[idea.assessments.length - 1];
+}
+
+export function isScored(idea: Idea): boolean {
+  return idea.assessments.length > 0;
 }
 
 /** Latest assessment on or before `date`, or undefined if the idea was not assessed yet. */
@@ -122,18 +132,20 @@ export interface ScoredIdea {
   assessment: Assessment;
   score: number;
   confidence: number;
-  founderFit: number;
+  /** Founder Fit 0–40, or null when it was never assessed. Diagnostic only. */
+  founderFit: number | null;
   firstPayment: number;
   unknowns: number;
 }
 
 export function scoreIdea(idea: Idea, assessment: Assessment = currentAssessment(idea)): ScoredIdea {
+  const fit = assessment.founderFit ?? idea.founderFit;
   return {
     idea,
     assessment,
     score: marketScore(assessment.scores),
     confidence: evidenceConfidence(assessment.confidence),
-    founderFit: founderFit(idea.founderFit),
+    founderFit: fit ? founderFit(fit) : null,
     firstPayment: contribution(10, assessment.scores.speedToPilot),
     unknowns: unknownCount(assessment.scores),
   };
@@ -176,8 +188,8 @@ export function rankIdeas(ideas: Idea[], asOf?: ISODate): ScoredIdea[] {
   for (const idea of ideas) {
     const stage = asOf ? stageAsOf(idea, asOf) : idea.stage;
     if (!stage || EXCLUDED_FROM_RANKING.has(stage)) continue;
-    const a = asOf ? assessmentAsOf(idea, asOf) : currentAssessment(idea);
-    if (!a) continue;
+    const a = asOf ? assessmentAsOf(idea, asOf) : latestAssessment(idea);
+    if (!a) continue; // unscored ideas are never ranked
     scored.push(scoreIdea(idea, a));
   }
   return scored.sort(compareRank);
@@ -187,7 +199,9 @@ export type Movement =
   | { kind: 'up'; by: number; previousRank: number }
   | { kind: 'down'; by: number; previousRank: number }
   | { kind: 'same'; previousRank: number }
-  | { kind: 'new' };
+  | { kind: 'new' }
+  /** No previous snapshot exists — movement is not claimed at all. */
+  | { kind: 'none' };
 
 export interface RankedEntry extends ScoredIdea {
   rank: number;
@@ -208,12 +222,48 @@ export function rankWithMovement(ideas: Idea[], current: ISODate, previous: ISOD
   return now.map((s, i) => {
     const rank = i + 1;
     const p = prevIndex.get(s.idea.id);
-    let movement: Movement;
-    if (!p) movement = { kind: 'new' };
-    else if (p.rank > rank) movement = { kind: 'up', by: p.rank - rank, previousRank: p.rank };
-    else if (p.rank < rank) movement = { kind: 'down', by: rank - p.rank, previousRank: p.rank };
-    else movement = { kind: 'same', previousRank: p.rank };
-    return { ...s, rank, movement, scoreDelta: p ? s.score - p.score : null };
+    return { ...s, rank, movement: movementFrom(rank, p), scoreDelta: p ? s.score - p.score : null };
+  });
+}
+
+function movementFrom(rank: number, p: { rank: number; score: number } | undefined): Movement {
+  if (!p) return { kind: 'new' };
+  if (p.rank > rank) return { kind: 'up', by: p.rank - rank, previousRank: p.rank };
+  if (p.rank < rank) return { kind: 'down', by: rank - p.rank, previousRank: p.rank };
+  return { kind: 'same', previousRank: p.rank };
+}
+
+/**
+ * Movement of an already-ranked list (e.g. a stored snapshot) against a baseline list.
+ * `null` baseline = no previous snapshot → movement `none` (never assumed «new»).
+ */
+export function compareToBaseline<T extends { ideaId: string; rank: number; score: number }>(
+  entries: T[],
+  baseline: { ideaId: string; rank: number; score: number }[] | null,
+): (T & { movement: Movement; scoreDelta: number | null })[] {
+  if (!baseline) return entries.map((e) => ({ ...e, movement: { kind: 'none' } as Movement, scoreDelta: null }));
+  const idx = new Map(baseline.map((b) => [b.ideaId, { rank: b.rank, score: b.score }]));
+  return entries.map((e) => {
+    const p = idx.get(e.ideaId);
+    return { ...e, movement: movementFrom(e.rank, p), scoreDelta: p ? e.score - p.score : null };
+  });
+}
+
+/**
+ * Current ranking at `current` with movement against an explicit baseline.
+ * - stored baseline (REAL): an immutable DB snapshot; ideas absent from it are «new».
+ * - reconstruct baseline (DEMO): previous ranking derived from append-only history.
+ * - null: no previous snapshot — every movement is `none` (never «new» by assumption).
+ */
+export function rankAgainstBaseline(ideas: Idea[], current: ISODate, baseline: RankBaseline | null): RankedEntry[] {
+  if (!baseline) {
+    return rankIdeas(ideas, current).map((s, i) => ({ ...s, rank: i + 1, movement: { kind: 'none' }, scoreDelta: null }));
+  }
+  if (baseline.kind === 'reconstruct') return rankWithMovement(ideas, current, baseline.asOf);
+  const prevIndex = new Map(baseline.entries.map((e) => [e.ideaId, { rank: e.rank, score: e.score }]));
+  return rankIdeas(ideas, current).map((s, i) => {
+    const p = prevIndex.get(s.idea.id);
+    return { ...s, rank: i + 1, movement: movementFrom(i + 1, p), scoreDelta: p ? s.score - p.score : null };
   });
 }
 

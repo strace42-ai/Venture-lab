@@ -1,9 +1,11 @@
 import { CRITICAL_RISKS } from './labels';
-import { rankWithMovement, scoreIdea, type RankedEntry } from './scoring';
-import type { Category, DemoDataset, Experiment, ExperimentFunnel, Idea, Stage } from './types';
+import { latestAssessment, rankAgainstBaseline, scoreIdea, type RankedEntry } from './scoring';
+import type { Category, Dataset, DemoDataset, Experiment, ExperimentFunnel, Idea, ResearchRun, Stage } from './types';
 
 export const HIGH_SCORE = 70;
 export const HIGH_CONFIDENCE = 60;
+
+// ---------- Snapshot helpers (DEMO fixture compatibility) ----------
 
 export function previousSnapshot(data: DemoDataset): string | null {
   const dates = data.snapshotDates;
@@ -14,12 +16,19 @@ export function currentSnapshot(data: DemoDataset): string {
   return data.snapshotDates[data.snapshotDates.length - 1] ?? data.asOf;
 }
 
-/** Full ranking (all rankable ideas) at the current snapshot with movement vs previous. */
-export function fullRanking(data: DemoDataset): RankedEntry[] {
-  return rankWithMovement(data.ideas, currentSnapshot(data), previousSnapshot(data));
+/** Date of the movement baseline (stored snapshot or reconstructed DEMO date), if any. */
+export function baselineDate(data: Dataset): string | null {
+  return data.baseline ? data.baseline.asOf : null;
 }
 
-export function topN(data: DemoDataset, n = 10): RankedEntry[] {
+// ---------- Ranking ----------
+
+/** Full ranking (all rankable, scored ideas) at `rankAsOf` with movement vs the baseline. */
+export function fullRanking(data: Dataset): RankedEntry[] {
+  return rankAgainstBaseline(data.ideas, data.rankAsOf, data.baseline);
+}
+
+export function topN(data: Dataset, n = 10): RankedEntry[] {
   return fullRanking(data).slice(0, n);
 }
 
@@ -38,7 +47,7 @@ export function isFindEligible(e: RankedEntry): boolean {
  * and the UI must show an explicit «требует ревью» state instead.
  * (A high score never overrides a critical risk — scoring-model.md.)
  */
-export function strongestFind(data: DemoDataset): RankedEntry | undefined {
+export function strongestFind(data: Dataset): RankedEntry | undefined {
   return fullRanking(data).find(isFindEligible);
 }
 
@@ -47,6 +56,8 @@ const ACTIVE_BUILD_STAGES: ReadonlySet<Stage> = new Set<Stage>(['building']);
 export interface Kpis {
   totalIdeas: number;
   rankable: number;
+  /** Ideas without any assessment — shown as «не оценено», never ranked. */
+  unscored: number;
   highConfidenceLeads: number;
   liveExperiments: number;
   plannedExperiments: number;
@@ -55,14 +66,28 @@ export interface Kpis {
   verifiedPaidSignals: number;
   pendingPaidSignals: number;
   newThisWeek: number;
+  /** Evidence counts by effective review status. */
+  evidenceChecked: number;
+  evidenceNeedsReview: number;
 }
 
-export function computeKpis(data: DemoDataset): Kpis {
+export function computeKpis(data: Dataset): Kpis {
   const ranking = fullRanking(data);
-  const prev = previousSnapshot(data);
+  const since = baselineDate(data);
+  const funnel = sumFunnel(data.experiments);
+  let checked = 0;
+  let needsReview = 0;
+  for (const idea of data.ideas) {
+    for (const e of idea.evidence) {
+      const st = effectiveEvidenceStatus(e);
+      if (st === 'checked') checked++;
+      else if (st !== 'rejected') needsReview++;
+    }
+  }
   return {
     totalIdeas: data.ideas.length,
     rankable: ranking.length,
+    unscored: data.ideas.filter((i) => !latestAssessment(i)).length,
     highConfidenceLeads: ranking.filter((e) => e.score >= HIGH_SCORE && e.confidence >= HIGH_CONFIDENCE).length,
     liveExperiments: data.experiments.filter((e) => e.status === 'running').length,
     plannedExperiments: data.experiments.filter((e) => e.status === 'planned').length,
@@ -70,9 +95,11 @@ export function computeKpis(data: DemoDataset): Kpis {
       data.ideas.filter((i) => ACTIVE_BUILD_STAGES.has(i.stage)).length +
       data.builds.filter((b) => b.stage === 'prototype' || b.stage === 'review').length,
     buildSpecs: data.builds.filter((b) => b.stage === 'spec').length,
-    verifiedPaidSignals: sumFunnel(data.experiments).paymentsVerified,
-    pendingPaidSignals: sumFunnel(data.experiments).paymentsPending,
-    newThisWeek: prev ? data.ideas.filter((i) => i.createdAt > prev).length : data.ideas.length,
+    verifiedPaidSignals: funnel.paymentsVerified,
+    pendingPaidSignals: funnel.paymentsPending,
+    newThisWeek: since ? data.ideas.filter((i) => i.createdAt > since).length : data.ideas.length,
+    evidenceChecked: checked,
+    evidenceNeedsReview: needsReview,
   };
 }
 
@@ -90,16 +117,30 @@ export function sumFunnel(experiments: Experiment[]): ExperimentFunnel {
   );
 }
 
-export function ideaById(data: DemoDataset, id: string): Idea | undefined {
+export function ideaById(data: Dataset, id: string): Idea | undefined {
   return data.ideas.find((i) => i.id === id || i.slug === id);
 }
 
-export function categories(data: DemoDataset): Category[] {
+export function categories(data: Dataset): Category[] {
   return Array.from(new Set(data.ideas.map((i) => i.category))).sort((a, b) => a.localeCompare(b, 'ru'));
 }
 
-export function stagesPresent(data: DemoDataset): Stage[] {
+export function stagesPresent(data: Dataset): Stage[] {
   return Array.from(new Set(data.ideas.map((i) => i.stage)));
+}
+
+// ---------- Evidence status ----------
+
+export type EffectiveEvidenceStatus = 'checked' | 'unreviewed' | 'rejected' | 'unattributed';
+
+/**
+ * A claim is only «checked» if it was reviewed AND has url + publisher + observation date.
+ * Anything without attribution is `unattributed`, whatever the stored status says.
+ */
+export function effectiveEvidenceStatus(e: { url: string | null; publisher: string | null; observedAt: string | null; verificationStatus: string }): EffectiveEvidenceStatus {
+  if (e.verificationStatus === 'rejected') return 'rejected';
+  if (!e.url || !e.publisher || !e.observedAt) return 'unattributed';
+  return e.verificationStatus === 'checked' ? 'checked' : 'unreviewed';
 }
 
 // ---------- Radar query ----------
@@ -115,16 +156,17 @@ export interface RadarQuery {
 
 export interface RadarRow {
   idea: Idea;
-  score: number;
-  confidence: number;
-  founderFit: number;
-  /** Rank in the full current ranking, null for excluded (e.g. rejected). */
+  /** null = unscored (no assessment). Never shown as 0. */
+  score: number | null;
+  confidence: number | null;
+  founderFit: number | null;
+  /** Rank in the full current ranking, null for excluded/unscored. */
   rank: number | null;
   entry: RankedEntry | null;
 }
 
-/** Radar rows include ALL ideas (also rejected) — ranking only covers rankable ones. */
-export function radarRows(data: DemoDataset, query: RadarQuery): RadarRow[] {
+/** Radar rows include ALL ideas (also rejected and unscored) — ranking only covers rankable ones. */
+export function radarRows(data: Dataset, query: RadarQuery): RadarRow[] {
   const ranking = fullRanking(data);
   const byId = new Map(ranking.map((e) => [e.idea.id, e]));
   const needle = query.q.trim().toLowerCase();
@@ -132,8 +174,10 @@ export function radarRows(data: DemoDataset, query: RadarQuery): RadarRow[] {
   const rows: RadarRow[] = data.ideas.map((idea) => {
     const entry = byId.get(idea.id) ?? null;
     if (entry) return { idea, score: entry.score, confidence: entry.confidence, founderFit: entry.founderFit, rank: entry.rank, entry };
+    const a = latestAssessment(idea);
+    if (!a) return { idea, score: null, confidence: null, founderFit: null, rank: null, entry: null };
     // Excluded from ranking (e.g. rejected) — still show its honest current numbers.
-    const s = scoreIdea(idea);
+    const s = scoreIdea(idea, a);
     return { idea, score: s.score, confidence: s.confidence, founderFit: s.founderFit, rank: null, entry: null };
   });
 
@@ -141,21 +185,128 @@ export function radarRows(data: DemoDataset, query: RadarQuery): RadarRow[] {
     if (query.category !== 'all' && r.idea.category !== query.category) return false;
     if (query.stage !== 'all' && r.idea.stage !== query.stage) return false;
     if (needle) {
-      const hay = `${r.idea.title} ${r.idea.shortPitch} ${r.idea.category} ${r.idea.targetPersona}`.toLowerCase();
+      const hay = `${r.idea.title} ${r.idea.shortPitch} ${r.idea.category} ${r.idea.targetPersona ?? ''}`.toLowerCase();
       if (!hay.includes(needle)) return false;
     }
     return true;
   });
 
+  const NONE = Number.MAX_SAFE_INTEGER;
   const byRank = (a: RadarRow, b: RadarRow) =>
-    (a.rank ?? Number.MAX_SAFE_INTEGER) - (b.rank ?? Number.MAX_SAFE_INTEGER) || b.score - a.score;
+    (a.rank ?? NONE) - (b.rank ?? NONE) || (b.score ?? -1) - (a.score ?? -1) || a.idea.id.localeCompare(b.idea.id);
 
   switch (query.sort) {
     case 'score':
       return filtered.sort(byRank);
     case 'confidence':
-      return filtered.sort((a, b) => b.confidence - a.confidence || byRank(a, b));
+      return filtered.sort((a, b) => (b.confidence ?? -1) - (a.confidence ?? -1) || byRank(a, b));
     case 'recent':
       return filtered.sort((a, b) => b.idea.updatedAt.localeCompare(a.idea.updatedAt) || byRank(a, b));
   }
+}
+
+// ---------- View models (shared by the DEMO adapter and the local API) ----------
+
+export interface Page {
+  page: number;
+  pageSize: number;
+}
+
+export interface RadarView {
+  rows: RadarRow[];
+  total: number;
+  /** Number of ideas in the dataset before filtering. */
+  totalAll: number;
+  page: number;
+  pageSize: number;
+  categories: Category[];
+  stages: Stage[];
+}
+
+export function buildRadarView(data: Dataset, query: RadarQuery, page: Page = { page: 1, pageSize: 500 }): RadarView {
+  const all = radarRows(data, query);
+  const start = (page.page - 1) * page.pageSize;
+  return {
+    rows: all.slice(start, start + page.pageSize),
+    total: all.length,
+    totalAll: data.ideas.length,
+    page: page.page,
+    pageSize: page.pageSize,
+    categories: categories(data),
+    stages: stagesPresent(data),
+  };
+}
+
+export interface BaselineInfo {
+  kind: 'stored' | 'reconstruct';
+  asOf: string;
+  snapshotId: string | null;
+}
+
+export interface OverviewView {
+  mode: Dataset['mode'];
+  asOf: string;
+  rankAsOf: string;
+  modelVersion: string;
+  baseline: BaselineInfo | null;
+  kpis: Kpis;
+  ranking: RankedEntry[];
+  lead: RankedEntry | null;
+  researchRuns: ResearchRun[];
+  experiments: Experiment[];
+  builds: Dataset['builds'];
+  activity: Dataset['activity'];
+  /** Idea titles/slugs for cross-links from experiments/builds/activity. */
+  ideaRefs: Record<string, { slug: string; title: string }>;
+  stageCounts: Partial<Record<Stage, number>>;
+  syntheticIdeas: number;
+}
+
+export function baselineInfo(data: Dataset): BaselineInfo | null {
+  const b = data.baseline;
+  if (!b) return null;
+  return { kind: b.kind, asOf: b.asOf, snapshotId: b.kind === 'stored' ? b.snapshotId : null };
+}
+
+export function buildOverview(data: Dataset): OverviewView {
+  const ranking = fullRanking(data);
+  const refs: OverviewView['ideaRefs'] = {};
+  const stageCounts: OverviewView['stageCounts'] = {};
+  for (const i of data.ideas) {
+    refs[i.id] = { slug: i.slug, title: i.title };
+    stageCounts[i.stage] = (stageCounts[i.stage] ?? 0) + 1;
+  }
+  return {
+    mode: data.mode,
+    asOf: data.asOf,
+    rankAsOf: data.rankAsOf,
+    modelVersion: data.modelVersion,
+    baseline: baselineInfo(data),
+    kpis: computeKpis(data),
+    ranking,
+    lead: ranking.find(isFindEligible) ?? null,
+    researchRuns: [...data.researchRuns].sort((a, b) => b.date.localeCompare(a.date)),
+    experiments: data.experiments,
+    builds: data.builds,
+    activity: data.activity,
+    ideaRefs: refs,
+    stageCounts,
+    syntheticIdeas: data.ideas.filter((i) => i.synthetic).length,
+  };
+}
+
+export interface IdeaDetailView {
+  mode: Dataset['mode'];
+  modelVersion: string;
+  asOf: string;
+  baseline: BaselineInfo | null;
+  idea: Idea;
+  entry: RankedEntry | null;
+}
+
+export function buildIdeaDetail(data: Dataset, idOrSlug: string): IdeaDetailView | null {
+  const idea = ideaById(data, idOrSlug);
+  if (!idea) return null;
+  const entry = fullRanking(data).find((e) => e.idea.id === idea.id) ?? null;
+  return { mode: data.mode, modelVersion: data.modelVersion, asOf: data.asOf, baseline: baselineInfo(data), idea, entry };
 }

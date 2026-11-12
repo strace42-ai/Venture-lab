@@ -1,4 +1,4 @@
-import type { BuildStage, CompetitorPlaceholder, ExperimentStatus, RiskFlag, Stage } from './types';
+import type { BuildStage, CompetitorKind, Coverage, ExperimentStatus, RiskFlag, SourceType, Stage } from './types';
 
 export const STAGE_LABEL: Record<Stage, string> = {
   discovered: 'Обнаружена',
@@ -76,13 +76,13 @@ export const BUILD_STAGE_LABEL: Record<BuildStage, string> = {
   paused: 'Пауза',
 };
 
-export const COMPETITOR_KIND_LABEL: Record<CompetitorPlaceholder['kind'], string> = {
+export const COMPETITOR_KIND_LABEL: Record<CompetitorKind, string> = {
   direct: 'Прямой',
   adjacent: 'Смежный',
   substitute: 'Заменитель',
 };
 
-export const COVERAGE_LABEL: Record<CompetitorPlaceholder['coverage'], string> = {
+export const COVERAGE_LABEL: Record<Coverage, string> = {
   high: 'Покрывает',
   partial: 'Частично',
   low: 'Слабо',
@@ -94,3 +94,24 @@ export function confidenceBand(c: number): { label: string; tone: StageTone } {
   if (c >= 50) return { label: 'Средняя', tone: 'accent' };
   return { label: 'Низкая', tone: 'warn' };
 }
+
+export const SOURCE_TYPE_LABEL: Record<SourceType, string> = {
+  independent: 'Независимый источник',
+  company_self_report: 'Заявление компании',
+  primary_data: 'Первичные данные',
+  unknown: 'Тип не указан',
+};
+
+export const EVIDENCE_STATUS_LABEL: Record<'checked' | 'unreviewed' | 'rejected' | 'unattributed', string> = {
+  checked: 'Проверено',
+  unreviewed: 'Не проверено',
+  rejected: 'Отклонено',
+  unattributed: 'Источник требует проверки',
+};
+
+export const EVIDENCE_STATUS_TONE: Record<'checked' | 'unreviewed' | 'rejected' | 'unattributed', StageTone> = {
+  checked: 'success',
+  unreviewed: 'warn',
+  rejected: 'danger',
+  unattributed: 'warn',
+};

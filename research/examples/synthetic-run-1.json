@@ -1,0 +1,293 @@
+{
+  "schemaVersion": "vl-research-1",
+  "runId": "synthetic-example-2026-11-05",
+  "researchedAt": "2026-11-05",
+  "source": "synthetic-test",
+  "synthetic": true,
+  "reviewedBy": "VL-002 test fixture",
+  "title": "Синтетический пример №1 — проверка импорта",
+  "coverage": "СИНТЕТИЧЕСКИЙ ТЕСТОВЫЙ ПРИМЕР: не исследование, не факт. Ссылки ведут на зарезервированные домены example.org/example.com.",
+  "limitations": "Все утверждения вымышлены для проверки схемы vl-research-1; использовать только для демонстрации механики.",
+  "markets": [
+    "SMB-сервисы",
+    "LegalTech",
+    "E-commerce"
+  ],
+  "sourceReferences": [
+    "https://example.org/synthetic/run-1"
+  ],
+  "ideas": [
+    {
+      "externalId": "test-invoice-reminders",
+      "title": "Тест: напоминания об оплате счетов для фрилансеров",
+      "pitch": "Синтетическая идея: автоматические вежливые напоминания клиентам о неоплаченных счетах.",
+      "segment": "B2B",
+      "category": "SMB-сервисы",
+      "targetPersona": "Фрилансер или микростудия с 5–20 клиентами (вымышленная персона)",
+      "problem": "Тестовый тезис: просроченные счета требуют ручных напоминаний.",
+      "whyNow": "Тестовая гипотеза для проверки отображения поля «почему сейчас».",
+      "thesis": "Синтетический тезис для проверки импорта и рейтинга.",
+      "monetization": "Подписка (гипотеза)",
+      "priceHypothesis": "гипотеза не проверена",
+      "nextAction": "Только тест: проверить отображение досье.",
+      "riskFlags": [
+        "demandUnverified"
+      ],
+      "sources": [
+        {
+          "id": "w1",
+          "region": "west",
+          "claim": "ТЕСТ: на западном рынке существует категория сервисов напоминаний об оплате.",
+          "url": "https://example.org/synthetic/invoice-category",
+          "title": "Synthetic test page",
+          "publisher": "example.org (тест)",
+          "sourceType": "unknown",
+          "observedAt": "2026-11-04",
+          "dimensions": [
+            "westernNeed"
+          ],
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "w2",
+          "region": "west",
+          "claim": "ТЕСТ: заявленная подписочная модель у аналогов.",
+          "url": "https://example.org/synthetic/pricing",
+          "title": "Synthetic pricing page",
+          "publisher": "example.org (тест)",
+          "sourceType": "company_self_report",
+          "observedAt": "2026-11-04",
+          "dimensions": [
+            "westernPay"
+          ],
+          "verificationStatus": "checked",
+          "supportNote": "Тест: страница цен ≠ подтверждённые оплаты."
+        },
+        {
+          "id": "r1",
+          "region": "ru",
+          "claim": "ТЕСТ: универсальные бухгалтерские сервисы покрывают сценарий частично.",
+          "url": "https://example.com/synthetic/ru-landscape",
+          "publisher": "example.com (тест)",
+          "sourceType": "independent",
+          "observedAt": "2026-11-05",
+          "dimensions": [
+            "ruWeakness",
+            "ruUnmetJob"
+          ],
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r2",
+          "region": "ru",
+          "claim": "ТЕСТ: утверждение без ссылки — должно отображаться как «источник требует проверки».",
+          "sourceType": "unknown",
+          "dimensions": [
+            "distribution"
+          ],
+          "verificationStatus": "checked"
+        }
+      ],
+      "westernProducts": [
+        {
+          "id": "wp1",
+          "name": "Example Invoice Tool (вымышленный)",
+          "url": "https://example.org/synthetic/product",
+          "kind": "direct",
+          "coverage": "high",
+          "note": "Тестовая запись аналога",
+          "observedAt": "2026-11-04",
+          "evidenceIds": [
+            "w1"
+          ]
+        }
+      ],
+      "russianCompetitors": [
+        {
+          "id": "rc1",
+          "name": "Тестовый конкурент А (вымышленный)",
+          "url": "https://example.com/synthetic/competitor-a",
+          "kind": "adjacent",
+          "coverage": "partial",
+          "gap": "Тест: нет автоматических напоминаний клиентам",
+          "observedAt": "2026-11-05",
+          "evidenceIds": [
+            "r1"
+          ]
+        }
+      ],
+      "assessment": {
+        "assessedAt": "2026-11-05",
+        "assessor": "VL-002 test fixture",
+        "rubricVersion": "v1.0",
+        "scores": {
+          "westernNeed": 4,
+          "westernPay": 3,
+          "ruWeakness": 3,
+          "ruUnmetJob": 3,
+          "monetization": 4,
+          "speedToPilot": 4,
+          "mvpFeasible": 5,
+          "fastTest": 4,
+          "distribution": 3,
+          "retention": 4,
+          "defensibility": 2,
+          "riskManageable": 4
+        },
+        "confidence": {
+          "completeness": 45,
+          "corroboration": 30,
+          "recency": 80,
+          "reliability": 40,
+          "russiaValidation": 30
+        },
+        "founderFit": {
+          "skills": 8,
+          "access": 5,
+          "timeToSale": 6,
+          "motivation": 3,
+          "synergy": 3
+        },
+        "rationale": "Синтетическое обоснование: компоненты выбраны для проверки расчёта балла по рубрике v1.0.",
+        "evidenceIds": [
+          "w1",
+          "w2",
+          "r1"
+        ],
+        "unknowns": []
+      }
+    },
+    {
+      "externalId": "test-contract-clauses",
+      "title": "Тест: подсветка рискованных пунктов договора поставки",
+      "pitch": "Синтетическая идея для проверки неизвестного критерия и критического риска.",
+      "segment": "B2B",
+      "category": "LegalTech",
+      "targetPersona": "Закупщик малой компании (вымышленная персона)",
+      "riskFlags": [
+        "legal"
+      ],
+      "sources": [
+        {
+          "id": "w1",
+          "region": "west",
+          "claim": "ТЕСТ: категория инструментов проверки договоров существует.",
+          "url": "https://example.org/synthetic/contracts",
+          "title": "Synthetic contracts page",
+          "publisher": "example.org (тест)",
+          "sourceType": "unknown",
+          "observedAt": "2026-11-03",
+          "dimensions": [
+            "westernNeed"
+          ],
+          "verificationStatus": "unreviewed"
+        }
+      ],
+      "assessment": {
+        "assessedAt": "2026-11-05",
+        "assessor": "VL-002 test fixture",
+        "rubricVersion": "v1.0",
+        "scores": {
+          "westernNeed": 4,
+          "westernPay": 4,
+          "ruWeakness": 4,
+          "ruUnmetJob": 3,
+          "monetization": 3,
+          "speedToPilot": 3,
+          "mvpFeasible": 3,
+          "fastTest": 4,
+          "distribution": 3,
+          "retention": 2,
+          "defensibility": 3,
+          "riskManageable": null
+        },
+        "confidence": {
+          "completeness": 35,
+          "corroboration": 20,
+          "recency": 70,
+          "reliability": 40,
+          "russiaValidation": 20
+        },
+        "rationale": "Синтетическое обоснование: юридический риск не оценён (null) — проверяем маркер «неизвестно».",
+        "evidenceIds": [
+          "w1"
+        ],
+        "unknowns": [
+          "Юридические ограничения сервиса не проверены"
+        ]
+      }
+    },
+    {
+      "externalId": "test-catalog-photos",
+      "title": "Тест: обработка фото товаров для каталога",
+      "pitch": "Синтетическая идея без оценки — должна отображаться как «не оценено».",
+      "segment": "B2B",
+      "category": "E-commerce",
+      "sources": [
+        {
+          "id": "r1",
+          "region": "ru",
+          "claim": "ТЕСТ: продавцы вручную готовят фото товаров.",
+          "url": "https://example.com/synthetic/photos",
+          "publisher": "example.com (тест)",
+          "sourceType": "unknown",
+          "observedAt": "2026-11-05",
+          "verificationStatus": "unreviewed"
+        }
+      ],
+      "assessment": null
+    },
+    {
+      "externalId": "test-tutor-groups",
+      "title": "Тест: групповые занятия для частных репетиторов",
+      "pitch": "Синтетическая идея: будет отклонена во втором тестовом прогоне.",
+      "segment": "B2C",
+      "category": "EdTech",
+      "sources": [
+        {
+          "id": "w1",
+          "region": "west",
+          "claim": "ТЕСТ: существуют сервисы групповых онлайн-занятий.",
+          "url": "https://example.org/synthetic/groups",
+          "publisher": "example.org (тест)",
+          "sourceType": "unknown",
+          "observedAt": "2026-11-02",
+          "dimensions": [
+            "westernNeed"
+          ],
+          "verificationStatus": "unreviewed"
+        }
+      ],
+      "assessment": {
+        "assessedAt": "2026-11-05",
+        "assessor": "VL-002 test fixture",
+        "rubricVersion": "v1.0",
+        "scores": {
+          "westernNeed": 4,
+          "westernPay": 4,
+          "ruWeakness": 3,
+          "ruUnmetJob": 3,
+          "monetization": 3,
+          "speedToPilot": 4,
+          "mvpFeasible": 4,
+          "fastTest": 4,
+          "distribution": 4,
+          "retention": 3,
+          "defensibility": 2,
+          "riskManageable": 4
+        },
+        "confidence": {
+          "completeness": 40,
+          "corroboration": 25,
+          "recency": 80,
+          "reliability": 40,
+          "russiaValidation": 25
+        },
+        "rationale": "Синтетическое обоснование для проверки отклонения идеи в следующем прогоне.",
+        "evidenceIds": [
+          "w1"
+        ]
+      }
+    }
+  ]
+}
