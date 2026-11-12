@@ -1,3 +1,4 @@
+import { assessmentIntegrity, type AssessmentIntegrity } from './integrity';
 import type {
   Assessment,
   ComponentScores,
@@ -136,6 +137,11 @@ export interface ScoredIdea {
   founderFit: number | null;
   firstPayment: number;
   unknowns: number;
+  /**
+   * CURRENT evidence integrity of this assessment (derived from today's review statuses; never
+   * stored, never changes score/confidence). See integrity.ts.
+   */
+  integrity: AssessmentIntegrity;
 }
 
 export function scoreIdea(idea: Idea, assessment: Assessment = currentAssessment(idea)): ScoredIdea {
@@ -148,6 +154,7 @@ export function scoreIdea(idea: Idea, assessment: Assessment = currentAssessment
     founderFit: fit ? founderFit(fit) : null,
     firstPayment: contribution(10, assessment.scores.speedToPilot),
     unknowns: unknownCount(assessment.scores),
+    integrity: assessmentIntegrity(idea, assessment),
   };
 }
 

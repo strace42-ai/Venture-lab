@@ -1,0 +1,358 @@
+{
+  "schemaVersion": "vl-research-1",
+  "runId": "draft-2026-11-12-pilot-001",
+  "researchedAt": "2026-11-12",
+  "source": "ai-draft",
+  "synthetic": false,
+  "reviewedBy": "Claude Code (черновик ИИ, человеком не проверен)",
+  "title": "Пилотный черновик VL-003: 3 кандидата (фокус-коворкинг, личная CRM, сравнение КП)",
+  "coverage": "Открыты страницы 12.11.2026 через веб-инструменты: focusmate.com (главная, pricing), getdex.com/pricing.md, monicahq.com, sourceday.com, thecode.media, devby.io, bitrix24.ru (2 приложения), workspace.ru. Поиск RU: запросы на русском про онлайн-коворкинг с незнакомцами, личную CRM с напоминаниями, сравнение КП поставщиков.",
+  "limitations": "Черновик ИИ: человек ни одну ссылку не проверял. Страницы пересказаны инструментом, а не прочитаны целиком. App Store/RuStore, сайт StudyMates и доступность западных сервисов из РФ не проверялись. Цены в РФ — гипотезы. Оценки (assessment) не выставлялись намеренно. «Не найдено в РФ» означает только «не найдено в нескольких поисковых запросах».",
+  "markets": [
+    "Productivity",
+    "Procurement"
+  ],
+  "sourceReferences": [
+    "https://www.focusmate.com/pricing",
+    "https://getdex.com/pricing.md",
+    "https://www.bitrix24.ru/apps/app/unitech.evolyutsiya_podbor_postavshchikov/"
+  ],
+  "ideas": [
+    {
+      "externalId": "virtual-focus-coworking-ru",
+      "title": "Виртуальный фокус-коворкинг 1-на-1 для русскоязычных",
+      "pitch": "Сессии совместной работы по видео с подобранным напарником (25/50/75 минут) на русском языке и с оплатой в рублях.",
+      "segment": "B2C",
+      "category": "Productivity",
+      "targetPersona": "Фрилансеры, удалёнщики, студенты, люди с трудностями концентрации; русскоязычные",
+      "problem": "Трудно начать и удержать фокус при одиночной удалённой работе.",
+      "ruUnmetJob": "ГИПОТЕЗА: русскоязычного сервиса с подбором напарника 1-на-1 и оплатой картой РФ в поиске не найдено; найден StudyMates (групповые комнаты, энтузиасты). Доступность и оплата Focusmate из РФ не проверены.",
+      "monetization": "Freemium: несколько бесплатных сессий в неделю, подписка за безлимит (по аналогии с Focusmate).",
+      "priceHypothesis": "ГИПОТЕЗА, не измерено: 300–600 ₽/мес. Конверсия и готовность платить не проверены.",
+      "riskFlags": [
+        "demandUnverified",
+        "coldStart",
+        "networkEffect",
+        "competitionUnverified"
+      ],
+      "sources": [
+        {
+          "id": "w1",
+          "region": "west",
+          "claim": "Focusmate: бесплатно до 3 сессий в неделю; Plus — безлимит за $8/мес. при оплате за год или $12/мес. помесячно.",
+          "url": "https://www.focusmate.com/pricing",
+          "title": "Focusmate Pricing",
+          "publisher": "Focusmate",
+          "sourceType": "company_self_report",
+          "language": "en",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "westernPay",
+            "monetization"
+          ],
+          "supportNote": "Страница цен самой компании; показывает модель freemium, но не конверсию.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "w2",
+          "region": "west",
+          "claim": "Focusmate заявляет 12 млн+ завершённых сессий и пользователей из 150+ стран; сессии 25, 50 и 75 минут с подбором напарника по запросу.",
+          "url": "https://www.focusmate.com/",
+          "title": "Focusmate — Virtual coworking",
+          "publisher": "Focusmate",
+          "sourceType": "company_self_report",
+          "language": "en",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "westernNeed",
+            "retention"
+          ],
+          "supportNote": "Самоотчёт компании, независимо не подтверждён.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r1",
+          "region": "ru",
+          "claim": "Русскоязычные энтузиасты создали StudyMates — виртуальный коворкинг с видеокомнатами для работы и учёбы, пользователи из десятков стран.",
+          "url": "https://thecode.media/sozdan-onlajn-kovorking-gde-neznakomye-lyudi-rabotayut-vmeste/",
+          "title": "Энтузиасты создали онлайн-коворкинг, где люди со всего мира работают вместе 24/7",
+          "publisher": "Код (thecode.media)",
+          "sourceType": "independent",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness",
+            "westernNeed"
+          ],
+          "supportNote": "Показывает, что формат в рунете есть, но в групповом виде; модель монетизации StudyMates в статье не указана. Дата первоначальной публикации не видна (страница «Обновлено 30.09.2026»).",
+          "verificationStatus": "unreviewed"
+        }
+      ],
+      "westernProducts": [
+        {
+          "id": "wp1",
+          "name": "Focusmate",
+          "url": "https://www.focusmate.com/",
+          "kind": "direct",
+          "coverage": "high",
+          "note": "1-на-1 подбор напарника, freemium.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "w1",
+            "w2"
+          ]
+        }
+      ],
+      "russianCompetitors": [
+        {
+          "id": "rc1",
+          "name": "StudyMates",
+          "kind": "adjacent",
+          "coverage": "partial",
+          "gap": "Групповые комнаты, не подбор пары 1-на-1; монетизация неизвестна. Сайт сервиса не открывался — только статья.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r1"
+          ]
+        }
+      ],
+      "assessment": null
+    },
+    {
+      "externalId": "personal-crm-ru",
+      "title": "Личная CRM для отношений с напоминаниями (на русском)",
+      "pitch": "Записная книжка отношений: контекст знакомства, заметки о разговорах, напоминания «давно не писал» и о датах — для личного нетворкинга, не для продаж.",
+      "segment": "B2C",
+      "category": "Productivity",
+      "targetPersona": "Предприниматели, консультанты, специалисты с большим кругом контактов",
+      "problem": "Связи теряются: человек забывает, кто есть кто, о чём говорили и когда пора написать.",
+      "ruUnmetJob": "ГИПОТЕЗА: в поиске на русском найдены только бизнес-CRM (приложения дней рождения клиентов в маркете Битрикс24); русскоязычной личной CRM не найдено. Нужна ручная проверка RuStore/App Store.",
+      "monetization": "Подписка за синхронизацию и напоминания; бесплатный базовый режим.",
+      "priceHypothesis": "ГИПОТЕЗА, не измерено: 290–490 ₽/мес. Западные цены ($12–20/мес.) не переносятся на РФ напрямую.",
+      "riskFlags": [
+        "demandUnverified",
+        "dataPrivacy",
+        "lowRetention",
+        "competitionUnverified"
+      ],
+      "sources": [
+        {
+          "id": "w1",
+          "region": "west",
+          "claim": "Dex: Premium $12/мес. при годовой оплате ($20 помесячно), Professional $20/мес. ($34 помесячно); 7-дневный триал с картой.",
+          "url": "https://getdex.com/pricing.md",
+          "title": "Dex pricing",
+          "publisher": "Dex",
+          "sourceType": "company_self_report",
+          "language": "en",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "westernPay",
+            "monetization"
+          ],
+          "supportNote": "Цены компании; не говорят о числе платящих.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "w2",
+          "region": "west",
+          "claim": "Monica позиционируется как «The open-source personal CRM» для личных отношений, self-hostable, 25k+ звёзд на GitHub; регистрация в hosted-версии сейчас закрыта.",
+          "url": "https://www.monicahq.com/",
+          "title": "Monica — personal CRM",
+          "publisher": "Monica",
+          "sourceType": "company_self_report",
+          "language": "en",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "westernNeed"
+          ],
+          "supportNote": "Интерес разработчиков (звёзды) ≠ платящий спрос.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r1",
+          "region": "ru",
+          "claim": "Обзор devby (29.04.2026) перечисляет личные CRM — Clay, Dex, Monica, Covve, Obsidian — как инструменты личного нетворкинга; все зарубежные.",
+          "url": "https://devby.io/news/kak-vystroit-lichnyi-netvorking-adviser-2026-04-29",
+          "title": "Как выстроить личный нетворкинг",
+          "publisher": "devby.io",
+          "sourceType": "independent",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness",
+            "westernNeed"
+          ],
+          "supportNote": "Русскоязычная аудитория интересуется темой; российских решений в обзоре нет. Это не доказательство их отсутствия.",
+          "verificationStatus": "unreviewed",
+          "publishedAt": "2026-04-29"
+        },
+        {
+          "id": "r2",
+          "region": "ru",
+          "claim": "В маркете Битрикс24 есть приложение напоминаний о днях рождения контактов CRM для менеджеров продаж — это корпоративный, а не личный сценарий.",
+          "url": "https://www.bitrix24.ru/apps/app/aventra.dni_rozhdeniya_klientov/",
+          "title": "Дни рождения клиентов",
+          "publisher": "Битрикс24 Маркет",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness"
+          ],
+          "supportNote": "Заменитель для B2B-части; цена на странице не указана.",
+          "verificationStatus": "unreviewed"
+        }
+      ],
+      "westernProducts": [
+        {
+          "id": "wp1",
+          "name": "Dex",
+          "url": "https://getdex.com/",
+          "kind": "direct",
+          "coverage": "high",
+          "note": "Платная личная CRM с синхронизацией LinkedIn.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "w1"
+          ]
+        },
+        {
+          "id": "wp2",
+          "name": "Monica",
+          "url": "https://www.monicahq.com/",
+          "kind": "direct",
+          "coverage": "high",
+          "note": "Open-source, self-hosted.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "w2"
+          ]
+        }
+      ],
+      "russianCompetitors": [
+        {
+          "id": "rc1",
+          "name": "Битрикс24: приложения «дни рождения клиентов»",
+          "url": "https://www.bitrix24.ru/apps/app/aventra.dni_rozhdeniya_klientov/",
+          "kind": "substitute",
+          "coverage": "low",
+          "gap": "Работает внутри корпоративной CRM, для продаж, не для личных связей.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r2"
+          ]
+        }
+      ],
+      "assessment": null
+    },
+    {
+      "externalId": "supplier-quote-compare",
+      "title": "Сравнение КП поставщиков: из PDF/XLSX в одну таблицу",
+      "pitch": "Загружаете несколько коммерческих предложений — сервис извлекает цену, сроки, оплату, доставку и гарантию и строит сравнительную таблицу с пропусками и рисками.",
+      "segment": "B2B",
+      "category": "Procurement",
+      "targetPersona": "Снабженцы и закупщики в малом и среднем бизнесе",
+      "problem": "КП приходят в разных форматах; сводная таблица собирается вручную.",
+      "ruUnmetJob": "ГИПОТЕЗА: в РФ есть модули запроса КП (Битрикс24 «Эволюция», 1С:Бизнес-сеть) и заказные AI-проекты, но тиражного продукта «загрузи файлы — получи таблицу» в поиске не найдено.",
+      "monetization": "Подписка за пользователя или пакет сравнений.",
+      "priceHypothesis": "ГИПОТЕЗА, не измерено: 2–5 тыс. ₽/мес. Ориентир — «Эволюция»: 5 000 ₽/мес. за 5 сотрудников.",
+      "riskFlags": [
+        "demandUnverified",
+        "competitionUnverified",
+        "dataPrivacy"
+      ],
+      "sources": [
+        {
+          "id": "w1",
+          "region": "west",
+          "claim": "SourceDay RFQ: «Review supplier submissions in a detailed comparison view», оценка ставок по позициям и присуждение заказа из RFQ.",
+          "url": "https://sourceday.com/solutions/request-for-quote-collaboration/",
+          "title": "Request for Quote Collaboration",
+          "publisher": "SourceDay",
+          "sourceType": "company_self_report",
+          "language": "en",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "westernNeed"
+          ],
+          "supportNote": "Маркетинговая страница; цены нет («Get a demo»).",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r1",
+          "region": "ru",
+          "claim": "Приложение «Подбор поставщиков Эволюция» в Битрикс24 собирает КП, сравнивает условия и фиксирует выбор; «Старт» — до 5 сотрудников, 5 000 ₽/мес. или 48 000 ₽/год.",
+          "url": "https://www.bitrix24.ru/apps/app/unitech.evolyutsiya_podbor_postavshchikov/",
+          "title": "Подбор поставщиков Эволюция",
+          "publisher": "Битрикс24 Маркет",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness",
+            "monetization"
+          ],
+          "supportNote": "Показывает, что в РФ платят за сбор/сравнение КП внутри CRM; поставщики отвечают по ссылке, разбора файлов в описании нет.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r2",
+          "region": "ru",
+          "claim": "Кейс на Workspace: заказной AI-сервис принимает до 5 документов PDF/DOCX/XLSX, извлекает условия и строит сравнительную таблицу; сдан в ноябре 2024.",
+          "url": "https://workspace.ru/cases/ai-servis-dlya-analiza-kommercheskih-predlozheniy/",
+          "title": "AI-сервис для анализа коммерческих предложений",
+          "publisher": "Workspace.ru",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruUnmetJob",
+            "mvpFeasible"
+          ],
+          "supportNote": "Единичный заказной проект исполнителя; показывает осуществимость и наличие запроса, но не тиражный рынок.",
+          "verificationStatus": "unreviewed"
+        }
+      ],
+      "westernProducts": [
+        {
+          "id": "wp1",
+          "name": "SourceDay RFQ",
+          "url": "https://sourceday.com/solutions/request-for-quote-collaboration/",
+          "kind": "adjacent",
+          "coverage": "partial",
+          "note": "Сравнение ставок в RFQ-процессе, не разбор произвольных файлов.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "w1"
+          ]
+        }
+      ],
+      "russianCompetitors": [
+        {
+          "id": "rc1",
+          "name": "Подбор поставщиков Эволюция (Битрикс24)",
+          "url": "https://www.bitrix24.ru/apps/app/unitech.evolyutsiya_podbor_postavshchikov/",
+          "kind": "adjacent",
+          "coverage": "partial",
+          "gap": "Требует Битрикс24; ответы через форму, без извлечения из присланных файлов.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r1"
+          ]
+        }
+      ],
+      "assessment": null
+    }
+  ]
+}

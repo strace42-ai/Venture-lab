@@ -6,6 +6,7 @@ import { Segmented } from '../components/ui/Segmented';
 import { Badge, ConfidenceMeter, DemoBadge, EmptyState, MovementIndicator, ScoreBar, Skeleton, StageBadge, SyntheticBadge } from '../components/ui/primitives';
 import { useDataSource, useLoad, useMode } from '../data/context';
 import { RISK_LABEL, STAGE_LABEL, STAGE_ORDER } from '../domain/labels';
+import { IntegrityFlag } from '../components/IntegrityNotice';
 import { hasCriticalRisk, type RadarQuery, type RadarRow, type RadarSort, type RadarView } from '../domain/selectors';
 import type { Stage } from '../domain/types';
 import { isLiveMode } from '../domain/types';
@@ -296,6 +297,7 @@ function RadarTable({ rows }: { rows: RadarRow[] }) {
                       {r.idea.category} · {r.idea.segment}
                     </span>
                   </Link>
+                  {r.entry && <IntegrityFlag integrity={r.entry.integrity} />}
                 </td>
                 <td>
                   <StageBadge stage={r.idea.stage} />
@@ -360,6 +362,7 @@ function RadarCard({ row }: { row: RadarRow }) {
             Требует ревью
           </Badge>
         )}
+        {row.entry && <IntegrityFlag integrity={row.entry.integrity} />}
         <span className="rcard__upd muted num">{formatDateShort(idea.updatedAt)}</span>
       </div>
     </li>

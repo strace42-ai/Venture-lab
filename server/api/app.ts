@@ -7,7 +7,10 @@ import cors from '@fastify/cors';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { baselineInfo, buildIdeaDetail, buildOverview, buildRadarView } from '../../src/domain/selectors';
-import { compareToBaseline } from '../../src/domain/scoring';
+import { DIMENSION_KEYS, compareToBaseline } from '../../src/domain/scoring';
+import { buildEvidenceQueue, compareSnapshots, type EvidenceQuery } from '../../src/domain/research-ops';
+import { RISK_FLAGS } from '../research/schema';
+import { loadFrozenSnapshot, loadJournal } from '../research/journal';
 import { STAGE_ORDER } from '../../src/domain/labels';
 import type { Pool } from '../db/pool';
 import { listSnapshots, loadDataset, loadResearchRuns, loadSnapshot, todayUtc } from '../research/repository';
@@ -34,6 +37,23 @@ const ideasQuery = z.strictObject({
   page: z.coerce.number().int().min(1).max(10_000).default(1),
   pageSize: z.coerce.number().int().min(1).max(100).default(50),
 });
+
+const evidenceQuery = z.strictObject({
+  dataset: datasetParam,
+  status: z.enum(['all', 'needs-review', 'checked', 'unreviewed', 'rejected', 'unattributed']).default('needs-review'),
+  market: z.enum(['all', 'west', 'ru']).default('all'),
+  sourceType: z.enum(['all', 'independent', 'company_self_report', 'primary_data', 'unknown']).default('all'),
+  idea: z.union([z.literal('all'), z.string().regex(/^[a-z0-9][a-z0-9-]{1,79}$/)]).default('all'),
+  minAgeDays: z.coerce.number().int().min(0).max(3650).optional(),
+  missingUrl: z.enum(['true', 'false']).default('false'),
+  dimension: z.enum(['all', ...DIMENSION_KEYS] as [string, ...string[]]).default('all'),
+  risk: z.enum(['all', ...RISK_FLAGS] as [string, ...string[]]).default('all'),
+  page: z.coerce.number().int().min(1).max(10_000).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(50),
+});
+
+const snapshotId = z.string().regex(/^[a-z0-9][a-z0-9._-]{2,79}$/);
+const compareQuery = z.strictObject({ dataset: datasetParam, a: snapshotId, b: snapshotId });
 
 const idParam = z.strictObject({ id: z.string().regex(/^[a-z0-9][a-z0-9-]{1,79}$/) });
 
@@ -128,6 +148,41 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     };
   });
 
+  // ---------------------------------------------------------------- VL-003 (read-only)
+  app.get('/api/journal', async (req) => {
+    const { dataset } = datasetQuery.parse(req.query);
+    return loadJournal(opts.pool, dataset, today());
+  });
+
+  app.get('/api/evidence', async (req) => {
+    const q = evidenceQuery.parse(req.query);
+    const data = await loadDataset(opts.pool, q.dataset, today());
+    const query: EvidenceQuery = {
+      status: q.status,
+      market: q.market,
+      sourceType: q.sourceType as EvidenceQuery['sourceType'],
+      idea: q.idea,
+      minAgeDays: q.minAgeDays ?? null,
+      missingUrl: q.missingUrl === 'true',
+      dimension: q.dimension as EvidenceQuery['dimension'],
+      risk: q.risk as EvidenceQuery['risk'],
+    };
+    return buildEvidenceQueue(data, query, { page: q.page, pageSize: q.pageSize });
+  });
+
+  app.get('/api/snapshots', async (req) => {
+    const { dataset } = datasetQuery.parse(req.query);
+    return { dataset, snapshots: await listSnapshots(opts.pool, dataset) };
+  });
+
+  app.get('/api/snapshots/compare', async (req) => {
+    const q = compareQuery.parse(req.query);
+    if (q.a === q.b) throw new HttpError(400, 'bad_request', 'Выберите два разных среза');
+    const [a, b] = [await loadFrozenSnapshot(opts.pool, q.dataset, q.a), await loadFrozenSnapshot(opts.pool, q.dataset, q.b)];
+    if (!a || !b) throw new HttpError(404, 'not_found', 'Срез не найден в этом наборе данных');
+    return { dataset: q.dataset, ...compareSnapshots(a, b) };
+  });
+
   /**
    * - `current`: live ranking at today vs `baseline` = latest stored snapshot STRICTLY before today;
    * - `latestSnapshot`: latest stored snapshot (may be today's), its movement computed against the
@@ -142,7 +197,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const snapshots = await listSnapshots(opts.pool, dataset);
     const current = fullRanking(data)
       .slice(0, 10)
-      .map((e) => ({ rank: e.rank, ideaId: e.idea.id, slug: e.idea.slug, title: e.idea.title, score: e.score, confidence: e.confidence, movement: e.movement, scoreDelta: e.scoreDelta }));
+      .map((e) => ({ rank: e.rank, ideaId: e.idea.id, slug: e.idea.slug, title: e.idea.title, score: e.score, confidence: e.confidence, movement: e.movement, scoreDelta: e.scoreDelta, integrity: e.integrity }));
     return {
       dataset,
       rankAsOf: t,

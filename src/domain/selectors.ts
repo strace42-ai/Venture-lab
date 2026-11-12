@@ -1,4 +1,5 @@
 import { CRITICAL_RISKS } from './labels';
+import { effectiveEvidenceStatus } from './integrity';
 import { latestAssessment, rankAgainstBaseline, scoreIdea, type RankedEntry } from './scoring';
 import type { Category, Dataset, DemoDataset, Experiment, ExperimentFunnel, Idea, ResearchRun, Stage } from './types';
 
@@ -36,9 +37,17 @@ export function hasCriticalRisk(idea: Idea): boolean {
   return idea.riskFlags.some((r) => CRITICAL_RISKS.has(r));
 }
 
-/** Eligible for «strongest find»: no critical risk and not paused. */
+/** The current assessment rests on a rejected (or missing) cited source — see integrity.ts. */
+export function needsAssessmentReview(e: Pick<RankedEntry, 'integrity'>): boolean {
+  return e.integrity.status === 'needs-review';
+}
+
+/**
+ * Eligible for «strongest find»: no critical risk, not paused, and the current assessment does not
+ * rest on a rejected source. A high score never overrides a refuted evidence basis.
+ */
 export function isFindEligible(e: RankedEntry): boolean {
-  return !hasCriticalRisk(e.idea) && e.idea.stage !== 'paused';
+  return !hasCriticalRisk(e.idea) && e.idea.stage !== 'paused' && !needsAssessmentReview(e);
 }
 
 /**
@@ -59,6 +68,8 @@ export interface Kpis {
   /** Ideas without any assessment — shown as «не оценено», never ranked. */
   unscored: number;
   highConfidenceLeads: number;
+  /** Ranked ideas whose current assessment cites a rejected/missing source (need a new revision). */
+  assessmentsNeedingReview: number;
   liveExperiments: number;
   plannedExperiments: number;
   activeBuilds: number;
@@ -88,7 +99,8 @@ export function computeKpis(data: Dataset): Kpis {
     totalIdeas: data.ideas.length,
     rankable: ranking.length,
     unscored: data.ideas.filter((i) => !latestAssessment(i)).length,
-    highConfidenceLeads: ranking.filter((e) => e.score >= HIGH_SCORE && e.confidence >= HIGH_CONFIDENCE).length,
+    highConfidenceLeads: ranking.filter((e) => e.score >= HIGH_SCORE && e.confidence >= HIGH_CONFIDENCE && !needsAssessmentReview(e)).length,
+    assessmentsNeedingReview: ranking.filter(needsAssessmentReview).length,
     liveExperiments: data.experiments.filter((e) => e.status === 'running').length,
     plannedExperiments: data.experiments.filter((e) => e.status === 'planned').length,
     activeBuilds:
@@ -131,17 +143,8 @@ export function stagesPresent(data: Dataset): Stage[] {
 
 // ---------- Evidence status ----------
 
-export type EffectiveEvidenceStatus = 'checked' | 'unreviewed' | 'rejected' | 'unattributed';
 
-/**
- * A claim is only «checked» if it was reviewed AND has url + publisher + observation date.
- * Anything without attribution is `unattributed`, whatever the stored status says.
- */
-export function effectiveEvidenceStatus(e: { url: string | null; publisher: string | null; observedAt: string | null; verificationStatus: string }): EffectiveEvidenceStatus {
-  if (e.verificationStatus === 'rejected') return 'rejected';
-  if (!e.url || !e.publisher || !e.observedAt) return 'unattributed';
-  return e.verificationStatus === 'checked' ? 'checked' : 'unreviewed';
-}
+export { effectiveEvidenceStatus, type EffectiveEvidenceStatus } from './integrity';
 
 // ---------- Radar query ----------
 

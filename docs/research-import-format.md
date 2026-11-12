@@ -16,8 +16,9 @@ and titles prefixed «Тест:».
 | `schemaVersion` | `"vl-research-1"` | ✔ | Any other value is rejected. |
 | `runId` | string `^[a-z0-9][a-z0-9._-]{2,99}$` | ✔ | Idempotency key together with the file's SHA-256. |
 | `researchedAt` | `YYYY-MM-DD` | ✔ | Research date. Not in the future. Default effective date for stage changes. |
-| `source` | `"human-reviewed"` \| `"synthetic-test"` | ✔ | REAL research must be `human-reviewed`. |
-| `synthetic` | boolean | ✔ | Must be `true` for `synthetic-test` and `false` for `human-reviewed`. |
+| `source` | `"human-reviewed"` \| `"synthetic-test"` \| `"ai-draft"` | ✔ | REAL research must be `human-reviewed` **with `approval`**. `ai-draft` validates but can never be applied (VL-003 gate). |
+| `synthetic` | boolean | ✔ | Must be `true` for `synthetic-test` and `false` otherwise. |
+| `approval` | `{approvedBy, approvedAt (YYYY-MM-DD, not future), statement (20–2000)}` | for apply of `human-reviewed` | Founder sign-off, stored in `import_runs.approved_*`. |
 | `reviewedBy` | text ≤120 | ✔ | Who reviewed the research. Becomes the actor of stage transitions. |
 | `title`, `coverage`, `limitations` | text | — | Shown in «Исследовательские прогоны». |
 | `markets` | text[] ≤30 | — | |
@@ -79,7 +80,8 @@ same dataset as the idea.
 | `language` | ISO 639-1 | — | |
 | `publishedAt`, `observedAt`, `retrievedAt` | `YYYY-MM-DD` | — | Must not be in the future. |
 | `dimensions` | rubric keys[] | — | Rubric criteria the claim supports. |
-| `verificationStatus` | `unreviewed` \| `checked` \| `rejected` | — | Default `unreviewed`. A `checked` source without **url + publisher + observedAt** is stored as `unreviewed`, and the import prints a warning. A status change on identical content is appended to `evidence_reviews`. |
+| `verificationStatus` | `unreviewed` \| `checked` \| `rejected` | — | Default `unreviewed`. A `checked` source without **url + publisher + observedAt** is stored as `unreviewed`, and the import prints a warning. In a `human-reviewed` file, `checked`/`rejected` also requires `reviewedBy` (else stored as `unreviewed`). A status change on identical content is appended to `evidence_reviews` — unless the latest review is a manual `research:review` decision, which an import never overrides. `ai-draft` sources must be `unreviewed`. |
+| `reviewedBy` | text ≤120 | — | The person who opened the source. Forbidden in `ai-draft`. |
 
 ## WesternProduct / Competitor
 
@@ -124,7 +126,14 @@ npm run research:validate -- research/inbox/file.json          # schema only, no
 npm run research:import   -- research/inbox/file.json          # dry-run diff (default)
 npm run research:import   -- research/inbox/file.json --apply  # one transaction
 npm run research:snapshot -- [--as-of YYYY-MM-DD] [--id top10-...] [--dataset real|test] [--apply]
+npm run research:draft-check -- research/drafts/file.json      # coverage/duplicates report, no writes
+npm run research:review -- --dataset real|test --idea <externalId> --evidence <sourceId> \
+  --status checked|rejected|unreviewed --reason "…" --actor "…" [--apply]   # append-only manual review
 ```
+
+### Apply gate (VL-003)
+`--apply` is refused (exit 1) for `ai-draft` files, for any file under `research/drafts/`, and for
+`human-reviewed` files without `approval`. See `docs/research-export-guide.md`.
 
 Snapshots: there is one per dataset and date, and each one is immutable. Each stores the full
 ranking together with each idea's title and slug as they were at snapshot time. The live ranking

@@ -105,7 +105,7 @@ export function ideaJson(externalId: string, opts: { score?: number; assessedAt?
     pitch: `Описание ${externalId}`,
     segment: 'B2B',
     category: 'Test',
-    sources: [{ id: 's1', region: 'west', claim: `claim ${externalId}`, url: `https://example.org/${externalId}`, publisher: 'example.org', observedAt: '2026-11-01', verificationStatus: 'checked' }],
+    sources: [{ id: 's1', region: 'west', claim: `claim ${externalId}`, url: `https://example.org/${externalId}`, publisher: 'example.org', observedAt: '2026-11-01', verificationStatus: 'checked', reviewedBy: 'tester (human)' }],
     ...(withAssessment
       ? {
           assessment: {
@@ -131,6 +131,8 @@ export function envelope(runId: string, researchedAt: string, ideas: unknown[], 
     source: synthetic ? 'synthetic-test' : 'human-reviewed',
     synthetic,
     reviewedBy: 'tester',
+    // VL-003: REAL (human-reviewed) imports require an explicit founder approval to be applied.
+    ...(synthetic ? {} : { approval: { approvedBy: 'founder (test)', approvedAt: '2026-11-01', statement: 'Approved for import in an automated integration test.' } }),
     ideas,
   };
 }

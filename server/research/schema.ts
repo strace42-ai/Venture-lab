@@ -85,6 +85,12 @@ export const sourceSchema = z.strictObject({
   dimensions: z.array(z.enum(DIMENSION_KEYS as [DimensionKey, ...DimensionKey[]])).max(12).default([]),
   supportNote: text(1000).nullable().optional(),
   verificationStatus: z.enum(['unreviewed', 'checked', 'rejected']).default('unreviewed'),
+  /**
+   * The HUMAN who checked/rejected this source (VL-003). In a human-reviewed import a `checked` or
+   * `rejected` status without `reviewedBy` is stored as `unreviewed`; an AI draft may not carry
+   * `checked`/`rejected` at all. Per-source review after import: `npm run research:review`.
+   */
+  reviewedBy: text(120).nullable().optional(),
 });
 
 export const westernProductSchema = z.strictObject({
@@ -170,9 +176,23 @@ export const envelopeSchema = z
     schemaVersion: z.literal(SCHEMA_VERSION, { message: `schemaVersion должен быть "${SCHEMA_VERSION}"` }),
     runId: z.string().regex(/^[a-z0-9][a-z0-9._-]{2,99}$/, 'runId: a-z, 0-9, точка, дефис, подчёркивание, 3–100 симв.'),
     researchedAt: isoDate,
-    source: z.enum(['human-reviewed', 'synthetic-test']),
+    /**
+     * - `ai-draft`: produced by an AI/research assistant, NOT approved — can be validated and
+     *   dry-run, never applied;
+     * - `human-reviewed`: founder-approved REAL research (requires `approval` to apply);
+     * - `synthetic-test`: synthetic test data for the isolated TEST dataset.
+     */
+    source: z.enum(['human-reviewed', 'synthetic-test', 'ai-draft']),
     synthetic: z.boolean(),
     reviewedBy: text(120),
+    /** Founder sign-off; required to APPLY a `human-reviewed` (REAL) import. */
+    approval: z
+      .strictObject({
+        approvedBy: text(120),
+        approvedAt: isoDate,
+        statement: text(2000, 20),
+      })
+      .optional(),
     title: text(200).nullable().optional(),
     coverage: text(2000).nullable().optional(),
     limitations: text(2000).nullable().optional(),
@@ -182,7 +202,19 @@ export const envelopeSchema = z
   })
   .superRefine((env, ctx) => {
     if (env.synthetic !== (env.source === 'synthetic-test')) {
-      ctx.addIssue({ code: 'custom', path: ['synthetic'], message: 'synthetic=true обязателен для source="synthetic-test" и запрещён для "human-reviewed"' });
+      ctx.addIssue({ code: 'custom', path: ['synthetic'], message: 'synthetic=true обязателен для source="synthetic-test" и запрещён для "human-reviewed"/"ai-draft"' });
+    }
+    if (env.approval && env.approval.approvedAt > new Date().toISOString().slice(0, 10)) {
+      ctx.addIssue({ code: 'custom', path: ['approval', 'approvedAt'], message: 'дата одобрения в будущем' });
+    }
+    if (env.source === 'ai-draft') {
+      env.ideas.forEach((idea, i) =>
+        idea.sources.forEach((s, j) => {
+          if (s.verificationStatus !== 'unreviewed' || s.reviewedBy) {
+            ctx.addIssue({ code: 'custom', path: ['ideas', i, 'sources', j, 'verificationStatus'], message: 'AI-черновик не может отмечать источники как checked/rejected — это делает человек (research:review)' });
+          }
+        }),
+      );
     }
     const today = new Date().toISOString().slice(0, 10);
     if (env.researchedAt > today) ctx.addIssue({ code: 'custom', path: ['researchedAt'], message: 'дата исследования в будущем' });

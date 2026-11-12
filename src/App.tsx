@@ -8,6 +8,7 @@ const OverviewPage = lazy(() => import('./pages/OverviewPage'));
 const RadarPage = lazy(() => import('./pages/RadarPage'));
 const IdeaPage = lazy(() => import('./pages/IdeaPage'));
 const PlaceholderPage = lazy(() => import('./pages/PlaceholderPage'));
+const JournalPage = lazy(() => import('./pages/JournalPage'));
 
 function NotFound() {
   return (
@@ -39,7 +40,7 @@ export function AppRoutes() {
         <Route path="validation" element={<PlaceholderPage which="validation" />} />
         <Route path="build" element={<PlaceholderPage which="build" />} />
         <Route path="portfolio" element={<PlaceholderPage which="portfolio" />} />
-        <Route path="journal" element={<PlaceholderPage which="journal" />} />
+        <Route path="journal" element={<JournalPage />} />
         <Route path="settings" element={<PlaceholderPage which="settings" />} />
         <Route path="*" element={<NotFound />} />
       </Route>

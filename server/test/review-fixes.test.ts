@@ -257,6 +257,27 @@ describeDb('migration 002 on a database created before dataset isolation', () =>
     return db;
   }
 
+  /** Rows exactly as the 001 schema stored them (written with SQL: today's importer targets 003). */
+  async function legacyIdeas(pool: TestDb['pool'], runId: string, synthetic: boolean, ideas: { ext: string; title: string }[]) {
+    await pool.query(
+      `INSERT INTO import_runs (run_id, checksum, schema_version, file_name, origin, actor, counts, started_at)
+       VALUES ($1, repeat('a', 64), 'vl-research-1', 'legacy.json', $2, 'legacy', '{}', now())`,
+      [runId, synthetic ? 'synthetic-test' : 'human-reviewed'],
+    );
+    await pool.query(
+      `INSERT INTO research_runs (run_id, researched_at, origin, synthetic, reviewed_by, discovered_count, updated_count, rejected_count, sources_count)
+       VALUES ($1, '2026-11-05', $2, $3, 'legacy', $4, 0, 0, 0)`,
+      [runId, synthetic ? 'synthetic-test' : 'human-reviewed', synthetic, ideas.length],
+    );
+    for (const i of ideas) {
+      await pool.query(
+        `INSERT INTO ideas (external_id, slug, title, pitch, segment, category, geography, synthetic, first_run_id, last_run_id, content_hash)
+         VALUES ($1, $1, $2, 'pitch', 'B2B', 'Test', 'Россия', $3, $4, $4, 'h')`,
+        [i.ext, i.title, synthetic, runId],
+      );
+    }
+  }
+
   async function legacySnapshot(pool: TestDb['pool'], externalIds: string[]) {
     await pool.query("INSERT INTO top10_snapshots (id, as_of, rubric_version, created_by, entry_count) VALUES ('top10-2026-11-06', '2026-11-06', 'v1.0', 'legacy', $1)", [externalIds.length]);
     for (const [i, ext] of externalIds.entries()) {
@@ -266,10 +287,13 @@ describeDb('migration 002 on a database created before dataset isolation', () =>
 
   it('backfills dataset and frozen titles for existing snapshots', async () => {
     const d = await legacyDb();
-    await applyImport(d.pool, exampleFile('synthetic-run-1.json'), ACTOR);
+    await legacyIdeas(d.pool, 'synthetic-legacy-run', true, [
+      { ext: 'test-invoice-reminders', title: 'Тест: напоминания об оплате счетов для фрилансеров' },
+      { ext: 'test-tutor-groups', title: 'Тест: групповые занятия для частных репетиторов' },
+    ]);
     await legacySnapshot(d.pool, ['test-invoice-reminders', 'test-tutor-groups']);
     const r = await migrate(d.pool);
-    expect(r.applied).toEqual(['002_dataset_isolation']);
+    expect(r.applied).toEqual(listMigrations().slice(1).map((m) => m.id));
     expect((await d.pool.query('SELECT synthetic FROM top10_snapshots')).rows).toEqual([{ synthetic: true }]);
     const snap = await loadSnapshot(d.pool, 'test', { id: 'top10-2026-11-06' });
     expect(snap!.entries.map((e) => e.title)).toEqual(['Тест: напоминания об оплате счетов для фрилансеров', 'Тест: групповые занятия для частных репетиторов']);
@@ -280,8 +304,8 @@ describeDb('migration 002 on a database created before dataset isolation', () =>
 
   it('refuses to migrate a legacy snapshot that mixes synthetic and real ideas', async () => {
     const d = await legacyDb();
-    await applyImport(d.pool, exampleFile('synthetic-run-1.json'), ACTOR);
-    await applyImport(d.pool, jsonFile(envelope('real-legacy', '2026-11-05', [ideaJson('real-x')])), ACTOR);
+    await legacyIdeas(d.pool, 'synthetic-legacy-run', true, [{ ext: 'test-invoice-reminders', title: 'Тест A' }]);
+    await legacyIdeas(d.pool, 'real-legacy-run', false, [{ ext: 'real-x', title: 'Real X' }]);
     await legacySnapshot(d.pool, ['test-invoice-reminders', 'real-x']);
     await expect(migrate(d.pool)).rejects.toThrow(/mixes synthetic and real/);
   });

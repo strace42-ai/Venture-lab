@@ -57,3 +57,17 @@ Every scoring revision is an append-only assessment with time, assessor, model_v
 
 ## Validation evidence
 Track contacted, replied, demoed, interviews, offers sent, payments completed/refunded, repeat use, cost, conversion denominator, dates, interview consent where appropriate. A verbal promise ≠ confirmed sale. Keep experiment quality/confidence separate.
+
+## Evidence integrity of the current assessment (VL-003 corrective pass)
+A derived, **current** flag (`src/domain/integrity.ts`), never stored and never changing score or confidence:
+
+| Status | Condition (cited = `assessment.evidenceIds`) | Effect |
+|---|---|---|
+| `needs-review` | at least one cited source is manually **rejected**, or a cited id no longer resolves | «Оценка требует пересмотра» on Overview, Radar, Dossier and the evidence queue, with the source ids. The idea **stays in the ranking with its stored score** but is excluded from «сильнейшая находка» and «сильные и обоснованные» (KPI `assessmentsNeedingReview`). |
+| `unverified` | no rejection, but some cited sources are not yet checked (unreviewed / unattributed) | weak support, already reflected in confidence; **not** excluded |
+| `verified` | every cited source is checked by a human | — |
+| `unlinked` | the assessment cites nothing (DEMO fixture / legacy) | — |
+
+Historical assessments and frozen snapshots are never modified. The flag is lifted by importing a **new assessment
+revision** (with `revisionReason`) that does not cite the rejected sources, or by reversing a mistaken rejection with
+`research:review … --status checked`. A revision that still cites a rejected source stays flagged.

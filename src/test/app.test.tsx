@@ -213,7 +213,7 @@ describe('Navigation', () => {
     await screen.findByRole('list', { name: 'Топ возможностей по рейтингу' });
     const sidebar = screen.getByRole('complementary', { name: 'Боковая панель' });
     await user.click(within(sidebar).getByRole('link', { name: /Журнал исследований/ }));
-    expect(await screen.findByText(/Каждый прогон исследования/)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { level: 1, name: /Что исследовано, что проверено/ })).toBeInTheDocument();
   });
 
   it('global search submits to the radar', async () => {

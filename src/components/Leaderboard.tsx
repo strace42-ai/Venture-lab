@@ -4,6 +4,7 @@ import { RISK_LABEL } from '../domain/labels';
 import { hasCriticalRisk } from '../domain/selectors';
 import { scoreHistory, type RankedEntry } from '../domain/scoring';
 import { cx } from '../lib/cx';
+import { IntegrityFlag } from './IntegrityNotice';
 import { ConfidenceMeter, MovementIndicator, ScoreBar, Sparkline } from './ui/primitives';
 
 export function Leaderboard({ entries }: { entries: RankedEntry[] }) {
@@ -35,6 +36,7 @@ export function Leaderboard({ entries }: { entries: RankedEntry[] }) {
                 <span className="lb__meta">
                   {e.idea.category} · {e.idea.segment}
                 </span>
+                <IntegrityFlag integrity={e.integrity} />
               </div>
               <div className="lb__score">
                 <span className="lb__mlabel">Балл</span>

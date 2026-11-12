@@ -8,6 +8,7 @@ import { demoData } from '../data/demo';
 import { resolveInitialMode } from '../data/mode';
 import { ApiError, createApiSource, type DataSource } from '../data/source';
 import { buildIdeaDetail, buildOverview, buildRadarView } from '../domain/selectors';
+import { buildEvidenceQueue } from '../domain/research-ops';
 import type { Dataset, Evidence, Idea } from '../domain/types';
 
 function realDataset(ideas: Idea[]): Dataset {
@@ -24,8 +25,19 @@ function asyncSource(ds: Dataset): DataSource & { calls: number } {
     },
     radar: (q: Parameters<DataSource['radar']>[0]) => Promise.resolve(buildRadarView(ds, q)),
     idea: (slug: string) => Promise.resolve(buildIdeaDetail(ds, slug)),
+    ...opsFor(ds),
   };
   return s;
+}
+
+/** VL-003 methods of an API-like (async) source over an in-memory dataset. */
+function opsFor(ds: Dataset): Pick<DataSource, 'journal' | 'evidence' | 'snapshots' | 'compare'> {
+  return {
+    journal: () => Promise.resolve({ mode: ds.mode, asOf: ds.asOf, runs: [], manualReviews: [], notes: [] }),
+    evidence: (q) => Promise.resolve(buildEvidenceQueue(ds, q)),
+    snapshots: () => Promise.resolve([]),
+    compare: () => Promise.reject(new ApiError('Срез не найден', 'http', 404)),
+  };
 }
 
 function failingSource(err: Error): DataSource & { calls: number } {
@@ -38,6 +50,10 @@ function failingSource(err: Error): DataSource & { calls: number } {
     },
     radar: () => Promise.reject(err),
     idea: () => Promise.reject(err),
+    journal: () => Promise.reject(err),
+    evidence: () => Promise.reject(err),
+    snapshots: () => Promise.reject(err),
+    compare: () => Promise.reject(err),
   };
   return s;
 }
@@ -318,6 +334,7 @@ describe('Radar never shows rows of another source or stale rows on error', () =
       overview: () => Promise.resolve(buildOverview(ds)),
       radar: (q) => (fail ? Promise.reject(new ApiError('Ошибка API (500)', 'http', 500)) : Promise.resolve(buildRadarView(ds, q))),
       idea: (slug) => Promise.resolve(buildIdeaDetail(ds, slug)),
+      ...opsFor(ds),
     };
     const user = renderWith('/radar', src);
     expect(await screen.findByRole('table', { name: 'Идеи на радаре' })).toBeInTheDocument();

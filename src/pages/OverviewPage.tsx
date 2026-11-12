@@ -1,15 +1,16 @@
-import { Activity, ArrowRight, BadgeCheck, Beaker, Bot, CircleDashed, Database, FileSearch, Hammer, Layers, Radar as RadarIcon, ShieldAlert, Target } from 'lucide-react';
+import { Activity, ArrowRight, BadgeCheck, Beaker, Bot, CircleDashed, Database, FileSearch, Hammer, Layers, Radar as RadarIcon, ShieldAlert, ShieldX, Target } from 'lucide-react';
 import { useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { OpportunityMap } from '../components/charts/OpportunityMap';
 import { Leaderboard } from '../components/Leaderboard';
+import { integrityReason } from '../lib/integrity-text';
 import { LoadError, RealEmptyState } from '../components/StateViews';
 import { Segmented } from '../components/ui/Segmented';
 import { PageSkeleton } from '../components/ui/PageSkeleton';
 import { Badge, ConfidenceMeter, DemoBadge, EmptyState, Panel, ScoreRing, StageBadge, SyntheticBadge } from '../components/ui/primitives';
 import { useDataSource, useLoad, useMode } from '../data/context';
 import { BUILD_STAGE_LABEL, EXPERIMENT_STATUS_LABEL, RISK_LABEL, confidenceBand } from '../domain/labels';
-import { HIGH_CONFIDENCE, HIGH_SCORE, hasCriticalRisk, sumFunnel, type BaselineInfo, type OverviewView } from '../domain/selectors';
+import { HIGH_CONFIDENCE, HIGH_SCORE, hasCriticalRisk, needsAssessmentReview, sumFunnel, type BaselineInfo, type OverviewView } from '../domain/selectors';
 import type { RankedEntry } from '../domain/scoring';
 import type { Segment, Stage } from '../domain/types';
 import { formatDateLong, formatDateShort, formatTime, pct, plural, relativeDay, verifiedPaymentsPhrase } from '../lib/format';
@@ -78,13 +79,21 @@ function Overview({ view }: { view: OverviewView }) {
       </header>
 
       <div className="grid grid--hero">
-        {view.lead ? <HeroFind entry={view.lead} asOf={view.asOf} /> : <NoEligibleFind ranked={ranking.length} unscored={kpis.unscored} />}
+        {view.lead ? <HeroFind entry={view.lead} asOf={view.asOf} /> : <NoEligibleFind ranked={ranking.length} unscored={kpis.unscored} needReview={kpis.assessmentsNeedingReview} />}
         <ResearchPulse view={view} />
       </div>
 
+      <IntegrityAlert ranking={ranking} />
+
       <section className="grid grid--kpi" aria-label={isReal ? 'Ключевые показатели' : 'Ключевые показатели (демо)'}>
         <Kpi icon={<Layers size={16} />} label="Идей на радаре" value={kpis.totalIdeas} sub={`${kpis.rankable} в рейтинге${kpis.unscored ? ` · ${kpis.unscored} не оценено` : ''} · +${kpis.newThisWeek} ${view.baseline ? 'с прошлого среза' : 'всего'}`} />
-        <Kpi icon={<Target size={16} />} label="Сильные и обоснованные" value={kpis.highConfidenceLeads} sub={`балл ≥ ${HIGH_SCORE} и уверенность ≥ ${HIGH_CONFIDENCE}`} tone="accent" />
+        <Kpi
+          icon={<Target size={16} />}
+          label="Сильные и обоснованные"
+          value={kpis.highConfidenceLeads}
+          sub={`балл ≥ ${HIGH_SCORE} и уверенность ≥ ${HIGH_CONFIDENCE}, без отклонённых опор${kpis.assessmentsNeedingReview ? ` · ${kpis.assessmentsNeedingReview} на пересмотре` : ''}`}
+          tone="accent"
+        />
         {isReal ? (
           <Kpi icon={<FileSearch size={16} />} label="Проверенные источники" value={kpis.evidenceChecked} sub={`${kpis.evidenceNeedsReview} требуют проверки`} />
         ) : (
@@ -186,8 +195,38 @@ function Kpi({ icon, label, value, sub, tone = 'neutral' }: { icon: ReactNode; l
   );
 }
 
-/** Explicit state when no ranked idea is eligible (all critical-risk or paused, or nothing scored). */
-function NoEligibleFind({ ranked, unscored }: { ranked: number; unscored: number }) {
+/**
+ * Ideas whose CURRENT assessment cites a rejected (or missing) source. They stay in the ranking with
+ * their stored score, but are not recommended until a new assessment revision is imported.
+ */
+function IntegrityAlert({ ranking }: { ranking: RankedEntry[] }) {
+  const flagged = ranking.filter(needsAssessmentReview);
+  if (flagged.length === 0) return null;
+  return (
+    <section className="panel integrity-alert" role="status" aria-label="Оценки требуют пересмотра">
+      <ShieldX size={18} aria-hidden className="integrity-alert__icon" />
+      <div className="integrity-alert__body">
+        <strong>
+          {flagged.length} {plural(flagged.length, 'оценка опирается', 'оценки опираются', 'оценок опираются')} на отклонённые источники.
+        </strong>{' '}
+        Эти идеи не рекомендуются до пересмотра оценки; балл и срезы не изменены.
+        <ul className="integrity-alert__list">
+          {flagged.map((e) => (
+            <li key={e.idea.id}>
+              <Link to={`/ideas/${e.idea.slug}`}>
+                #{e.rank} {e.idea.title}
+              </Link>{' '}
+              <span className="muted">— {integrityReason(e.integrity)}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
+/** Explicit state when no ranked idea is eligible (critical risk, paused, refuted basis, or nothing scored). */
+function NoEligibleFind({ ranked, unscored, needReview }: { ranked: number; unscored: number; needReview: number }) {
   return (
     <section className="panel hero hero--empty" aria-labelledby="hero-title">
       <div className="hero__content">
@@ -196,12 +235,12 @@ function NoEligibleFind({ ranked, unscored }: { ranked: number; unscored: number
           <DemoBadge compact />
         </div>
         <h2 id="hero-title" className="hero__title">
-          {ranked === 0 ? 'Пока нет оценённых идей' : 'Нет находки без критических рисков'}
+          {ranked === 0 ? 'Пока нет оценённых идей' : needReview > 0 ? 'Нет находки с надёжной доказательной базой' : 'Нет находки без критических рисков'}
         </h2>
         <p className="hero__pitch">
           {ranked === 0
             ? `${unscored ? `${unscored} ${plural(unscored, 'идея ждёт', 'идеи ждут', 'идей ждут')} оценки. ` : ''}Как только появится оценка по рубрике v1.0, здесь будет сильнейшая возможность.`
-            : `Все ${ranked} ${plural(ranked, 'идея', 'идеи', 'идей')} в рейтинге либо имеют критический риск, либо стоят на паузе. Высокий балл не отменяет критический риск — нужно ревью основателя.`}
+            : `Все ${ranked} ${plural(ranked, 'идея', 'идеи', 'идей')} в рейтинге либо имеют критический риск, либо стоят на паузе${needReview > 0 ? ', либо их оценка опирается на отклонённый источник' : ''}. Высокий балл не отменяет критический риск или опровергнутую опору — нужно ревью основателя.`}
         </p>
         <div className="hero__cta">
           <Link to="/radar" className="btn btn--ghost">

@@ -23,7 +23,9 @@
     "db:reset": "tsx server/cli/db.ts reset",
     "research:validate": "tsx server/cli/research.ts validate",
     "research:import": "tsx server/cli/research.ts import",
-    "research:snapshot": "tsx server/cli/research.ts snapshot"
+    "research:snapshot": "tsx server/cli/research.ts snapshot",
+    "research:draft-check": "tsx server/cli/research.ts draft-check",
+    "research:review": "tsx server/cli/research.ts review"
   },
   "dependencies": {
     "@fastify/cors": "^11.4.1",
