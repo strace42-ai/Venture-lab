@@ -6,10 +6,13 @@ React/TypeScript premium dark UI, Overview, Radar, Dossier, scoring v1, typed de
 ## VL-002 — Research Engine Foundation [COMPLETED, merged]
 Full vertical slice: PostgreSQL persistence, evidence provenance, strict structured manual import (dry-run/apply), readable API, explicit REAL/DEMO modes, historical assessment/stage and immutable TOP-10 snapshots, CI/integration tests. See `tasks/current-task.md` and `docs/research-engine-contract.md`.
 
-## VL-003 — Research Journal & evidence verification [CURRENT TASK]
+## VL-003 — Research Journal & evidence verification [COMPLETED, merged]
 Premium dated research journal, evidence review queue with append-only human checking, stored TOP-10 snapshot comparison and manually approved research draft→import pipeline. See `tasks/current-task.md` and `docs/research-operations-vl003.md`. No automatic ChatGPT→GitHub→DB bridge in this stage.
 
-## VL-003B — Scheduled research delivery bridge [FUTURE, depends on VL-003]
+## VL-003P — First real research pilot [CURRENT TASK]
+Validate the 3-idea AI draft with new RU competitors, compile a founder-review-ready batch of up to 10 real sourced opportunities, test dry-run import and obtain specific founder approvals before REAL is ever populated. See `tasks/current-task.md`. No new product features in this pilot.
+
+## VL-003B — Scheduled research delivery bridge [FUTURE, depends on VL-003P]
 Find and implement a documented authorized export/integration path for scheduled ChatGPT reports and founder approval. Never assume a chat automation directly writes to GitHub or a local DB; evaluate authorization, credentials, reliability and operating cost separately.
 
 ## VL-004 — Validation laboratory [PLANNED]
