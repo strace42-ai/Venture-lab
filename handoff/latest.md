@@ -11,8 +11,8 @@
 |---|---|
 | Base | `main` @ `a98e1c9` (VL-002 merged, VL-003 docs) |
 | Feature branch | `claude/vl-003-research-operations` |
-| Commits | see the PR (implementation + handoff on the same branch) |
-| PR | opened to `main`; link in the PR list of `strace42-ai/Venture-lab` (not merged) |
+| Implementation commit | `8d34ca4` (+ this handoff update) |
+| PR | https://github.com/strace42-ai/Venture-lab/pull/3 (not merged) |
 
 ## What was built
 ### A. UI — `/journal` (replaces the placeholder; tabs `?tab=runs|evidence|history`)
