@@ -10,10 +10,19 @@ Full vertical slice: PostgreSQL persistence, evidence provenance, strict structu
 Premium dated research journal, evidence review queue with append-only human checking, stored TOP-10 snapshot comparison and manually approved research draft→import pipeline. See `tasks/current-task.md` and `docs/research-operations-vl003.md`. No automatic ChatGPT→GitHub→DB bridge in this stage.
 
 ## VL-003P — First real research pilot [CURRENT TASK]
-Validate the 3-idea AI draft with new RU competitors, compile a founder-review-ready batch of up to 10 real sourced opportunities, test dry-run import and obtain specific founder approvals before REAL is ever populated. See `tasks/current-task.md`. No new product features in this pilot.
+Validate the 3-idea AI draft and build a source-rich pilot batch of up to 10 real opportunities. This is a legacy **manual review/import compatibility test**, NOT an ongoing requirement. Following founder's newer decision, daily research will no longer require human source sign-off. See `tasks/current-task.md` and `docs/no-vpn-automation-architecture.md` v2.
 
-## VL-003B — Scheduled research delivery bridge [FUTURE, depends on VL-003P]
-Find and implement a documented authorized export/integration path for scheduled ChatGPT reports and founder approval. Never assume a chat automation directly writes to GitHub or a local DB; evaluate authorization, credentials, reliability and operating cost separately.
+## VL-004A — Autonomous Research Worker, fixture-first [QUEUED after VL-003P]
+**Zero-human-in-the-loop automated research**: server-side worker with swappable RU/world search and LLM provider interfaces, independent adversarial machine review, programmatic source checks, evidence quality gates and automatically published PRIMARY machine TOP-10 with immutable history, cost/freshness and premium dashboard. No mandatory manual review. Legacy human-reviewed records remain separate; no paid APIs or deployment without one-time founder authorization. See `docs/no-vpn-automation-architecture.md` and `tasks/backlog/VL-004A-autonomous-research-worker.md`.
+
+## VL-004B — Official provider trial [PLANNED, requires user consent]
+Validate Yandex Search API worldwide/RU and Yandex AI Studio model access through lawful official APIs; one-time founder setup/authorized capped test budget and real-source quality benchmark. Subsequent runs within configured budget are fully automated. ChatGPT/Claude subscriptions do not include these API calls.
+
+## VL-004C — Hosted no-VPN dashboard [PLANNED]
+Authorized secure HTTPS web app reachable from Russia without user VPN, backups, monitoring, user auth and unattended daily execution with automatic ranked publication. Never expose unauthenticated database or mutation endpoints.
+
+## Optional ChatGPT chat export bridge [BACKLOG / NOT REQUIRED]
+An authorized integration could deliver current ChatGPT automation reports into review queue, but task execution does not automatically grant it connector write access or a direct PostgreSQL link. Treat as a possible editorial input, not the runtime dependency.
 
 ## VL-004 — Validation laboratory [PLANNED]
 Interview/outreach records, experiment hypotheses, price tests, confirmed payments/retention, decision log and funnel. No automatic unsolicited messaging.
