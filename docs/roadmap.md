@@ -9,10 +9,10 @@ Full vertical slice: PostgreSQL persistence, evidence provenance, strict structu
 ## VL-003 — Research Journal & evidence verification [COMPLETED, merged]
 Premium dated research journal, evidence review queue with append-only human checking, stored TOP-10 snapshot comparison and manually approved research draft→import pipeline. See `tasks/current-task.md` and `docs/research-operations-vl003.md`. No automatic ChatGPT→GitHub→DB bridge in this stage.
 
-## VL-003P — First real research pilot [CURRENT TASK]
+## VL-003P — First real research pilot [COMPLETED, merged]
 Validate the 3-idea AI draft and build a source-rich pilot batch of up to 10 real opportunities. This is a legacy **manual review/import compatibility test**, NOT an ongoing requirement. Following founder's newer decision, daily research will no longer require human source sign-off. See `tasks/current-task.md` and `docs/no-vpn-automation-architecture.md` v2.
 
-## VL-004A — Autonomous Research Worker, fixture-first [QUEUED after VL-003P]
+## VL-004A — Autonomous Research Worker, fixture-first [CURRENT TASK]
 **Zero-human-in-the-loop automated research**: server-side worker with swappable RU/world search and LLM provider interfaces, independent adversarial machine review, programmatic source checks, evidence quality gates and automatically published PRIMARY machine TOP-10 with immutable history, cost/freshness and premium dashboard. No mandatory manual review. Legacy human-reviewed records remain separate; no paid APIs or deployment without one-time founder authorization. See `docs/no-vpn-automation-architecture.md` and `tasks/backlog/VL-004A-autonomous-research-worker.md`.
 
 ## VL-004B — Official provider trial [PLANNED, requires user consent]
