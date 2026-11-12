@@ -1,24 +1,24 @@
-# Venture Lab — Delivery roadmap (planning only)
+# Venture Lab — Delivery roadmap
 
-## Sprint 0 — foundation (CURRENT TASK)
-Premium React/TypeScript dark dashboard + navigation + typed honest demo dataset, functional filtering and at least one dossier detail; tests/build + screenshot where possible. No backend/API/deployment.
+## VL-001 — Premium dashboard [COMPLETED, merged]
+React/TypeScript premium dark UI, Overview, Radar, Dossier, scoring v1, typed demo fixtures, 41 tests and responsive screen captures. No backend or live data.
 
-## Sprint 1 — Opportunity intelligence
-Radar list, full idea dossier, 12-criterion scoring UI, evidence history, persistent API and PostgreSQL. Score changes are immutable history. Search/filter/export.
+## VL-002 — Research Engine Foundation [CURRENT TASK]
+Full vertical slice: PostgreSQL persistence, evidence provenance, strict structured manual import (dry-run/apply), readable API, explicit REAL/DEMO modes, historical assessment/stage and immutable TOP-10 snapshots, CI/integration tests. See `tasks/current-task.md` and `docs/research-engine-contract.md`.
 
-## Sprint 2 — Research operations
-Daily research run log, import/deduplication, source checks, Top-10 snapshots and score movement. Separate human-reviewed imports from machine-produced claims.
+## VL-003 — Research operations & daily delivery [PLANNED]
+Turn daily new research into a machine-readable payload, review queue, deduplication and historical ranking. Automate only after stable manual import. Verify whether scheduled ChatGPT output can be exported using authorized integrations; never assume the daily automation writes directly to repo or database.
 
-## Sprint 3 — Validation laboratory
-Experiment workflows and verified commercial signals, decision log, progress funnel, outreach tracking (no automatic unsolicited outreach).
+## VL-004 — Validation laboratory [PLANNED]
+Interview/outreach records, experiment hypotheses, price tests, confirmed payments/retention, decision log and funnel. No automatic unsolicited messaging.
 
-## Sprint 4 — Build studio
-GitHub read-only integration, branch/PR/CI/handoff panel, task proposal and approval UX.
+## VL-005 — Build Studio [PLANNED]
+Read-only GitHub integrations: PR, branch, CI, handoff status; task management and founder approval workflow.
 
-## Sprint 5 — Portfolio and operational economics
-Real subscription/one-time revenue, LLM costs, gross margin, retention, expenses, business portfolio.
+## VL-006 — Portfolio / operational economics [PLANNED]
+Recorded revenue vs hypothetical opportunity, hosting/LLM costs, contribution margin, retention, project lifecycle and kill decisions.
 
-## Sprint 6 — Optional orchestration and SaaS readiness
-Approved API integrations with spending limits, background jobs, roles, tenant isolation, access controls and additional compliance; separate product-market fit test before SaaS ambitions.
+## VL-007 — Optional orchestration & SaaS readiness [PLANNED]
+Additional API costs, spend controls, background jobs, security, roles, tenant isolation and compliance. Only after a real need is shown.
 
-**Do not build the whole roadmap in Sprint 0.** Each phase gets a new explicit current task after review.
+**Principle:** each milestone has an explicit versioned task. No progressing to next milestone until PR review and founder approval.
