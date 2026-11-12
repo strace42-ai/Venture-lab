@@ -5,9 +5,9 @@
   "source": "ai-draft",
   "synthetic": false,
   "reviewedBy": "Claude Code (черновик ИИ, человеком не проверен)",
-  "title": "VL-003P: расширение пилота — 6 дополнительных кандидатов (не одобрен)",
-  "coverage": "12.11.2026, веб-поиск и открытие страниц инструментами Claude Code. Открыты: ross-tech.com (Auto-Scan), shop.dieselschrauber.org (KDataScope), hickleys.com, reviews.yandex.ru (VCDS RUS), touchstay.com (guidebook, pricing), sostav.ru (обзор посуточных платформ), honeybook.com/pricing, crmindex.ru (Планфикс), dev.to (GummySearch), skillbox.ru (мониторинг соцсетей), 9to5mac.com (FixBot), jenova.ai/ru, profi.ru, spinify.com, toolfox.ru. RU-поиск: расшифровка автоскана VAG, цифровой гид гостя/гостевая книга QR, клиентский портал для фрилансеров/самозанятых, мониторинг болей/отзывов, ИИ-диагностика бытовой техники, геймификация продаж.",
-  "limitations": "Черновик ИИ: ни одна ссылка не проверена человеком; страницы пересказаны инструментом. Не открылись: drive2.ru (403), kontur.ru (403), beamai.ru (DNS из этой сессии), a2is.ru (пустой ответ). «Не найдено в РФ» = не найдено в 1–3 поисковых запросах; RuStore/App Store не проверялись. Цены РФ — гипотезы; цены конкурентов — со страниц вендоров/каталогов на дату наблюдения (Skillbox — 2021, устарели). Спрос, платящие клиенты, конверсия НЕ установлены. Оценки (assessment) намеренно не выставлены.",
+  "title": "VL-003P: расширение пилота — 6 дополнительных кандидатов (не одобрен; ревизия 2 после аудита)",
+  "coverage": "12.11.2026, веб-поиск и открытие страниц инструментами Claude Code. Открыты: ross-tech.com (Auto-Scan), shop.dieselschrauber.org (KDataScope), hickleys.com, reviews.yandex.ru (VCDS RUS), touchstay.com (guidebook, pricing), sostav.ru (обзор посуточных платформ), honeybook.com/pricing, crmindex.ru (Планфикс), dev.to (GummySearch), skillbox.ru (мониторинг соцсетей), 9to5mac.com (FixBot), jenova.ai/ru, profi.ru, spinify.com, toolfox.ru. RU-поиск: расшифровка автоскана VAG, цифровой гид гостя/гостевая книга QR, клиентский портал для фрилансеров/самозанятых, мониторинг болей/отзывов, ИИ-диагностика бытовой техники, геймификация продаж. Ревизия 2 (по аудиту ChatGPT, 12.11.2026): открыты new.realtycalendar.ru (Автопилот, автосообщения), rynto.io/ru (guest-portal, pricing), gcom.host, help.bnovo.ru (сервис «Гости»), travelline.ru (кабинет гостя), vaglogs.com.",
+  "limitations": "Черновик ИИ: ни одна ссылка не проверена человеком; страницы пересказаны инструментом. Не открылись: drive2.ru (403), kontur.ru (403), beamai.ru (не загружен в среде воркера: DNS — это НЕ означает недоступность сервиса), a2is.ru (пустой ответ). «Не найдено в РФ» = не найдено в 1–3 поисковых запросах; RuStore/App Store не проверялись. Цены РФ — гипотезы; цены конкурентов — со страниц вендоров/каталогов на дату наблюдения (Skillbox — 2021, устарели). Спрос, платящие клиенты, конверсия НЕ установлены. Оценки (assessment) намеренно не выставлены. Ревизия 2: glampconnect.ru не загрузился (503 / upstream failed) — не загружен в среде воркера; vaglogs.com/about_app вернул ошибку. Прежний вывод «отдельного RU-сервиса гида гостя не найдено» опирался на неверный класс доказательства (обзорная статья) и ОПРОВЕРГНУТ.",
   "markets": [
     "Auto",
     "Hospitality",
@@ -24,13 +24,13 @@
   "ideas": [
     {
       "externalId": "vag-autoscan-report",
-      "title": "VAG Report: понятный отчёт по автоскану VCDS / «Вася Диагност»",
-      "pitch": "Владелец или мастер загружает текстовый лог автоскана VAG, сервис превращает коды и блоки в отчёт: что критично, что можно отложить, какие вопросы задать мастеру.",
+      "title": "VAG Report: понятный отчёт по Auto-Scan (кодам неисправностей) VCDS / «Вася Диагност»",
+      "pitch": "Владелец или мастер загружает текстовый Auto-Scan (коды неисправностей по блокам), сервис объясняет приоритет и что спросить у мастера. Анализ динамических логов (наддув/впрыск/зажигание) НЕ входит — эту работу уже делает VAGLOGS бесплатно.",
       "segment": "B2C",
       "category": "Auto",
       "targetPersona": "Владельцы VW/Audi/Skoda/SEAT с собственным адаптером; небольшие независимые сервисы и подборщики авто",
       "problem": "Автоскан выдаёт коды и номера блоков без объяснения приоритета; разбор идёт через форумы и видео.",
-      "ruUnmetJob": "ГИПОТЕЗА: в трёх поисковых запросах (RU/EN) не найдено сервиса, который интерпретирует лог автоскана в понятный отчёт; есть сами сканеры (VCDS, «Вася Диагност», Carista, OBDeleven) и форумная помощь. Спрос на платную интерпретацию НЕ подтверждён.",
+      "ruUnmetJob": "СУЖЕННАЯ ГИПОТЕЗА: две разные работы. (1) Анализ динамических CSV-логов (наддув, впрыск, зажигание) — уже закрыт бесплатным VAGLOGS, который планирует ИИ-пояснения. (2) Интерпретация Auto-Scan/кодов неисправностей на русском — специализированного сервиса не найдено в трёх запросах; VAGLOGS заявляет работу с data logs, а не с DTC-сканом. Спрос и готовность платить НЕ подтверждены; конкурент может расширить функциональность.",
       "whyNow": "ГИПОТЕЗА: LLM позволяют объяснять коды неисправностей на естественном языке; проверить качество на реальных логах.",
       "monetization": "Оплата за отчёт или пакет отчётов для подборщиков/мастеров.",
       "priceHypothesis": "ГИПОТЕЗА, не измерено: 199–490 ₽ за отчёт; B2B-пакет для подборщиков.",
@@ -109,6 +109,25 @@
           ],
           "supportNote": "Подтверждает продажу таких сканеров в РФ; происхождение и лицензионность ПО не проверены (на форумах есть обвинения в пиратстве). Спроса на интерпретацию не подтверждает.",
           "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "w4",
+          "region": "west",
+          "claim": "VAGLOGS: загрузка CSV-логов VCDS, VAG-COM, ME7Logger, MHD, JB4 и др.; бесплатная автоматическая диагностика форсунок, наддува и зажигания с указанием группы, времени и оборотов; «Coming soon: AI will describe the results in plain words». Работает с data logs, Auto-Scan/DTC не упоминается.",
+          "url": "https://www.vaglogs.com/",
+          "title": "VAGLOGS — Automotive Data Log Analyzer & Diagnostics",
+          "publisher": "VAGLOGS",
+          "sourceType": "company_self_report",
+          "language": "en",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "westernNeed",
+            "defensibility",
+            "mvpFeasible"
+          ],
+          "supportNote": "Ближайший аналог для динамических логов; бесплатен — давит на монетизацию. Страница загружена через headless-браузер; /about_app вернула ошибку.",
+          "verificationStatus": "unreviewed"
         }
       ],
       "westernProducts": [
@@ -134,6 +153,18 @@
           "observedAt": "2026-11-12",
           "evidenceIds": [
             "w2"
+          ]
+        },
+        {
+          "id": "wp3",
+          "name": "VAGLOGS",
+          "url": "https://www.vaglogs.com/",
+          "kind": "direct",
+          "coverage": "high",
+          "note": "Бесплатный анализ динамических логов; DTC-скан не заявлен.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "w4"
           ]
         }
       ],
@@ -166,19 +197,18 @@
     {
       "externalId": "str-guest-guide-ru",
       "title": "Цифровой гид гостя для посуточной аренды (RU)",
-      "pitch": "Ссылка/QR на мобильный гид квартиры: заселение, Wi-Fi, правила, район; автоотправка перед заездом; меньше однотипных вопросов хозяину.",
+      "pitch": "Ссылка/QR на мобильный гид квартиры: заселение, Wi-Fi, правила, район. ПОСЛЕ ПЕРЕПРОВЕРКИ: в РФ уже есть прямые решения, включая бесплатные тарифы.",
       "segment": "B2B",
       "category": "Hospitality",
       "targetPersona": "Владельцы и управляющие 1–30 посуточными квартирами/апартаментами",
       "problem": "Однотипные вопросы гостей и ручная рассылка инструкций по заселению.",
-      "ruUnmetJob": "ГИПОТЕЗА: в трёх запросах на русском не найден отдельный русскоязычный сервис цифрового гида гостя; смежные решения — PMS/каналы (Apart Sharing с бесконтактным заселением и приложением, Bnovo, TravelLine, RealtyCalendar), встроенный гид Airbnb (в РФ недоступен для большинства хозяев — не проверено). Отсутствие конкурентов НЕ утверждается.",
+      "ruUnmetJob": "ГИПОТЕЗА ОПРОВЕРГНУТА (ревью ChatGPT, перепроверено по страницам вендоров 12.11.2026): в РФ есть прямые предложения цифрового гида/инструкций гостя — RealtyCalendar «Автопилот» (раздел «Цифровой гид для гостя»), RYNTO Guest Portal (цифровой гид, ссылка и PIN на бронь; бесплатно до 31.12.2027, FREE до 3 юнитов навсегда), GuestCom (сценарий заселения в Telegram/MAX, Free 0 ₽ на 1 объект, Pro 498 ₽/объект/мес), кабинет гостя Bnovo «Гости.Биново» (описание, правила, время заезда, чат). Ниша «дешёвый простой гид для 1–3 объектов вне PMS» уже закрыта бесплатными тарифами GuestCom и RYNTO. Отличие не найдено.",
       "whyNow": "ГИПОТЕЗА: рост посуточного сегмента и бесконтактного заселения; проверить.",
       "monetization": "Подписка за объект или пакет объектов.",
       "priceHypothesis": "ГИПОТЕЗА, не измерено: 290–590 ₽/мес за объект; бесплатный тариф на 1 объект.",
       "riskFlags": [
-        "demandUnverified",
         "competitionUnverified",
-        "coldStart"
+        "demandUnverified"
       ],
       "sources": [
         {
@@ -235,6 +265,129 @@
           "supportNote": "Блог-публикация, возможно партнёрская; отсутствие упоминания ≠ отсутствие функции.",
           "verificationStatus": "unreviewed",
           "publishedAt": "2026-06-18"
+        },
+        {
+          "id": "r2",
+          "region": "ru",
+          "claim": "RealtyCalendar «Автопилот» содержит раздел «Цифровой гид для гостя»: информация об объекте в личном кабинете гостя 24/7; точный адрес и инструкции показываются после подтверждения оплаты.",
+          "url": "https://new.realtycalendar.ru/products/autopilot",
+          "title": "Автопилот — RealtyCalendar",
+          "publisher": "RealtyCalendar",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness",
+            "ruUnmetJob"
+          ],
+          "supportNote": "Прямое совпадение функции внутри PMS для посуточной аренды; цена гида на странице не указана.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r3",
+          "region": "ru",
+          "claim": "Автосообщения RealtyCalendar за день до заезда отправляют «инструкцию по заселению, правила проживания, пароль от вайфай», перед выездом — инструкцию по выезду.",
+          "url": "https://new.realtycalendar.ru/products/avtomaticheskie-soobshcheniya",
+          "title": "Автоматические сообщения — RealtyCalendar",
+          "publisher": "RealtyCalendar",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness"
+          ],
+          "supportNote": "Закрывает часть работы «ответить на типовые вопросы гостя».",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r4",
+          "region": "ru",
+          "claim": "RYNTO Guest Portal: «Цифровой гид» (Wi-Fi, правила, фото, карта, рекомендации), инструкции заселения, «Каждое бронирование получает собственную ссылку и PIN-код», без установки приложения; для апартаментов, вилл, отелей и УК.",
+          "url": "https://rynto.io/ru/guest-portal",
+          "title": "Портал гостя — RYNTO",
+          "publisher": "RYNTO",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness",
+            "ruUnmetJob"
+          ],
+          "supportNote": "Русскоязычный прямой конкурент; регион обслуживания на странице не указан.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r5",
+          "region": "ru",
+          "claim": "RYNTO: вся платформа бесплатна до 31 декабря 2027 года; после — FREE до 3 юнитов $0 навсегда, STARTER 4–20 юнитов $29.",
+          "url": "https://rynto.io/ru/pricing",
+          "title": "Цены — RYNTO",
+          "publisher": "RYNTO",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "monetization",
+            "ruWeakness"
+          ],
+          "supportNote": "Бесплатный тариф сильно давит на цену гипотезы 290–590 ₽/объект. Страница загружена через headless-браузер.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r6",
+          "region": "ru",
+          "claim": "GuestCom: сценарий заселения в Telegram и MAX (адрес, вход, коды, Wi-Fi, правила, фото/видео); Free 0 ₽ «навсегда» на 1 объект; Pro 498 ₽/объект/мес; Business 998 ₽/объект/мес.",
+          "url": "https://gcom.host/",
+          "title": "GuestCom",
+          "publisher": "GuestCom",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness",
+            "monetization"
+          ],
+          "supportNote": "Прямой конкурент с открытыми ценами и бесплатным тарифом.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r7",
+          "region": "ru",
+          "claim": "Bnovo «Гости.Биново»: кабинет гостя по ссылке из подтверждения брони — описание и правила проживания, время заезда/выезда, карта, чат с отелем, бронирование услуг.",
+          "url": "https://help.bnovo.ru/knowledgebase/сервис-гости/",
+          "title": "Сервис «Гости» — база знаний Bnovo",
+          "publisher": "Bnovo",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness"
+          ],
+          "supportNote": "Смежный функционал внутри PMS; ограничения: гость не получает уведомлений о новых сообщениях.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r8",
+          "region": "ru",
+          "claim": "TravelLine: личный кабинет гостя в TL: Booking Engine — просмотр бронирований, бронирование услуг, оплата; инструкции заселения на странице не упоминаются.",
+          "url": "https://www.travelline.ru/support/knowledge-base/kak-nastroit-lichnyy-kabinet-gostya/",
+          "title": "Как настроить личный кабинет гостя — TravelLine",
+          "publisher": "TravelLine",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness"
+          ],
+          "supportNote": "Смежный кабинет гостя, не гид по объекту.",
+          "verificationStatus": "unreviewed"
         }
       ],
       "westernProducts": [
@@ -256,21 +409,84 @@
         {
           "id": "rc1",
           "name": "Apart Sharing",
+          "url": "https://www.sostav.ru/blogs/284452/91574",
           "kind": "adjacent",
           "coverage": "partial",
-          "gap": "Платформа аренды с бесконтактным заселением и приложением; отдельного гида для хозяина не описано (по обзору).",
+          "gap": "Платформа аренды с бесконтактным заселением и приложением гостя (по обзору).",
           "observedAt": "2026-11-12",
           "evidenceIds": [
             "r1"
-          ],
-          "url": "https://www.sostav.ru/blogs/284452/91574"
+          ]
         },
         {
-          "id": "rc2",
-          "name": "PMS/менеджеры каналов (Bnovo, TravelLine, RealtyCalendar)",
+          "id": "rc3",
+          "name": "RealtyCalendar «Автопилот»",
+          "url": "https://new.realtycalendar.ru/products/autopilot",
+          "kind": "direct",
+          "coverage": "high",
+          "gap": "Гид внутри PMS — нужен переход на RealtyCalendar.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r2",
+            "r3"
+          ]
+        },
+        {
+          "id": "rc4",
+          "name": "RYNTO Guest Portal",
+          "url": "https://rynto.io/ru/guest-portal",
+          "kind": "direct",
+          "coverage": "high",
+          "gap": "Не выявлен; бесплатно до 2028 и FREE до 3 юнитов.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r4",
+            "r5"
+          ]
+        },
+        {
+          "id": "rc5",
+          "name": "GuestCom",
+          "url": "https://gcom.host/",
+          "kind": "direct",
+          "coverage": "high",
+          "gap": "Сценарий в мессенджерах, не веб-гид; бесплатно на 1 объект.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r6"
+          ]
+        },
+        {
+          "id": "rc6",
+          "name": "Bnovo «Гости.Биново»",
+          "url": "https://help.bnovo.ru/knowledgebase/сервис-гости/",
           "kind": "adjacent",
+          "coverage": "partial",
+          "gap": "Кабинет гостя внутри PMS, ориентирован на отели.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r7"
+          ]
+        },
+        {
+          "id": "rc7",
+          "name": "TravelLine (кабинет гостя)",
+          "url": "https://www.travelline.ru/support/knowledge-base/kak-nastroit-lichnyy-kabinet-gostya/",
+          "kind": "adjacent",
+          "coverage": "low",
+          "gap": "Кабинет бронирований, не гид.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r8"
+          ]
+        },
+        {
+          "id": "rc8",
+          "name": "Glamp Connect",
+          "url": "https://www.glampconnect.ru/",
+          "kind": "direct",
           "coverage": "unknown",
-          "gap": "Функции гостевых сообщений/гидов не проверены — нужно открыть их справку.",
+          "gap": "Назван в ревью ChatGPT; страница не загрузилась в среде воркера (503) — функции не подтверждены этим прогоном.",
           "observedAt": "2026-11-12",
           "evidenceIds": []
         }
