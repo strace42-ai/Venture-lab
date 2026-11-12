@@ -1,0 +1,880 @@
+{
+  "schemaVersion": "vl-research-1",
+  "runId": "draft-2026-11-12-pilot-002",
+  "researchedAt": "2026-11-12",
+  "source": "ai-draft",
+  "synthetic": false,
+  "reviewedBy": "Claude Code (черновик ИИ, человеком не проверен)",
+  "title": "VL-003P: расширение пилота — 6 дополнительных кандидатов (не одобрен; ревизия 2 после аудита)",
+  "coverage": "12.11.2026, веб-поиск и открытие страниц инструментами Claude Code. Открыты: ross-tech.com (Auto-Scan), shop.dieselschrauber.org (KDataScope), hickleys.com, reviews.yandex.ru (VCDS RUS), touchstay.com (guidebook, pricing), sostav.ru (обзор посуточных платформ), honeybook.com/pricing, crmindex.ru (Планфикс), dev.to (GummySearch), skillbox.ru (мониторинг соцсетей), 9to5mac.com (FixBot), jenova.ai/ru, profi.ru, spinify.com, toolfox.ru. RU-поиск: расшифровка автоскана VAG, цифровой гид гостя/гостевая книга QR, клиентский портал для фрилансеров/самозанятых, мониторинг болей/отзывов, ИИ-диагностика бытовой техники, геймификация продаж. Ревизия 2 (по аудиту ChatGPT, 12.11.2026): открыты new.realtycalendar.ru (Автопилот, автосообщения), rynto.io/ru (guest-portal, pricing), gcom.host, help.bnovo.ru (сервис «Гости»), travelline.ru (кабинет гостя), vaglogs.com.",
+  "limitations": "Черновик ИИ: ни одна ссылка не проверена человеком; страницы пересказаны инструментом. Не открылись: drive2.ru (403), kontur.ru (403), beamai.ru (не загружен в среде воркера: DNS — это НЕ означает недоступность сервиса), a2is.ru (пустой ответ). «Не найдено в РФ» = не найдено в 1–3 поисковых запросах; RuStore/App Store не проверялись. Цены РФ — гипотезы; цены конкурентов — со страниц вендоров/каталогов на дату наблюдения (Skillbox — 2021, устарели). Спрос, платящие клиенты, конверсия НЕ установлены. Оценки (assessment) намеренно не выставлены. Ревизия 2: glampconnect.ru не загрузился (503 / upstream failed) — не загружен в среде воркера; vaglogs.com/about_app вернул ошибку. Прежний вывод «отдельного RU-сервиса гида гостя не найдено» опирался на неверный класс доказательства (обзорная статья) и ОПРОВЕРГНУТ.",
+  "markets": [
+    "Auto",
+    "Hospitality",
+    "Productivity",
+    "Research",
+    "Home",
+    "Sales"
+  ],
+  "sourceReferences": [
+    "https://touchstay.com/digital-guidebook",
+    "https://www.sostav.ru/blogs/284452/91574",
+    "https://www.ross-tech.com/vcds/tour/autoscan.php"
+  ],
+  "ideas": [
+    {
+      "externalId": "vag-autoscan-report",
+      "title": "VAG Report: понятный отчёт по Auto-Scan (кодам неисправностей) VCDS / «Вася Диагност»",
+      "pitch": "Владелец или мастер загружает текстовый Auto-Scan (коды неисправностей по блокам), сервис объясняет приоритет и что спросить у мастера. Анализ динамических логов (наддув/впрыск/зажигание) НЕ входит — эту работу уже делает VAGLOGS бесплатно.",
+      "segment": "B2C",
+      "category": "Auto",
+      "targetPersona": "Владельцы VW/Audi/Skoda/SEAT с собственным адаптером; небольшие независимые сервисы и подборщики авто",
+      "problem": "Автоскан выдаёт коды и номера блоков без объяснения приоритета; разбор идёт через форумы и видео.",
+      "ruUnmetJob": "СУЖЕННАЯ ГИПОТЕЗА: две разные работы. (1) Анализ динамических CSV-логов (наддув, впрыск, зажигание) — уже закрыт бесплатным VAGLOGS, который планирует ИИ-пояснения. (2) Интерпретация Auto-Scan/кодов неисправностей на русском — специализированного сервиса не найдено в трёх запросах; VAGLOGS заявляет работу с data logs, а не с DTC-сканом. Спрос и готовность платить НЕ подтверждены; конкурент может расширить функциональность.",
+      "whyNow": "ГИПОТЕЗА: LLM позволяют объяснять коды неисправностей на естественном языке; проверить качество на реальных логах.",
+      "monetization": "Оплата за отчёт или пакет отчётов для подборщиков/мастеров.",
+      "priceHypothesis": "ГИПОТЕЗА, не измерено: 199–490 ₽ за отчёт; B2B-пакет для подборщиков.",
+      "riskFlags": [
+        "demandUnverified",
+        "legal",
+        "competitionUnverified"
+      ],
+      "sources": [
+        {
+          "id": "w1",
+          "region": "west",
+          "claim": "Ross-Tech описывает Auto-Scan VCDS: по каждому блоку выводятся номера деталей, кодирование и коды неисправностей; страница не объясняет, как интерпретировать коды.",
+          "url": "https://www.ross-tech.com/vcds/tour/autoscan.php",
+          "title": "VCDS Tour — Auto-Scan",
+          "publisher": "Ross-Tech",
+          "sourceType": "company_self_report",
+          "language": "en",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "westernNeed",
+            "mvpFeasible"
+          ],
+          "supportNote": "Показывает формат входных данных (лог автоскана) и то, что вендор не даёт интерпретации. Не доказывает спрос.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "w2",
+          "region": "west",
+          "claim": "KDataScope — платный (49 € с НДС) просмотрщик логов VCDS/KOBD2Check с графиками и картами значений.",
+          "url": "https://shop.dieselschrauber.org/en/kdatascope-obd-log-viewer-p-52.php",
+          "title": "KDataScope OBD Log Viewer",
+          "publisher": "dieselschrauber.org shop",
+          "sourceType": "company_self_report",
+          "language": "en",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "westernPay",
+            "westernNeed"
+          ],
+          "supportNote": "Существует платный софт для анализа логов, но он визуализирует данные, а не объясняет приоритет неисправностей.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "w3",
+          "region": "west",
+          "claim": "Hickleys продаёт интерфейсы VCDS HEX-V2 и HEX-NET за £385–472,50 без НДС (акционные цены).",
+          "url": "https://hickleys.com/diagnostics/vcds.php",
+          "title": "VCDS VAG Specialist Diagnostics",
+          "publisher": "Hickleys Ltd",
+          "sourceType": "company_self_report",
+          "language": "en",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "westernPay"
+          ],
+          "supportNote": "Показывает, что аудитория платит за инструмент диагностики; не показывает спрос на интерпретацию.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r1",
+          "region": "ru",
+          "claim": "На Яндекс Отзывах есть карточка «Автосканер VCDS 22.9/22.3.1 RUS, Вася 19.6 для VAG»: рейтинг 4,7 при 0 видимых отзывов.",
+          "url": "https://reviews.yandex.ru/product/vcds-22-9-22-3-1-rus--1479575004",
+          "title": "Автосканер VCDS 22.9/22.3.1 RUS, Вася 19.6",
+          "publisher": "Яндекс Отзывы",
+          "sourceType": "unknown",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness"
+          ],
+          "supportNote": "Подтверждает продажу таких сканеров в РФ; происхождение и лицензионность ПО не проверены (на форумах есть обвинения в пиратстве). Спроса на интерпретацию не подтверждает.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "w4",
+          "region": "west",
+          "claim": "VAGLOGS: загрузка CSV-логов VCDS, VAG-COM, ME7Logger, MHD, JB4 и др.; бесплатная автоматическая диагностика форсунок, наддува и зажигания с указанием группы, времени и оборотов; «Coming soon: AI will describe the results in plain words». Работает с data logs, Auto-Scan/DTC не упоминается.",
+          "url": "https://www.vaglogs.com/",
+          "title": "VAGLOGS — Automotive Data Log Analyzer & Diagnostics",
+          "publisher": "VAGLOGS",
+          "sourceType": "company_self_report",
+          "language": "en",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "westernNeed",
+            "defensibility",
+            "mvpFeasible"
+          ],
+          "supportNote": "Ближайший аналог для динамических логов; бесплатен — давит на монетизацию. Страница загружена через headless-браузер; /about_app вернула ошибку.",
+          "verificationStatus": "unreviewed"
+        }
+      ],
+      "westernProducts": [
+        {
+          "id": "wp1",
+          "name": "Ross-Tech VCDS",
+          "url": "https://www.ross-tech.com/vcds/tour/autoscan.php",
+          "kind": "adjacent",
+          "coverage": "partial",
+          "note": "Сканер с Auto-Scan; интерпретации нет.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "w1"
+          ]
+        },
+        {
+          "id": "wp2",
+          "name": "KDataScope",
+          "url": "https://shop.dieselschrauber.org/en/kdatascope-obd-log-viewer-p-52.php",
+          "kind": "adjacent",
+          "coverage": "low",
+          "note": "Визуализация логов, не отчёт для владельца.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "w2"
+          ]
+        },
+        {
+          "id": "wp3",
+          "name": "VAGLOGS",
+          "url": "https://www.vaglogs.com/",
+          "kind": "direct",
+          "coverage": "high",
+          "note": "Бесплатный анализ динамических логов; DTC-скан не заявлен.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "w4"
+          ]
+        }
+      ],
+      "russianCompetitors": [
+        {
+          "id": "rc1",
+          "name": "«Вася Диагност» / VCDS RUS (сканеры)",
+          "kind": "substitute",
+          "coverage": "low",
+          "gap": "Сканер выдаёт коды; понятного отчёта о приоритетах нет. Официальный сайт «Вася Диагност» не открывался.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r1"
+          ],
+          "url": "https://reviews.yandex.ru/product/vcds-22-9-22-3-1-rus--1479575004"
+        },
+        {
+          "id": "rc2",
+          "name": "Форумы drive2.ru и частные мастера",
+          "kind": "substitute",
+          "coverage": "partial",
+          "gap": "Бесплатная помощь сообщества; страницы drive2 вернули 403 при проверке — содержание не подтверждено.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [],
+          "url": "https://www.drive2.ru/"
+        }
+      ],
+      "assessment": null
+    },
+    {
+      "externalId": "str-guest-guide-ru",
+      "title": "Цифровой гид гостя для посуточной аренды (RU)",
+      "pitch": "Ссылка/QR на мобильный гид квартиры: заселение, Wi-Fi, правила, район. ПОСЛЕ ПЕРЕПРОВЕРКИ: в РФ уже есть прямые решения, включая бесплатные тарифы.",
+      "segment": "B2B",
+      "category": "Hospitality",
+      "targetPersona": "Владельцы и управляющие 1–30 посуточными квартирами/апартаментами",
+      "problem": "Однотипные вопросы гостей и ручная рассылка инструкций по заселению.",
+      "ruUnmetJob": "ГИПОТЕЗА ОПРОВЕРГНУТА (ревью ChatGPT, перепроверено по страницам вендоров 12.11.2026): в РФ есть прямые предложения цифрового гида/инструкций гостя — RealtyCalendar «Автопилот» (раздел «Цифровой гид для гостя»), RYNTO Guest Portal (цифровой гид, ссылка и PIN на бронь; бесплатно до 31.12.2027, FREE до 3 юнитов навсегда), GuestCom (сценарий заселения в Telegram/MAX, Free 0 ₽ на 1 объект, Pro 498 ₽/объект/мес), кабинет гостя Bnovo «Гости.Биново» (описание, правила, время заезда, чат). Ниша «дешёвый простой гид для 1–3 объектов вне PMS» уже закрыта бесплатными тарифами GuestCom и RYNTO. Отличие не найдено.",
+      "whyNow": "ГИПОТЕЗА: рост посуточного сегмента и бесконтактного заселения; проверить.",
+      "monetization": "Подписка за объект или пакет объектов.",
+      "priceHypothesis": "ГИПОТЕЗА, не измерено: 290–590 ₽/мес за объект; бесплатный тариф на 1 объект.",
+      "riskFlags": [
+        "competitionUnverified",
+        "demandUnverified"
+      ],
+      "sources": [
+        {
+          "id": "w1",
+          "region": "west",
+          "claim": "Touch Stay описывает цифровой гид гостя с автоотправкой к брони, 30+ языками, ИИ и допродажами; заявляет «90% fewer guest questions» и «Join thousands of hosts».",
+          "url": "https://touchstay.com/digital-guidebook",
+          "title": "Digital guidebook",
+          "publisher": "Touch Stay",
+          "sourceType": "company_self_report",
+          "language": "en",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "westernNeed",
+            "westernPay",
+            "retention"
+          ],
+          "supportNote": "Цифры — самоотчёт вендора, независимо не проверены.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "w2",
+          "region": "west",
+          "claim": "На странице цен Touch Stay указан бесплатный план «$0 /month, forever» с комиссией 5% магазина; цены платных планов на странице не показаны.",
+          "url": "https://touchstay.com/pricing-page",
+          "title": "Touch Stay pricing",
+          "publisher": "Touch Stay",
+          "sourceType": "company_self_report",
+          "language": "en",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "monetization"
+          ],
+          "supportNote": "Модель freemium + комиссия с допродаж; конкретные платные цены не подтверждены.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r1",
+          "region": "ru",
+          "claim": "Обзор платформ посуточной аренды (18.06.2026) перечисляет Apart Sharing, Островок, Яндекс Путешествия, Суточно.ру, Отелло, Авито Путешествия; бесконтактное заселение и приложение для гостей описаны только у Apart Sharing; гиды для гостей не упомянуты.",
+          "url": "https://www.sostav.ru/blogs/284452/91574",
+          "title": "Рейтинг платформ для посуточной аренды 2026",
+          "publisher": "Sostav.ru (блог)",
+          "sourceType": "unknown",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness",
+            "ruUnmetJob"
+          ],
+          "supportNote": "Блог-публикация, возможно партнёрская; отсутствие упоминания ≠ отсутствие функции.",
+          "verificationStatus": "unreviewed",
+          "publishedAt": "2026-06-18"
+        },
+        {
+          "id": "r2",
+          "region": "ru",
+          "claim": "RealtyCalendar «Автопилот» содержит раздел «Цифровой гид для гостя»: информация об объекте в личном кабинете гостя 24/7; точный адрес и инструкции показываются после подтверждения оплаты.",
+          "url": "https://new.realtycalendar.ru/products/autopilot",
+          "title": "Автопилот — RealtyCalendar",
+          "publisher": "RealtyCalendar",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness",
+            "ruUnmetJob"
+          ],
+          "supportNote": "Прямое совпадение функции внутри PMS для посуточной аренды; цена гида на странице не указана.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r3",
+          "region": "ru",
+          "claim": "Автосообщения RealtyCalendar за день до заезда отправляют «инструкцию по заселению, правила проживания, пароль от вайфай», перед выездом — инструкцию по выезду.",
+          "url": "https://new.realtycalendar.ru/products/avtomaticheskie-soobshcheniya",
+          "title": "Автоматические сообщения — RealtyCalendar",
+          "publisher": "RealtyCalendar",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness"
+          ],
+          "supportNote": "Закрывает часть работы «ответить на типовые вопросы гостя».",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r4",
+          "region": "ru",
+          "claim": "RYNTO Guest Portal: «Цифровой гид» (Wi-Fi, правила, фото, карта, рекомендации), инструкции заселения, «Каждое бронирование получает собственную ссылку и PIN-код», без установки приложения; для апартаментов, вилл, отелей и УК.",
+          "url": "https://rynto.io/ru/guest-portal",
+          "title": "Портал гостя — RYNTO",
+          "publisher": "RYNTO",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness",
+            "ruUnmetJob"
+          ],
+          "supportNote": "Русскоязычный прямой конкурент; регион обслуживания на странице не указан.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r5",
+          "region": "ru",
+          "claim": "RYNTO: вся платформа бесплатна до 31 декабря 2027 года; после — FREE до 3 юнитов $0 навсегда, STARTER 4–20 юнитов $29.",
+          "url": "https://rynto.io/ru/pricing",
+          "title": "Цены — RYNTO",
+          "publisher": "RYNTO",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "monetization",
+            "ruWeakness"
+          ],
+          "supportNote": "Бесплатный тариф сильно давит на цену гипотезы 290–590 ₽/объект. Страница загружена через headless-браузер.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r6",
+          "region": "ru",
+          "claim": "GuestCom: сценарий заселения в Telegram и MAX (адрес, вход, коды, Wi-Fi, правила, фото/видео); Free 0 ₽ «навсегда» на 1 объект; Pro 498 ₽/объект/мес; Business 998 ₽/объект/мес.",
+          "url": "https://gcom.host/",
+          "title": "GuestCom",
+          "publisher": "GuestCom",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness",
+            "monetization"
+          ],
+          "supportNote": "Прямой конкурент с открытыми ценами и бесплатным тарифом.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r7",
+          "region": "ru",
+          "claim": "Bnovo «Гости.Биново»: кабинет гостя по ссылке из подтверждения брони — описание и правила проживания, время заезда/выезда, карта, чат с отелем, бронирование услуг.",
+          "url": "https://help.bnovo.ru/knowledgebase/сервис-гости/",
+          "title": "Сервис «Гости» — база знаний Bnovo",
+          "publisher": "Bnovo",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness"
+          ],
+          "supportNote": "Смежный функционал внутри PMS; ограничения: гость не получает уведомлений о новых сообщениях.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r8",
+          "region": "ru",
+          "claim": "TravelLine: личный кабинет гостя в TL: Booking Engine — просмотр бронирований, бронирование услуг, оплата; инструкции заселения на странице не упоминаются.",
+          "url": "https://www.travelline.ru/support/knowledge-base/kak-nastroit-lichnyy-kabinet-gostya/",
+          "title": "Как настроить личный кабинет гостя — TravelLine",
+          "publisher": "TravelLine",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness"
+          ],
+          "supportNote": "Смежный кабинет гостя, не гид по объекту.",
+          "verificationStatus": "unreviewed"
+        }
+      ],
+      "westernProducts": [
+        {
+          "id": "wp1",
+          "name": "Touch Stay",
+          "url": "https://touchstay.com/digital-guidebook",
+          "kind": "direct",
+          "coverage": "high",
+          "note": "Цифровой гид + ИИ + допродажи.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "w1",
+            "w2"
+          ]
+        }
+      ],
+      "russianCompetitors": [
+        {
+          "id": "rc1",
+          "name": "Apart Sharing",
+          "url": "https://www.sostav.ru/blogs/284452/91574",
+          "kind": "adjacent",
+          "coverage": "partial",
+          "gap": "Платформа аренды с бесконтактным заселением и приложением гостя (по обзору).",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r1"
+          ]
+        },
+        {
+          "id": "rc3",
+          "name": "RealtyCalendar «Автопилот»",
+          "url": "https://new.realtycalendar.ru/products/autopilot",
+          "kind": "direct",
+          "coverage": "high",
+          "gap": "Гид внутри PMS — нужен переход на RealtyCalendar.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r2",
+            "r3"
+          ]
+        },
+        {
+          "id": "rc4",
+          "name": "RYNTO Guest Portal",
+          "url": "https://rynto.io/ru/guest-portal",
+          "kind": "direct",
+          "coverage": "high",
+          "gap": "Не выявлен; бесплатно до 2028 и FREE до 3 юнитов.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r4",
+            "r5"
+          ]
+        },
+        {
+          "id": "rc5",
+          "name": "GuestCom",
+          "url": "https://gcom.host/",
+          "kind": "direct",
+          "coverage": "high",
+          "gap": "Сценарий в мессенджерах, не веб-гид; бесплатно на 1 объект.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r6"
+          ]
+        },
+        {
+          "id": "rc6",
+          "name": "Bnovo «Гости.Биново»",
+          "url": "https://help.bnovo.ru/knowledgebase/сервис-гости/",
+          "kind": "adjacent",
+          "coverage": "partial",
+          "gap": "Кабинет гостя внутри PMS, ориентирован на отели.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r7"
+          ]
+        },
+        {
+          "id": "rc7",
+          "name": "TravelLine (кабинет гостя)",
+          "url": "https://www.travelline.ru/support/knowledge-base/kak-nastroit-lichnyy-kabinet-gostya/",
+          "kind": "adjacent",
+          "coverage": "low",
+          "gap": "Кабинет бронирований, не гид.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r8"
+          ]
+        },
+        {
+          "id": "rc8",
+          "name": "Glamp Connect",
+          "url": "https://www.glampconnect.ru/",
+          "kind": "direct",
+          "coverage": "unknown",
+          "gap": "Назван в ревью ChatGPT; страница не загрузилась в среде воркера (503) — функции не подтверждены этим прогоном.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": []
+        }
+      ],
+      "assessment": null
+    },
+    {
+      "externalId": "solo-client-room",
+      "title": "Клиентская комната для соло-исполнителя (RU)",
+      "pitch": "Одна ссылка для клиента: статус проекта, файлы, согласования, счета и чек самозанятого — без внедрения CRM.",
+      "segment": "B2B",
+      "category": "Productivity",
+      "targetPersona": "Самозанятые и ИП: дизайнеры, разработчики, маркетологи, бухгалтеры",
+      "problem": "Переписка, файлы и согласования разбросаны по мессенджерам; клиент не видит статус.",
+      "ruUnmetJob": "ГИПОТЕЗА СЛАБАЯ: в поиске на русском не найден продукт «клиентский портал для фрилансера»; при этом универсальные CRM (Битрикс24, Планфикс с бесплатным тарифом) закрывают смежные задачи. Готовность соло-исполнителей платить не подтверждена.",
+      "monetization": "Подписка соло-исполнителя.",
+      "priceHypothesis": "ГИПОТЕЗА, не измерено: 290–490 ₽/мес.",
+      "riskFlags": [
+        "demandUnverified",
+        "competitionUnverified",
+        "lowRetention"
+      ],
+      "sources": [
+        {
+          "id": "w1",
+          "region": "west",
+          "claim": "HoneyBook: планы Starter $29/мес, Essentials $49/мес, Premium $109/мес (годовая оплата); клиентский портал включён во все планы («Provide a dedicated page to access files and project details»).",
+          "url": "https://www.honeybook.com/pricing",
+          "title": "HoneyBook pricing",
+          "publisher": "HoneyBook",
+          "sourceType": "company_self_report",
+          "language": "en",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "westernPay",
+            "westernNeed",
+            "monetization"
+          ],
+          "supportNote": "Цены вендора; портал — часть более широкого продукта, не отдельная категория.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r1",
+          "region": "ru",
+          "claim": "Карточка Планфикс на CRMindex: бесплатный тариф и платные 366/610/854 ₽ за пользователя; клиентский портал на странице не упоминается.",
+          "url": "https://crmindex.ru/products/planfix",
+          "title": "Планфикс — CRMindex",
+          "publisher": "CRMindex",
+          "sourceType": "unknown",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness"
+          ],
+          "supportNote": "Каталог, не официальная страница; наличие клиентского доступа в Планфикс нужно проверить в справке вендора.",
+          "verificationStatus": "unreviewed"
+        }
+      ],
+      "westernProducts": [
+        {
+          "id": "wp1",
+          "name": "HoneyBook",
+          "url": "https://www.honeybook.com/pricing",
+          "kind": "adjacent",
+          "coverage": "high",
+          "note": "Портал внутри CRM для независимых специалистов.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "w1"
+          ]
+        }
+      ],
+      "russianCompetitors": [
+        {
+          "id": "rc1",
+          "name": "Планфикс",
+          "kind": "substitute",
+          "coverage": "unknown",
+          "gap": "Конструктор процессов; клиентский доступ не подтверждён.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r1"
+          ],
+          "url": "https://crmindex.ru/products/planfix"
+        },
+        {
+          "id": "rc2",
+          "name": "Битрикс24 (экстранет/клиентский портал)",
+          "kind": "substitute",
+          "coverage": "unknown",
+          "gap": "Тяжёлое внедрение для соло-исполнителя; функции не проверены в этом прогоне.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": []
+        }
+      ],
+      "assessment": null
+    },
+    {
+      "externalId": "pain-radar-ru",
+      "title": "Радар болей рынка: жалобы и запросы пользователей из открытых сообществ",
+      "pitch": "Сбор и кластеризация публичных жалоб и запросов («ищу сервис…», «бесит, что…») по нише для поиска продуктовых идей.",
+      "segment": "B2B",
+      "category": "Research",
+      "targetPersona": "Инди-разработчики, продуктовые команды, маркетологи",
+      "problem": "Ручной поиск болей по форумам и соцсетям долог и бессистемен.",
+      "ruUnmetJob": "ГИПОТЕЗА: российские системы мониторинга (Brand Analytics, YouScan, Медиалогия, IQBuzz) ориентированы на бренды и стоят от ~9,5 тыс. ₽/мес (цены 2021 года); дешёвого инструмента «поиск болей для продукта» на русском не найдено. Сильный риск зависимости от API площадок.",
+      "monetization": "Подписка.",
+      "priceHypothesis": "ГИПОТЕЗА, не измерено: 990–2 990 ₽/мес.",
+      "riskFlags": [
+        "lockedApi",
+        "legal",
+        "demandUnverified"
+      ],
+      "sources": [
+        {
+          "id": "w1",
+          "region": "west",
+          "claim": "Статья на DEV Community утверждает, что GummySearch закрылся 30.11.2025, и перечисляет альтернативы (F5Bot, Syften $19/мес и др.); автор продвигает собственный продукт.",
+          "url": "https://dev.to/wubingwx/gummysearch-shut-down-here-are-the-reddit-research-alternatives-for-indie-hackers-2akc",
+          "title": "GummySearch shut down — Reddit research alternatives",
+          "publisher": "DEV Community (пользовательский пост)",
+          "sourceType": "unknown",
+          "language": "en",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "westernNeed",
+            "riskManageable"
+          ],
+          "supportNote": "Заинтересованный автор; дата и причина закрытия не подтверждены первоисточником. Показывает и спрос, и риск зависимости от платформы.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r1",
+          "region": "ru",
+          "claim": "Skillbox (март 2021) приводит минимальные тарифы систем мониторинга: IQBuzz от 9 480 ₽/мес, Brand Analytics и Медиалогия от 25 000 ₽/мес, YouScan от 35 000 ₽/мес; Babkee бесплатный с ограничениями.",
+          "url": "https://skillbox.ru/media/marketing/5_sistem_dlya_monitoringa_sotsialnykh_setey/",
+          "title": "5 систем для мониторинга социальных сетей",
+          "publisher": "Skillbox Media",
+          "sourceType": "independent",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness",
+            "monetization"
+          ],
+          "supportNote": "Цены устарели (2021); показывает, что RU-рынок мониторинга есть, но ориентирован на бренды.",
+          "verificationStatus": "unreviewed",
+          "publishedAt": "2021-03-12"
+        }
+      ],
+      "westernProducts": [
+        {
+          "id": "wp1",
+          "name": "GummySearch (закрыт по сообщениям) и альтернативы",
+          "url": "https://dev.to/wubingwx/gummysearch-shut-down-here-are-the-reddit-research-alternatives-for-indie-hackers-2akc",
+          "kind": "direct",
+          "coverage": "unknown",
+          "note": "Статус закрытия — по вторичному источнику.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "w1"
+          ]
+        }
+      ],
+      "russianCompetitors": [
+        {
+          "id": "rc1",
+          "name": "Brand Analytics, YouScan, Медиалогия, IQBuzz",
+          "kind": "adjacent",
+          "coverage": "partial",
+          "gap": "Мониторинг брендов, не поиск продуктовых болей; дорого для инди-команд (по ценам 2021).",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r1"
+          ],
+          "url": "https://skillbox.ru/media/marketing/5_sistem_dlya_monitoringa_sotsialnykh_setey/"
+        }
+      ],
+      "assessment": null
+    },
+    {
+      "externalId": "appliance-fix-assistant-ru",
+      "title": "Помощник по самостоятельной диагностике бытовой техники (RU)",
+      "pitch": "По коду ошибки, фото и описанию — вероятные причины, безопасные шаги самопроверки и решение «чинить самому / вызвать мастера / менять».",
+      "segment": "B2C",
+      "category": "Home",
+      "targetPersona": "Владельцы стиральных/посудомоечных машин и холодильников",
+      "problem": "Непонятно, серьёзна ли поломка и стоит ли платить за выезд мастера.",
+      "ruUnmetJob": "ГИПОТЕЗА: специализированного русскоязычного продукта не найдено в одном поиске; есть справочники кодов ошибок, форумы, маркетплейсы мастеров (Профи.ру: от 2 490 ₽ за услугу ремонта ТВ в Екатеринбурге) и зарубежные ИИ-помощники с русскоязычными страницами (Jenova). Монетизация B2C не подтверждена.",
+      "monetization": "Партнёрская модель с мастерами/запчастями или подписка.",
+      "priceHypothesis": "ГИПОТЕЗА, не измерено: бесплатный базовый разбор + лидогенерация для сервисов.",
+      "riskFlags": [
+        "demandUnverified",
+        "legal",
+        "competitionUnverified"
+      ],
+      "sources": [
+        {
+          "id": "w1",
+          "region": "west",
+          "claim": "9to5Mac (09.12.2025): iFixit запустила FixBot — ИИ-помощника по ремонту в приложении; бесплатный уровень ограничен, расширенные функции — платные (временно бесплатны).",
+          "url": "https://9to5mac.com/2025/12/09/ifixit-launches-fixbot-ai-repair-helper-with-free-and-paid-versions/",
+          "title": "iFixit launches FixBot AI repair helper",
+          "publisher": "9to5Mac",
+          "sourceType": "independent",
+          "language": "en",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "westernNeed",
+            "westernPay"
+          ],
+          "supportNote": "Независимая пресса о запуске; данных о платящих пользователях нет.",
+          "verificationStatus": "unreviewed",
+          "publishedAt": "2025-12-09"
+        },
+        {
+          "id": "r1",
+          "region": "ru",
+          "claim": "Jenova публикует русскоязычную страницу ИИ-помощника «Техник по ремонту бытовой техники»: расшифровка кодов ошибок, анализ фото; бесплатный тариф с ограничениями, цены платных не указаны.",
+          "url": "https://www.jenova.ai/ru/resources/ai-appliance-repair-technician",
+          "title": "ИИ-помощник по ремонту бытовой техники",
+          "publisher": "Jenova",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness"
+          ],
+          "supportNote": "Зарубежный сервис на русском; доступность и оплата из РФ не проверены.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r2",
+          "region": "ru",
+          "claim": "Профи.ру (Екатеринбург): 117 мастеров по ремонту электроники, ремонт телевизоров от 2 490 ₽ за услугу; есть бесплатный раздел вопросов специалистам.",
+          "url": "https://profi.ru/geo-ekt/remont/byttehnika/remont-bytovoi-tehniki/remont-televizorov/",
+          "title": "Ремонт телевизоров в Екатеринбурге",
+          "publisher": "Профи.ру",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruUnmetJob",
+            "monetization"
+          ],
+          "supportNote": "Показывает стоимость альтернативы (вызов мастера) и наличие бесплатных консультаций — субститут.",
+          "verificationStatus": "unreviewed"
+        }
+      ],
+      "westernProducts": [
+        {
+          "id": "wp1",
+          "name": "iFixit FixBot",
+          "url": "https://9to5mac.com/2025/12/09/ifixit-launches-fixbot-ai-repair-helper-with-free-and-paid-versions/",
+          "kind": "direct",
+          "coverage": "high",
+          "note": "Опирается на крупную базу гайдов iFixit.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "w1"
+          ]
+        }
+      ],
+      "russianCompetitors": [
+        {
+          "id": "rc1",
+          "name": "Jenova (RU-страница)",
+          "kind": "direct",
+          "coverage": "partial",
+          "gap": "Зарубежный универсальный ИИ-сервис; локальная база мастеров/запчастей РФ не заявлена.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r1"
+          ],
+          "url": "https://www.jenova.ai/ru/resources/ai-appliance-repair-technician"
+        },
+        {
+          "id": "rc2",
+          "name": "Профи.ру (вопросы специалистам, мастера)",
+          "kind": "substitute",
+          "coverage": "partial",
+          "gap": "Человеческая консультация и выезд мастера, не мгновенная самодиагностика.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r2"
+          ],
+          "url": "https://profi.ru/geo-ekt/remont/byttehnika/remont-bytovoi-tehniki/remont-televizorov/"
+        }
+      ],
+      "assessment": null
+    },
+    {
+      "externalId": "sales-gamification-smb",
+      "title": "Геймификация отдела продаж для малого бизнеса (RU)",
+      "pitch": "Лидерборды, турниры и награды поверх CRM для отделов продаж 5–30 человек.",
+      "segment": "B2B",
+      "category": "Sales",
+      "targetPersona": "Руководители отделов продаж и колл-центров МСБ",
+      "problem": "Низкая вовлечённость менеджеров, сложно поддерживать соревновательность.",
+      "ruUnmetJob": "ГИПОТЕЗА ОПРОВЕРГАЕТСЯ: на рынке РФ есть Gamification Lab (от 1 152 ₽/мес, в реестре ПО), приложения геймификации в Битрикс24, Sales Party, рейтинг сотрудников в АТС Телфин (по вторичным источникам). Незакрытая потребность не выявлена.",
+      "monetization": "Подписка за пользователя.",
+      "priceHypothesis": "ГИПОТЕЗА, не измерено: 100–400 ₽ за сотрудника/мес (порядок по каталогу toolfox).",
+      "riskFlags": [
+        "competitionUnverified",
+        "demandUnverified"
+      ],
+      "sources": [
+        {
+          "id": "w1",
+          "region": "west",
+          "claim": "Spinify: игровые механики (очки, бейджи, лидерборды, конкурсы), интеграции с Salesforce/HubSpot/Pipedrive; вендор заявляет «rated the #1 sales gamification platform on G2»; цены на странице нет.",
+          "url": "https://spinify.com/product/sales-gamification-software/",
+          "title": "Sales Gamification Software",
+          "publisher": "Spinify",
+          "sourceType": "company_self_report",
+          "language": "en",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "westernNeed"
+          ],
+          "supportNote": "Самоотчёт вендора.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r1",
+          "region": "ru",
+          "claim": "Каталог toolfox: Gamification Lab — российская HR-платформа геймификации, от 1 152 ₽/мес, триал 7 дней, облако/коробка; ориентир рынка ~100–400 ₽ на сотрудника в месяц.",
+          "url": "https://toolfox.ru/services/gejmifikaciya/gejmifikaciya-prodazh",
+          "title": "Геймификация продаж — сервисы",
+          "publisher": "toolfox.ru",
+          "sourceType": "unknown",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness",
+            "monetization"
+          ],
+          "supportNote": "Каталог; показывает наличие российских решений.",
+          "verificationStatus": "unreviewed"
+        }
+      ],
+      "westernProducts": [
+        {
+          "id": "wp1",
+          "name": "Spinify",
+          "url": "https://spinify.com/product/sales-gamification-software/",
+          "kind": "direct",
+          "coverage": "high",
+          "note": "Зрелая категория.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "w1"
+          ]
+        }
+      ],
+      "russianCompetitors": [
+        {
+          "id": "rc1",
+          "name": "Gamification Lab",
+          "kind": "direct",
+          "coverage": "partial",
+          "gap": "HR-платформа, не только продажи.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r1"
+          ],
+          "url": "https://toolfox.ru/services/gejmifikaciya/gejmifikaciya-prodazh"
+        },
+        {
+          "id": "rc2",
+          "name": "Приложения геймификации в Битрикс24, Sales Party, Телфин",
+          "kind": "adjacent",
+          "coverage": "unknown",
+          "gap": "Найдены в поиске; страницы не открывались в этом прогоне.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": []
+        }
+      ],
+      "assessment": null
+    }
+  ]
+}
