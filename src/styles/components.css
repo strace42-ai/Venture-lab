@@ -961,3 +961,24 @@ code {
   display: grid;
   gap: var(--s-3);
 }
+
+.mode-banner--test {
+  border-color: rgba(240, 185, 85, 0.4);
+  background: var(--warn-soft);
+}
+
+.mode-banner--test .mode-banner__dot {
+  background: var(--warn);
+  box-shadow: 0 0 0 3px var(--warn-soft);
+}
+
+.mode-pill--test {
+  border-color: rgba(240, 185, 85, 0.4);
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
+.sidebar__demo--test {
+  border-color: rgba(240, 185, 85, 0.35);
+  background: var(--warn-soft);
+}

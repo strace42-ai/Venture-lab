@@ -178,20 +178,35 @@ describe('API data source', () => {
   const ok = (body: unknown, status = 200) => Promise.resolve({ ok: status < 400, status, json: () => Promise.resolve(body) });
 
   it('maps network failure and 503 to «unavailable», 404 detail to null, bad payload to «invalid»', async () => {
-    await expect(createApiSource('/api', () => Promise.reject(new Error('ECONNREFUSED'))).overview()).rejects.toMatchObject({ kind: 'unavailable' });
-    await expect(createApiSource('/api', () => ok({ error: { message: 'db down' } }, 503)).overview()).rejects.toMatchObject({ kind: 'unavailable', message: 'db down' });
-    expect(await createApiSource('/api', () => ok({}, 404)).idea('x')).toBeNull();
-    await expect(createApiSource('/api', () => ok({ nope: true })).overview()).rejects.toMatchObject({ kind: 'invalid' });
+    await expect(createApiSource('real', '/api', () => Promise.reject(new Error('ECONNREFUSED'))).overview()).rejects.toMatchObject({ kind: 'unavailable' });
+    await expect(createApiSource('real', '/api', () => ok({ error: { message: 'db down' } }, 503)).overview()).rejects.toMatchObject({ kind: 'unavailable', message: 'db down' });
+    expect(await createApiSource('real', '/api', () => ok({}, 404)).idea('x')).toBeNull();
+    await expect(createApiSource('real', '/api', () => ok({ nope: true })).overview()).rejects.toMatchObject({ kind: 'invalid' });
+    const notJson = () => Promise.resolve({ ok: false, status: 502, json: () => Promise.reject(new Error('not json')) });
+    await expect(createApiSource('real', '/api', notJson).overview()).rejects.toMatchObject({ kind: 'unavailable', status: 502 });
   });
 
   it('builds a validated query string for the radar', async () => {
     const calls: string[] = [];
-    const src = createApiSource('/api', (u) => {
+    const src = createApiSource('real', '/api', (u: string) => {
       calls.push(u);
       return ok({ rows: [], total: 0, totalAll: 0, page: 2, pageSize: 50, categories: [], stages: [] });
     });
     await src.radar({ q: 'кофе', category: 'HoReCa', stage: 'scored', sort: 'confidence' }, 2);
-    expect(calls[0]).toBe('/api/ideas?sort=confidence&page=2&pageSize=50&q=%D0%BA%D0%BE%D1%84%D0%B5&category=HoReCa&stage=scored');
+    expect(calls[0]).toBe('/api/ideas?dataset=real&sort=confidence&page=2&pageSize=50&q=%D0%BA%D0%BE%D1%84%D0%B5&category=HoReCa&stage=scored');
+  });
+
+  it('every request of a TEST source is scoped to dataset=test (no cross-dataset reads)', async () => {
+    const calls: string[] = [];
+    const src = createApiSource('test', '/api', (u: string) => {
+      calls.push(u);
+      return ok(u.includes('/ideas?') ? { rows: [], total: 0, totalAll: 0, page: 1, pageSize: 50, categories: [], stages: [] } : { ranking: [], kpis: {} });
+    });
+    expect(src.mode).toBe('test');
+    await src.overview();
+    await src.radar({ q: '', category: 'all', stage: 'all', sort: 'score' }, 1);
+    await src.idea('x');
+    expect(calls).toEqual(['/api/overview?dataset=test', '/api/ideas?dataset=test&sort=score&page=1&pageSize=50', '/api/ideas/x?dataset=test']);
   });
 });
 
@@ -244,5 +259,84 @@ describe('labels follow the mode', () => {
     await screen.findByRole('list', { name: 'Топ возможностей по рейтингу' });
     expect(screen.getAllByText('Тестовые данные').length).toBeGreaterThan(0);
     expect(screen.queryByText(/^Демо$/i)).not.toBeInTheDocument();
+  });
+});
+
+
+// ---------------------------------------------------------------- P2: stale Radar rows (review fix)
+describe('Radar never shows rows of another source or stale rows on error', () => {
+  function renderApp(path: string) {
+    window.history.replaceState(null, '', path);
+    const user = userEvent.setup();
+    render(
+      <MemoryRouter initialEntries={[path.split('?')[0]!]}>
+        <DataProvider>
+          <AppRoutes />
+        </DataProvider>
+      </MemoryRouter>,
+    );
+    return user;
+  }
+  const demoTitle = demoData.ideas[0]!.title;
+
+  it('DEMO → REAL on /radar with the API down: explicit error, no demo rows under the REAL banner', async () => {
+    vi.stubGlobal('fetch', () => Promise.reject(new Error('API down')));
+    const user = renderApp('/radar?mode=demo');
+    expect((await screen.findAllByText(demoTitle)).length).toBeGreaterThan(0);
+    await user.click(screen.getByRole('button', { name: 'К реальным данным' }));
+    expect(await screen.findByRole('heading', { name: 'Локальная база исследований недоступна' })).toBeInTheDocument();
+    expect(screen.queryByText(demoTitle)).not.toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: 'Идеи на радаре' })).not.toBeInTheDocument();
+  });
+
+  it('DEMO → REAL on /radar while REAL is still loading: loading state, not demo rows', async () => {
+    vi.stubGlobal('fetch', () => new Promise(() => {})); // never resolves
+    const user = renderApp('/radar?mode=demo');
+    expect((await screen.findAllByText(demoTitle)).length).toBeGreaterThan(0);
+    await user.click(screen.getByRole('button', { name: 'К реальным данным' }));
+    await waitFor(() => expect(screen.queryByText(demoTitle)).not.toBeInTheDocument());
+    expect(screen.getByText('Загрузка…')).toBeInTheDocument();
+    expect(screen.getAllByText('Реальные данные').length).toBeGreaterThan(0);
+  });
+
+  it('REAL → DEMO → REAL on /radar does not leak REAL rows into DEMO either', async () => {
+    const realTitle = 'Только реальная идея';
+    const realView = buildRadarView(realDataset([{ ...scored, title: realTitle }]), { q: '', category: 'all', stage: 'all', sort: 'score' });
+    vi.stubGlobal('fetch', () => Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(realView) }));
+    const user = renderApp('/radar?mode=real');
+    expect((await screen.findAllByText(realTitle)).length).toBeGreaterThan(0);
+    await user.click(screen.getByRole('button', { name: 'Открыть демо' }));
+    expect((await screen.findAllByText(demoTitle)).length).toBeGreaterThan(0);
+    expect(screen.queryByText(realTitle)).not.toBeInTheDocument();
+  });
+
+  it('within one source, a failed refresh shows the error instead of the previous rows', async () => {
+    let fail = false;
+    const ds = realDataset([scored, unscored]);
+    const src: DataSource = {
+      mode: 'real',
+      overview: () => Promise.resolve(buildOverview(ds)),
+      radar: (q) => (fail ? Promise.reject(new ApiError('Ошибка API (500)', 'http', 500)) : Promise.resolve(buildRadarView(ds, q))),
+      idea: (slug) => Promise.resolve(buildIdeaDetail(ds, slug)),
+    };
+    const user = renderWith('/radar', src);
+    expect(await screen.findByRole('table', { name: 'Идеи на радаре' })).toBeInTheDocument();
+    fail = true;
+    await user.click(screen.getByRole('radio', { name: 'Свежие' }));
+    expect(await screen.findByRole('heading', { name: 'Не удалось загрузить данные' })).toBeInTheDocument();
+    expect(screen.queryByRole('table', { name: 'Идеи на радаре' })).not.toBeInTheDocument();
+  });
+
+  it('TEST mode is its own explicitly labelled dataset', async () => {
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', (u: string) => {
+      calls.push(u);
+      return Promise.reject(new Error('API down'));
+    });
+    renderApp('/?mode=test');
+    expect(await screen.findByRole('heading', { name: 'Локальная база исследований недоступна' })).toBeInTheDocument();
+    expect(screen.getAllByText('Тестовые импорты').length).toBeGreaterThan(0);
+    expect(calls.every((u) => u.includes('dataset=test'))).toBe(true);
+    expect(resolveInitialMode('?mode=test')).toBe('test');
   });
 });

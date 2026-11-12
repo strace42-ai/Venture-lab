@@ -41,13 +41,17 @@ jobs:
       # Unit + UI + PostgreSQL integration tests (integration suites fail, not skip, when CI=true).
       - run: npm test
       - run: npm run build
-      - name: CLI smoke — migrate, dry-run, apply, idempotent re-import, snapshot
+      - name: CLI smoke — migrate, dry-run, apply, idempotent re-import, isolated snapshots
         run: |
+          npm run db:migrate
           npm run db:migrate
           npm run research:validate -- research/examples/synthetic-run-1.json
           npm run research:import -- research/examples/synthetic-run-1.json
           npm run research:import -- research/examples/synthetic-run-1.json --apply
           npm run research:import -- research/examples/synthetic-run-1.json --apply
-          npm run research:snapshot -- --as-of 2026-11-06 --apply
+          npm run research:snapshot -- --dataset test --as-of 2026-11-06 --apply
           npm run research:import -- research/examples/synthetic-run-2.json --apply
-          npm run research:snapshot -- --as-of 2026-11-06 --apply
+          npm run research:snapshot -- --dataset test --as-of 2026-11-06 --apply
+          # REAL dataset must still be empty: synthetic imports never leak into it.
+          npm run research:snapshot -- --as-of 2026-11-06 --apply | tee /tmp/real-snap.txt
+          grep -q "нет оценённых идей" /tmp/real-snap.txt

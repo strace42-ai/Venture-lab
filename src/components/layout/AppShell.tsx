@@ -117,6 +117,7 @@ function GlobalSearch() {
 }
 
 function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { mode } = useDataSource();
   const panelRef = useRef<HTMLDivElement>(null);
   const lastFocus = useRef<HTMLElement | null>(null);
 
@@ -165,7 +166,7 @@ function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => void })
           <div className="nav__sep" />
           <NavList items={NAV_SECONDARY} onNavigate={onClose} />
         </nav>
-        <div className="drawer__foot">
+        <div className={cx('drawer__foot', mode === 'real' && 'sidebar__demo--real', mode === 'test' && 'sidebar__demo--test')}>
           <ModeSwitch />
           <ModeNote />
         </div>
@@ -197,7 +198,7 @@ function todayIso(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-/** Explicit DEMO / REAL switch. Changing it never mixes data: the whole source is replaced. */
+/** Explicit REAL / TEST / DEMO switch. Changing it never mixes data: the whole source is replaced. */
 function ModeSwitch() {
   const { mode, setMode } = useDataSource();
   if (!setMode) return null;
@@ -210,8 +211,9 @@ function ModeSwitch() {
         value={mode}
         onChange={setMode}
         options={[
-          { value: 'real', label: 'Реальные' },
-          { value: 'demo', label: 'Демо' },
+          { value: 'real', label: 'Реальные', title: 'Проверенные исследования из локальной базы' },
+          { value: 'test', label: 'Тест', title: 'Синтетические тестовые импорты — изолированный набор' },
+          { value: 'demo', label: 'Демо', title: 'Демо-набор VL-001' },
         ]}
       />
     </div>
@@ -220,24 +222,28 @@ function ModeSwitch() {
 
 function ModeNote() {
   const { mode } = useDataSource();
-  return mode === 'demo' ? (
-    <p>Синтетический набор VL-001, срез на {formatDateLong(demoData.asOf)}. Не факты и не исследования.</p>
-  ) : (
-    <p>Только импортированные проверенные исследования из локальной базы. Демо-данные не подмешиваются.</p>
-  );
+  if (mode === 'demo') return <p>Синтетический набор VL-001, срез на {formatDateLong(demoData.asOf)}. Не факты и не исследования.</p>;
+  if (mode === 'test') return <p>Только синтетические тестовые импорты. Изолированы от реальных данных: не входят в их рейтинг, KPI и срезы.</p>;
+  return <p>Только проверенные исследования из локальной базы. Демо и тестовые импорты не подмешиваются.</p>;
 }
+
+const BANNER: Record<DataMode, { title: string; text: string; cls: string }> = {
+  real: { title: 'Реальные данные', text: 'проверенные исследования из локальной базы', cls: 'mode-banner--real' },
+  test: { title: 'Тестовые импорты', text: 'синтетические данные из локальной базы — не исследование, изолированы от реальных', cls: 'mode-banner--test' },
+  demo: { title: 'Демо-режим', text: 'синтетический набор — не факты', cls: 'mode-banner--demo' },
+};
 
 function ModeBanner() {
   const { mode, setMode } = useDataSource();
-  const real = mode === 'real';
+  const b = BANNER[mode];
   return (
-    <div className={cx('mode-banner', real ? 'mode-banner--real' : 'mode-banner--demo')} role="status">
+    <div className={cx('mode-banner', b.cls)} role="status">
       <span className="mode-banner__dot" aria-hidden />
-      <strong>{real ? 'Реальные данные' : 'Демо-режим'}</strong>
-      <span className="mode-banner__text">{real ? 'локальная база исследований' : 'синтетический набор — не факты'}</span>
+      <strong>{b.title}</strong>
+      <span className="mode-banner__text">{b.text}</span>
       {setMode && (
-        <button type="button" className="mode-banner__switch" onClick={() => setMode(real ? 'demo' : 'real')}>
-          {real ? 'Открыть демо' : 'К реальным данным'}
+        <button type="button" className="mode-banner__switch" onClick={() => setMode(mode === 'real' ? 'demo' : 'real')}>
+          {mode === 'real' ? 'Открыть демо' : 'К реальным данным'}
         </button>
       )}
     </div>
@@ -280,7 +286,7 @@ export function AppShell() {
         <div className="sidebar__bottom">
           <NavList items={NAV_SECONDARY} collapsed={collapsed} />
           {!collapsed && (
-            <div className={cx('sidebar__demo', mode === 'real' && 'sidebar__demo--real')}>
+            <div className={cx('sidebar__demo', mode === 'real' && 'sidebar__demo--real', mode === 'test' && 'sidebar__demo--test')}>
               <ModeSwitch />
               <ModeNote />
             </div>
@@ -316,11 +322,14 @@ export function AppShell() {
           <GlobalSearch key={location.pathname === '/radar' ? 'radar' : 'other'} />
           <DemoBadge label="Демо-данные" />
           {mode === 'real' && <span className="mode-pill">Реальные данные</span>}
+          {mode === 'test' && <span className="mode-pill mode-pill--test">Тестовые импорты</span>}
         </header>
 
         <main id="main" ref={mainRef} className="main" tabIndex={-1}>
           <ModeBanner />
-          <Suspense fallback={<PageSkeleton />}>
+          {/* Keyed by mode: switching the data source remounts the page, so no page-local state
+              (cached rows, filters-in-flight, pending requests) can survive into another source. */}
+          <Suspense key={mode} fallback={<PageSkeleton />}>
             <Outlet />
           </Suspense>
         </main>

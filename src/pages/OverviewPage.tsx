@@ -13,6 +13,7 @@ import { HIGH_CONFIDENCE, HIGH_SCORE, hasCriticalRisk, sumFunnel, type BaselineI
 import type { RankedEntry } from '../domain/scoring';
 import type { Segment, Stage } from '../domain/types';
 import { formatDateLong, formatDateShort, formatTime, pct, plural, relativeDay, verifiedPaymentsPhrase } from '../lib/format';
+import { isLiveMode } from '../domain/types';
 import { cx } from '../lib/cx';
 
 type TopSort = 'rank' | 'confidence' | 'movement';
@@ -30,7 +31,7 @@ export default function OverviewPage() {
   if (state.status === 'loading') return <PageSkeleton />;
   if (state.status === 'error') return <LoadError error={state.error} onRetry={state.retry} />;
   const view = state.data;
-  if (view.mode === 'real' && view.kpis.totalIdeas === 0) return <RealEmptyState view={view} />;
+  if (isLiveMode(view.mode) && view.kpis.totalIdeas === 0) return <RealEmptyState view={view} />;
   return <Overview view={view} />;
 }
 
@@ -42,7 +43,7 @@ function baselineText(b: BaselineInfo | null): string {
 
 function Overview({ view }: { view: OverviewView }) {
   const { kpis, ranking } = view;
-  const isReal = view.mode === 'real';
+  const isReal = isLiveMode(view.mode);
   const [sort, setSort] = useState<TopSort>('rank');
   const [segment, setSegment] = useState<Segment | 'all'>('all');
 
@@ -219,7 +220,7 @@ function NoEligibleFind({ ranked, unscored }: { ranked: number; unscored: number
 
 function HeroFind({ entry, asOf }: { entry: RankedEntry; asOf: string }) {
   const { idea } = entry;
-  const isReal = useMode() === 'real';
+  const isReal = isLiveMode(useMode());
   const band = confidenceBand(entry.confidence);
   const crit = hasCriticalRisk(idea);
   return (
@@ -289,7 +290,7 @@ function HeroFind({ entry, asOf }: { entry: RankedEntry; asOf: string }) {
 function ResearchPulse({ view }: { view: OverviewView }) {
   const runs = view.researchRuns;
   const latest = runs[0];
-  const isReal = view.mode === 'real';
+  const isReal = isLiveMode(view.mode);
   return (
     <Panel className="pulse" eyebrow={isReal ? 'Исследовательские прогоны' : 'Исследовательский пульс'} title={latest ? `Прогон ${formatDateShort(latest.date)}` : 'Прогонов нет'} demo>
       {latest ? (
@@ -400,7 +401,7 @@ function ValidationPreview({ view }: { view: OverviewView }) {
     >
       {view.experiments.length === 0 ? (
         <EmptyState icon={<Beaker size={20} />} title="Экспериментов нет">
-          {view.mode === 'real'
+          {isLiveMode(view.mode)
             ? 'Учёт интервью, офферов и подтверждённых оплат появится в Лаборатории валидации (VL-004). Здесь не показываются выдуманные цифры.'
             : 'Эксперименты ещё не запланированы.'}
         </EmptyState>
@@ -507,7 +508,7 @@ const ACTOR_ICON: Record<string, ReactNode> = {
 };
 
 function ActivityPreview({ view }: { view: OverviewView }) {
-  if (view.mode === 'real') {
+  if (isLiveMode(view.mode)) {
     return (
       <Panel eyebrow="Журнал агентов" title="Активность" footer={<span className="muted">Live-статусы агентов не подключены и не имитируются.</span>}>
         <EmptyState icon={<Database size={20} />} title="Журнал агентов не подключён">

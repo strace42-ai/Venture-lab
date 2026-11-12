@@ -62,7 +62,7 @@ describeDb('scores, ranking and immutable snapshots (integration)', () => {
   it('REAL scores and ranking match the unchanged VL-001 rubric for identical components', async () => {
     const r = await applyImport(db.pool, jsonFile(demoAsEnvelope()), ACTOR);
     expect(r.applied).toBe(true);
-    const real = await loadIdeas(db.pool);
+    const real = await loadIdeas(db.pool, 'test');
     for (const demo of demoData.ideas) {
       const ri = real.find((x) => x.slug === demo.slug)!;
       const da = latestAssessment(demo)!;
@@ -79,7 +79,7 @@ describeDb('scores, ranking and immutable snapshots (integration)', () => {
 
   it('unscored ideas are never ranked and never shown as 0', async () => {
     await applyImport(db.pool, exampleFile('synthetic-run-1.json'), ACTOR);
-    const data = await loadDataset(db.pool, TODAY);
+    const data = await loadDataset(db.pool, 'test', TODAY);
     const ranked = fullRanking(data).map((e) => e.idea.id);
     expect(ranked).not.toContain('test-catalog-photos');
     expect(ranked).toHaveLength(3);
@@ -87,26 +87,26 @@ describeDb('scores, ranking and immutable snapshots (integration)', () => {
 
   it('snapshot is explicit, idempotent and conflicts on a second id for the same date', async () => {
     await applyImport(db.pool, exampleFile('synthetic-run-1.json'), ACTOR);
-    const dry = await createSnapshot(db.pool, { asOf: '2026-11-06', apply: false, actor: 't', today: TODAY });
+    const dry = await createSnapshot(db.pool, { asOf: '2026-11-06', apply: false, actor: 't', today: TODAY, dataset: 'test' });
     expect(dry.status).toBe('ready');
-    expect(await loadSnapshot(db.pool, { id: 'top10-2026-11-06' })).toBeNull();
+    expect(await loadSnapshot(db.pool, 'test', { id: 'test-top10-2026-11-06' })).toBeNull();
 
-    const s1 = await createSnapshot(db.pool, { asOf: '2026-11-06', apply: true, actor: 't', today: TODAY });
+    const s1 = await createSnapshot(db.pool, { asOf: '2026-11-06', apply: true, actor: 't', today: TODAY, dataset: 'test' });
     expect(s1.applied).toBe(true);
     expect(s1.entries.map((e) => e.ideaId)).toEqual(['test-invoice-reminders', 'test-tutor-groups', 'test-contract-clauses']);
-    expect((await createSnapshot(db.pool, { asOf: '2026-11-06', apply: true, actor: 't', today: TODAY })).status).toBe('exists');
-    expect((await createSnapshot(db.pool, { asOf: '2026-11-06', id: 'other-id', apply: true, actor: 't', today: TODAY })).status).toBe('conflict');
-    expect((await createSnapshot(db.pool, { asOf: '2026-12-01', apply: true, actor: 't', today: TODAY })).status).toBe('invalid');
-    expect((await createSnapshot(db.pool, { asOf: '2026-11-01', apply: true, actor: 't', today: TODAY })).status).toBe('empty');
+    expect((await createSnapshot(db.pool, { asOf: '2026-11-06', apply: true, actor: 't', today: TODAY, dataset: 'test' })).status).toBe('exists');
+    expect((await createSnapshot(db.pool, { asOf: '2026-11-06', id: 'other-id', apply: true, actor: 't', today: TODAY, dataset: 'test' })).status).toBe('conflict');
+    expect((await createSnapshot(db.pool, { asOf: '2026-12-01', apply: true, actor: 't', today: TODAY, dataset: 'test' })).status).toBe('invalid');
+    expect((await createSnapshot(db.pool, { asOf: '2026-11-01', apply: true, actor: 't', today: TODAY, dataset: 'test' })).status).toBe('empty');
   });
 
   it('a later reassessment and rejection never rewrite a stored snapshot; movement uses the stored snapshot', async () => {
     await applyImport(db.pool, exampleFile('synthetic-run-1.json'), ACTOR);
-    await createSnapshot(db.pool, { asOf: '2026-11-06', apply: true, actor: 't', today: TODAY });
-    const before = await loadSnapshot(db.pool, { id: 'top10-2026-11-06' });
+    await createSnapshot(db.pool, { asOf: '2026-11-06', apply: true, actor: 't', today: TODAY, dataset: 'test' });
+    const before = await loadSnapshot(db.pool, 'test', { id: 'test-top10-2026-11-06' });
 
     await applyImport(db.pool, exampleFile('synthetic-run-2.json'), ACTOR); // reassess + reject + new idea
-    const after = await loadSnapshot(db.pool, { id: 'top10-2026-11-06' });
+    const after = await loadSnapshot(db.pool, 'test', { id: 'test-top10-2026-11-06' });
     expect(after).toEqual(before);
     expect(after!.entries.map((e) => [e.rank, e.ideaId, e.score])).toEqual([
       [1, 'test-invoice-reminders', 73],
@@ -115,8 +115,8 @@ describeDb('scores, ranking and immutable snapshots (integration)', () => {
     ]);
 
     // Current ranking vs the stored baseline: rejected idea gone, new idea «new», reassessed idea +2.
-    const data = await loadDataset(db.pool, TODAY);
-    expect(data.baseline).toMatchObject({ kind: 'stored', snapshotId: 'top10-2026-11-06' });
+    const data = await loadDataset(db.pool, 'test', TODAY);
+    expect(data.baseline).toMatchObject({ kind: 'stored', snapshotId: 'test-top10-2026-11-06' });
     const now = fullRanking(data);
     expect(now.map((e) => e.idea.id)).toEqual(['test-invoice-reminders', 'test-coffee-waste', 'test-contract-clauses']);
     expect(now[0]).toMatchObject({ score: 75, scoreDelta: 2, movement: { kind: 'same', previousRank: 1 } });
@@ -124,20 +124,20 @@ describeDb('scores, ranking and immutable snapshots (integration)', () => {
     expect(now[2]!.movement).toEqual({ kind: 'same', previousRank: 3 });
 
     // A snapshot for a date before the second run still reflects the first run (as-of semantics).
-    const s = await createSnapshot(db.pool, { asOf: '2026-11-07', apply: true, actor: 't', today: TODAY });
+    const s = await createSnapshot(db.pool, { asOf: '2026-11-07', apply: true, actor: 't', today: TODAY, dataset: 'test' });
     expect(s.entries.map((e) => e.ideaId)).toEqual(['test-invoice-reminders', 'test-tutor-groups', 'test-contract-clauses']);
   });
 
   it('no stored snapshot → no movement is claimed', async () => {
     await applyImport(db.pool, exampleFile('synthetic-run-1.json'), ACTOR);
-    const data = await loadDataset(db.pool, TODAY);
+    const data = await loadDataset(db.pool, 'test', TODAY);
     expect(data.baseline).toBeNull();
     expect(fullRanking(data).every((e) => e.movement.kind === 'none')).toBe(true);
   });
 
   it('an empty database yields an honest empty dataset', async () => {
-    const data = await loadDataset(db.pool, TODAY);
-    expect(data).toMatchObject({ mode: 'real', ideas: [], researchRuns: [], experiments: [], builds: [], activity: [], baseline: null });
+    const data = await loadDataset(db.pool, 'test', TODAY);
+    expect(data).toMatchObject({ mode: 'test', ideas: [], researchRuns: [], experiments: [], builds: [], activity: [], baseline: null });
   });
 
   it('rejects inconsistent rubric versions at the import boundary', async () => {

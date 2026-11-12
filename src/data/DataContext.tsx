@@ -29,7 +29,7 @@ export function DataProvider({ data, source, children }: { data?: Dataset; sourc
 
   const value = useMemo(() => {
     if (fixed) return { mode: fixed.mode, source: fixed };
-    const s = mode === 'demo' ? createDemoSource(demoData) : createApiSource();
+    const s = mode === 'demo' ? createDemoSource(demoData) : createApiSource(mode);
     return { mode, source: s, setMode };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, data, source]);

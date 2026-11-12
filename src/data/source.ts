@@ -6,7 +6,7 @@
  *   over records loaded from PostgreSQL. The UI never mixes the two.
  */
 import { buildIdeaDetail, buildOverview, buildRadarView, type IdeaDetailView, type OverviewView, type RadarQuery, type RadarView } from '../domain/selectors';
-import type { DataMode, Dataset } from '../domain/types';
+import type { DataMode, Dataset, LiveDataset } from '../domain/types';
 
 export type Loadable<T> = T | Promise<T>;
 
@@ -45,7 +45,12 @@ type FetchLike = (input: string, init?: { signal?: AbortSignal; headers?: Record
   json(): Promise<unknown>;
 }>;
 
-export function createApiSource(base = '/api', fetchImpl: FetchLike = (u, i) => fetch(u, i), timeoutMs = 10_000): DataSource {
+/**
+ * API-backed source for ONE isolated dataset: `real` (human-reviewed) or `test` (synthetic imports).
+ * The dataset is sent with every request, so a source can never read the other dataset.
+ */
+export function createApiSource(dataset: LiveDataset = 'real', base = '/api', fetchImpl: FetchLike = (u, i) => fetch(u, i), timeoutMs = 10_000): DataSource {
+  const ds = `dataset=${dataset}`;
   async function get<T>(path: string, allow404 = false): Promise<T | null> {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -58,6 +63,16 @@ export function createApiSource(base = '/api', fetchImpl: FetchLike = (u, i) => 
       clearTimeout(timer);
     }
     if (allow404 && res.status === 404) return null;
+    // Gateway errors (e.g. the dev proxy with the API stopped) mean «unavailable», whatever the body.
+    if (res.status === 502 || res.status === 503 || res.status === 504) {
+      let msg: string | undefined;
+      try {
+        msg = ((await res.json()) as { error?: { message?: string } })?.error?.message;
+      } catch {
+        msg = undefined;
+      }
+      throw new ApiError(msg ?? 'Локальный API недоступен. Запустите `npm run api` (и базу данных).', 'unavailable', res.status);
+    }
     let body: unknown;
     try {
       body = await res.json();
@@ -72,14 +87,14 @@ export function createApiSource(base = '/api', fetchImpl: FetchLike = (u, i) => 
   }
 
   return {
-    mode: 'real',
+    mode: dataset,
     overview: async () => {
-      const v = await get<OverviewView>('/overview');
+      const v = await get<OverviewView>(`/overview?${ds}`);
       if (!v || !Array.isArray(v.ranking) || !v.kpis) throw new ApiError('Ответ /api/overview не соответствует контракту.', 'invalid');
       return v;
     },
     radar: async (query, page) => {
-      const p = new URLSearchParams({ sort: query.sort, page: String(page), pageSize: String(RADAR_PAGE_SIZE) });
+      const p = new URLSearchParams({ dataset, sort: query.sort, page: String(page), pageSize: String(RADAR_PAGE_SIZE) });
       if (query.q) p.set('q', query.q);
       if (query.category !== 'all') p.set('category', query.category);
       if (query.stage !== 'all') p.set('stage', query.stage);
@@ -87,6 +102,6 @@ export function createApiSource(base = '/api', fetchImpl: FetchLike = (u, i) => 
       if (!v || !Array.isArray(v.rows)) throw new ApiError('Ответ /api/ideas не соответствует контракту.', 'invalid');
       return v;
     },
-    idea: (slug) => get<IdeaDetailView>(`/ideas/${encodeURIComponent(slug)}`, true),
+    idea: (slug) => get<IdeaDetailView>(`/ideas/${encodeURIComponent(slug)}?${ds}`, true),
   };
 }

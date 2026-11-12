@@ -18,6 +18,7 @@ import {
 import { effectiveEvidenceStatus, type IdeaDetailView } from '../domain/selectors';
 import { CONFIDENCE_WEIGHTS, DIMENSIONS, breakdown, evidenceConfidence, founderFit, latestAssessment, marketScore, scoreHistory } from '../domain/scoring';
 import type { Assessment, Competitor, ConfidenceComponents, Evidence, Idea } from '../domain/types';
+import { isLiveMode } from '../domain/types';
 import { cx } from '../lib/cx';
 import { formatDateLong, formatDateShort } from '../lib/format';
 
@@ -35,7 +36,7 @@ export default function IdeaPage() {
   const state = useLoad(`idea:${mode}:${slug}`, () => source.idea(slug));
   if (state.status === 'loading') return <PageSkeleton />;
   if (state.status === 'error') return <LoadError error={state.error} onRetry={state.retry} />;
-  if (!state.data) return <NotFound slug={slug} real={mode === 'real'} />;
+  if (!state.data) return <NotFound slug={slug} real={isLiveMode(mode)} />;
   return <Dossier view={state.data} />;
 }
 
@@ -80,7 +81,7 @@ function SourceLink({ url, children }: { url: string; children: ReactNode }) {
 
 function Dossier({ view }: { view: IdeaDetailView }) {
   const { idea, entry } = view;
-  const isReal = view.mode === 'real';
+  const isReal = isLiveMode(view.mode);
   const a = latestAssessment(idea);
   const critical = idea.riskFlags.filter((r) => CRITICAL_RISKS.has(r));
 
@@ -455,7 +456,7 @@ function EvidenceSection({ idea }: { idea: Idea }) {
         <CompetitorTable items={ruComps} caption="Конкуренты в России" />
       )}
       <p className="fineprint">
-        «Не обнаружен» ≠ «конкурентов нет». Утверждение считается проверенным, только если у него есть ссылка, издатель, дата наблюдения и статус «проверено».
+        «Не обнаружен» ≠ «конкурентов нет». Утверждение считается проверенным, только если у него есть ссылка, издатель, дата наблюдения и статус «проверено». «Проверено» — отметка ручной проверки человеком при подготовке исследования; приложение не открывает ссылки и не проверяет источники автоматически.
       </p>
     </Panel>
   );

@@ -232,7 +232,19 @@ export interface ActivityEntry {
   ideaId?: string;
 }
 
-export type DataMode = 'demo' | 'real';
+/**
+ * - `demo`: VL-001 fixture computed in the browser.
+ * - `real`: human-reviewed research from the local DB (synthetic imports are NEVER included).
+ * - `test`: synthetic test imports from the local DB, an isolated dataset of its own.
+ */
+export type DataMode = 'demo' | 'real' | 'test';
+
+/** Which persisted dataset a live (API-backed) mode reads. */
+export type LiveDataset = 'real' | 'test';
+
+export function isLiveMode(m: DataMode): m is LiveDataset {
+  return m !== 'demo';
+}
 
 /** One ranked row of a previous snapshot, used as the movement baseline. */
 export interface BaselineEntry {

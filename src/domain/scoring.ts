@@ -234,6 +234,22 @@ function movementFrom(rank: number, p: { rank: number; score: number } | undefin
 }
 
 /**
+ * Movement of an already-ranked list (e.g. a stored snapshot) against a baseline list.
+ * `null` baseline = no previous snapshot → movement `none` (never assumed «new»).
+ */
+export function compareToBaseline<T extends { ideaId: string; rank: number; score: number }>(
+  entries: T[],
+  baseline: { ideaId: string; rank: number; score: number }[] | null,
+): (T & { movement: Movement; scoreDelta: number | null })[] {
+  if (!baseline) return entries.map((e) => ({ ...e, movement: { kind: 'none' } as Movement, scoreDelta: null }));
+  const idx = new Map(baseline.map((b) => [b.ideaId, { rank: b.rank, score: b.score }]));
+  return entries.map((e) => {
+    const p = idx.get(e.ideaId);
+    return { ...e, movement: movementFrom(e.rank, p), scoreDelta: p ? e.score - p.score : null };
+  });
+}
+
+/**
  * Current ranking at `current` with movement against an explicit baseline.
  * - stored baseline (REAL): an immutable DB snapshot; ideas absent from it are «new».
  * - reconstruct baseline (DEMO): previous ranking derived from append-only history.

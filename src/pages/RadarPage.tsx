@@ -8,6 +8,7 @@ import { useDataSource, useLoad, useMode } from '../data/context';
 import { RISK_LABEL, STAGE_LABEL, STAGE_ORDER } from '../domain/labels';
 import { hasCriticalRisk, type RadarQuery, type RadarRow, type RadarSort, type RadarView } from '../domain/selectors';
 import type { Stage } from '../domain/types';
+import { isLiveMode } from '../domain/types';
 import { cx } from '../lib/cx';
 import { formatDateShort, plural } from '../lib/format';
 
@@ -32,12 +33,15 @@ export default function RadarPage() {
   const view: View = params.get('view') === 'cards' ? 'cards' : 'table';
 
   // Debounce typing only for the network-backed REAL source.
-  const q = useDebounced(query.q, mode === 'real' ? 250 : 0);
+  const q = useDebounced(query.q, isLiveMode(mode) ? 250 : 0);
   const loadQuery = { ...query, q };
   const state = useLoad(`radar:${mode}:${JSON.stringify(loadQuery)}:${page}`, () => source.radar(loadQuery, page));
-  const [lastView, setLastView] = useState<RadarView | null>(null);
-  if (state.status === 'ready' && state.data !== lastView) setLastView(state.data);
-  const data = state.status === 'ready' ? state.data : lastView;
+  // While a NEW query of the SAME source loads, keep showing the previous result (no flicker while
+  // typing). The cache is tagged with the source it came from and is never used for another source,
+  // and never on error: an error is shown as an error, not as stale rows.
+  const [last, setLast] = useState<{ mode: typeof mode; view: RadarView } | null>(null);
+  if (state.status === 'ready' && (last?.view !== state.data || last.mode !== mode)) setLast({ mode, view: state.data });
+  const data: RadarView | null = state.status === 'ready' ? state.data : state.status === 'loading' && last?.mode === mode ? last.view : null;
 
   const cats = data?.categories ?? [];
   const stages = useMemo(() => {
@@ -64,7 +68,7 @@ export default function RadarPage() {
   }
 
   const rows = data?.rows ?? [];
-  const isReal = mode === 'real';
+  const isReal = isLiveMode(mode);
 
   return (
     <div className="page page--radar">
@@ -141,7 +145,7 @@ export default function RadarPage() {
         </div>
       </div>
 
-      {state.status === 'error' && !data ? (
+      {state.status === 'error' ? (
         <LoadError error={state.error} onRetry={state.retry} />
       ) : !data ? (
         <div className="panel" aria-busy="true">
@@ -154,9 +158,15 @@ export default function RadarPage() {
         </div>
       ) : data.totalAll === 0 && isReal ? (
         <div className="panel">
-          <EmptyState icon={<DatabaseZap size={22} />} title="Исследования ещё не импортированы">
-            База реальных исследований пуста. Импортируйте проверенный JSON (<code>npm run research:import -- &lt;файл&gt; --apply</code>) — подробности на странице «Обзор».
-          </EmptyState>
+          {mode === 'test' ? (
+            <EmptyState icon={<DatabaseZap size={22} />} title="Тестовых импортов нет">
+              Синтетические примеры импортируются командой <code>npm run research:import -- research/examples/synthetic-run-1.json --apply</code>.
+            </EmptyState>
+          ) : (
+            <EmptyState icon={<DatabaseZap size={22} />} title="Исследования ещё не импортированы">
+              База реальных исследований пуста. Импортируйте проверенный JSON (<code>npm run research:import -- &lt;файл&gt; --apply</code>) — подробности на странице «Обзор».
+            </EmptyState>
+          )}
         </div>
       ) : (
       <>
@@ -164,7 +174,7 @@ export default function RadarPage() {
         <p className="results-bar__count" aria-live="polite">
           <span className="num">{data.total}</span> {plural(data.total, 'идея', 'идеи', 'идей')} из {data.totalAll}
           {state.status === 'loading' && <span className="muted small"> · обновление…</span>}
-          {state.status === 'error' && <span className="tone-danger small"> · ошибка обновления</span>}
+
           {filtersActive && (
             <button type="button" className="chip-btn" onClick={reset}>
               <X size={12} aria-hidden /> Сбросить фильтры
@@ -246,7 +256,7 @@ function Unscored() {
 }
 
 function RadarTable({ rows }: { rows: RadarRow[] }) {
-  const isReal = useMode() === 'real';
+  const isReal = isLiveMode(useMode());
   return (
     <div className="panel table-wrap">
       <table className="table">
@@ -316,7 +326,7 @@ function RadarTable({ rows }: { rows: RadarRow[] }) {
 
 function RadarCard({ row }: { row: RadarRow }) {
   const { idea } = row;
-  const isReal = useMode() === 'real';
+  const isReal = isLiveMode(useMode());
   const crit = hasCriticalRisk(idea);
   return (
     <li className={cx('panel rcard', idea.stage === 'rejected' && 'is-dim')}>

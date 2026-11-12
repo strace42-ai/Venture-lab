@@ -29,12 +29,12 @@ and titles prefixed «Тест:».
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `externalId` | `^[a-z0-9][a-z0-9-]{1,79}$` | ✔ | Stable dedup key. Never use the title for this. |
-| `slug` | same pattern | — | Defaults to `externalId`. **Cannot change** after the first import. |
+| `slug` | same pattern | — | Defaults to `externalId`. May be omitted on re-import (kept); **cannot change** after the first import. |
 | `title` (3–200), `pitch` (≤1000), `segment` (`B2B`\|`B2C`), `category` (≤60) | | ✔ | |
-| `geography` | text | — | Default `Россия`. |
-| `targetPersona`, `problem`, `ruUnmetJob`, `whyNow`, `thesis`, `monetization`, `priceHypothesis`, `distribution`, `mvp`, `nextAction` | text \| null | — | Descriptive fields. A later run may refresh them; every version is kept in `idea_revisions`. |
-| `excludedFeatures`, `originMarkets` | text[] | — | |
-| `riskFlags` | enum[] | — | `legal`, `lockedApi`, `demandUnverified`, `coldStart`, `networkEffect`, `lowRetention`, `dataPrivacy`, `highCogs`, `competitionUnverified`. |
+| `geography` | text | — | `Россия` for a new idea. |
+| `targetPersona`, `problem`, `ruUnmetJob`, `whyNow`, `thesis`, `monetization`, `priceHypothesis`, `distribution`, `mvp`, `nextAction` | text \| null | — | Descriptive fields, **PATCH semantics** (see below). Every version is kept in `idea_revisions`. |
+| `excludedFeatures`, `originMarkets` | text[] | — | PATCH semantics. |
+| `riskFlags` | enum[] | — | PATCH semantics. Values: `legal`, `lockedApi`, `demandUnverified`, `coldStart`, `networkEffect`, `lowRetention`, `dataPrivacy`, `highCogs`, `competitionUnverified`. |
 | `stage` | lifecycle enum | — | When omitted: `scored` if the idea has an assessment, otherwise `researching`. An existing idea that receives a new assessment moves from discovered/researching to `scored`. A change is appended as a transition. |
 | `stageReason` | text | for `rejected` | |
 | `stageChangedAt` | `YYYY-MM-DD` | — | Defaults to `researchedAt`. Must not be earlier than the previous transition. |
@@ -42,6 +42,29 @@ and titles prefixed «Тест:».
 | `westernProducts` | WesternProduct[] | — | Stored as competitors with market `west`. |
 | `russianCompetitors` | Competitor[] | — | |
 | `assessment` | Assessment \| null | — | **Optional.** When it is absent, the idea is shown as «не оценено» and is not ranked. |
+
+### PATCH semantics for re-imported ideas (cumulative research)
+A later run may contain only part of an idea, for example a new assessment. The stored dossier is
+never erased by accident:
+
+| In the file | Effect on the stored idea |
+|---|---|
+| key **absent** | the stored value is **kept** |
+| `"field": null` (text) / `"field": []` (list) | the value is **cleared**; the import prints a warning naming the cleared fields |
+| a value | replaces the stored value |
+| `title`, `pitch`, `segment`, `category` | required; always taken from the file |
+
+`sources`, `westernProducts`, `russianCompetitors` and the assessment are append-only. A run that omits
+them adds nothing and removes nothing. **Evidence references** (`assessment.evidenceIds`,
+competitor `evidenceIds`) may point to sources in the same file **or** to sources stored earlier for
+the same idea. An unknown reference rejects the file.
+
+## Datasets: REAL vs TEST
+`source: "human-reviewed"` writes to the **REAL** dataset. `source: "synthetic-test"` writes to the
+isolated **TEST** dataset. Reads, rankings, KPIs, API responses (`?dataset=real|test`) and snapshots
+(`research:snapshot --dataset real|test`) always cover exactly one dataset. The database enforces
+this with composite foreign keys: a snapshot entry, or an idea's research run, must belong to the
+same dataset as the idea.
 
 ## Source (evidence)
 
@@ -76,7 +99,7 @@ immutable: a changed record under the same id is a conflict.
 | `confidence` | `{completeness, corroboration, recency, reliability, russiaValidation}` 0..100 | ✔ | Weighted 30/25/15/20/10. |
 | `founderFit` | `{skills, access, timeToSale (0..10), motivation, synergy (0..5)}` \| null | — | Diagnostic only. Not part of the rank. |
 | `rationale` | text 20..4000 | ✔ | |
-| `evidenceIds` | id[] ≥1 | ✔ | Must reference this idea's sources. The import warns when they are unreviewed. |
+| `evidenceIds` | id[] ≥1 | ✔ | Must reference sources of this idea, either in this file or stored by an earlier run. The import warns when they are unreviewed. |
 | `unknowns` | text[] | — | |
 | `revisionReason` | text | — | |
 
@@ -100,7 +123,12 @@ UPDATE and DELETE on them.
 npm run research:validate -- research/inbox/file.json          # schema only, no DB
 npm run research:import   -- research/inbox/file.json          # dry-run diff (default)
 npm run research:import   -- research/inbox/file.json --apply  # one transaction
-npm run research:snapshot -- [--as-of YYYY-MM-DD] [--id top10-...] [--apply]
+npm run research:snapshot -- [--as-of YYYY-MM-DD] [--id top10-...] [--dataset real|test] [--apply]
 ```
+
+Snapshots: there is one per dataset and date, and each one is immutable. Each stores the full
+ranking together with each idea's title and slug as they were at snapshot time. The live ranking
+compares against the latest snapshot **strictly before** today, so creating today's snapshot does
+not reset the movement. The latest stored snapshot is compared with the snapshot before it.
 
 Only `.json` files inside `research/` can be read (symlink escapes are blocked; maximum 5 MB).

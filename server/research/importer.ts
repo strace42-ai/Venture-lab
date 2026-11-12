@@ -12,7 +12,7 @@
  * - scores are never imported as totals — only raw components (strict schema).
  */
 import type { Pool, PoolClient } from '../db/pool';
-import { contentHash } from './files';
+import { canonicalJson, contentHash } from './files';
 import { envelopeSchema, type ResearchAssessment, type ResearchEnvelope, type ResearchIdea, type ResearchSource } from './schema';
 
 export interface Diagnostic {
@@ -56,6 +56,11 @@ export function validateResearch(input: Buffer | string): ValidationResult {
         warnings.push({ level: 'warning', path: `ideas.${i}.sources.${j}`, message: `источник "${s.id}" помечен checked, но без url/publisher/observedAt — будет сохранён как unreviewed` });
       }
     });
+    const fileSourceIds = new Set(idea.sources.map((x) => x.id));
+    const outside = [...(idea.assessment?.evidenceIds ?? []), ...idea.westernProducts.flatMap((w) => w.evidenceIds), ...idea.russianCompetitors.flatMap((r) => r.evidenceIds)].filter((id) => !fileSourceIds.has(id));
+    if (outside.length) {
+      warnings.push({ level: 'warning', path: `ideas.${i}`, message: `ссылки на источники вне файла (${[...new Set(outside)].join(', ')}) будут проверены при импорте по ранее сохранённым источникам идеи` });
+    }
     const a = idea.assessment;
     if (a) {
       const nulls = Object.values(a.scores).filter((v) => v === null).length;
@@ -174,28 +179,75 @@ function emptyCounts(): ImportCounts {
 
 const n = <T>(v: T | null | undefined): T | null => (v === undefined ? null : v);
 
-function ideaContent(idea: ResearchIdea): IdeaContent {
-  return {
+/** Descriptive fields with PATCH semantics on re-import. */
+const PATCHABLE_TEXT = ['targetPersona', 'problem', 'ruUnmetJob', 'whyNow', 'thesis', 'monetization', 'priceHypothesis', 'distribution', 'mvp', 'nextAction'] as const;
+const PATCHABLE_LIST = ['excludedFeatures', 'originMarkets', 'riskFlags'] as const;
+
+export interface MergeResult {
+  content: IdeaContent;
+  /** Fields whose stored value changes. */
+  changed: (keyof IdeaContent)[];
+  /** Fields that had a value and are cleared by an explicit null / []. */
+  cleared: (keyof IdeaContent)[];
+}
+
+/**
+ * Merge an imported idea into the stored dossier.
+ *
+ * PATCH semantics (the research base is cumulative — a short daily update must never silently
+ * erase an earlier full dossier):
+ * - required fields (title, pitch, segment, category) are always taken from the import;
+ * - an ABSENT optional field (key not present) keeps the stored value;
+ * - an explicit `null` (text) or `[]` (list) clears it — reported as a warning;
+ * - `slug` may be omitted on re-import (kept), but never changed.
+ * For a new idea, absent fields become null / [] and geography defaults to «Россия».
+ */
+export function mergeIdeaContent(idea: ResearchIdea, existing: IdeaContent | null): MergeResult {
+  const base: IdeaContent = existing ?? {
     slug: idea.slug ?? idea.externalId,
     title: idea.title,
     pitch: idea.pitch,
     segment: idea.segment,
     category: idea.category,
-    geography: idea.geography,
-    targetPersona: n(idea.targetPersona),
-    problem: n(idea.problem),
-    ruUnmetJob: n(idea.ruUnmetJob),
-    whyNow: n(idea.whyNow),
-    thesis: n(idea.thesis),
-    monetization: n(idea.monetization),
-    priceHypothesis: n(idea.priceHypothesis),
-    distribution: n(idea.distribution),
-    mvp: n(idea.mvp),
-    nextAction: n(idea.nextAction),
-    excludedFeatures: idea.excludedFeatures,
-    originMarkets: idea.originMarkets,
-    riskFlags: [...idea.riskFlags].sort(),
+    geography: 'Россия',
+    targetPersona: null,
+    problem: null,
+    ruUnmetJob: null,
+    whyNow: null,
+    thesis: null,
+    monetization: null,
+    priceHypothesis: null,
+    distribution: null,
+    mvp: null,
+    nextAction: null,
+    excludedFeatures: [],
+    originMarkets: [],
+    riskFlags: [],
   };
+  const next: IdeaContent = { ...base, title: idea.title, pitch: idea.pitch, segment: idea.segment, category: idea.category };
+  if (idea.slug !== undefined) next.slug = idea.slug;
+  if (idea.geography !== undefined) next.geography = idea.geography;
+  for (const k of PATCHABLE_TEXT) {
+    if (idea[k] !== undefined) next[k] = idea[k] ?? null;
+  }
+  for (const k of PATCHABLE_LIST) {
+    const v = idea[k];
+    if (v !== undefined) next[k] = k === 'riskFlags' ? [...v].sort() : [...v];
+  }
+  const changed: (keyof IdeaContent)[] = [];
+  const cleared: (keyof IdeaContent)[] = [];
+  if (existing) {
+    for (const k of Object.keys(next) as (keyof IdeaContent)[]) {
+      if (canonicalJson(next[k]) === canonicalJson(existing[k])) continue;
+      changed.push(k);
+      const was = existing[k];
+      const now = next[k];
+      const hadValue = Array.isArray(was) ? was.length > 0 : was !== null;
+      const isEmpty = Array.isArray(now) ? now.length === 0 : now === null;
+      if (hadValue && isEmpty) cleared.push(k);
+    }
+  }
+  return { content: next, changed, cleared };
 }
 
 function evidenceContent(s: ResearchSource): EvidenceContent {
@@ -236,7 +288,7 @@ function assessmentContent(a: ResearchAssessment) {
 }
 
 interface Existing {
-  idea: { id: number; slug: string; synthetic: boolean; content_hash: string } | null;
+  idea: { id: number; slug: string; synthetic: boolean; content_hash: string; content: IdeaContent } | null;
   stage: { stage: string; effective_at: Date } | null;
   evidence: Map<string, { hash: string; status: string }>;
   competitors: Map<string, string>;
@@ -245,11 +297,60 @@ interface Existing {
 }
 
 async function loadExisting(c: PoolClient, externalId: string): Promise<Existing> {
-  const ideaRow = await c.query<{ id: number; slug: string; synthetic: boolean; content_hash: string }>(
-    'SELECT id, slug, synthetic, content_hash FROM ideas WHERE external_id = $1',
-    [externalId],
-  );
-  const idea = ideaRow.rows[0] ?? null;
+  const ideaRow = await c.query<{
+    id: number;
+    slug: string;
+    synthetic: boolean;
+    content_hash: string;
+    title: string;
+    pitch: string;
+    segment: string;
+    category: string;
+    geography: string;
+    target_persona: string | null;
+    problem: string | null;
+    ru_unmet_job: string | null;
+    why_now: string | null;
+    thesis: string | null;
+    monetization: string | null;
+    price_hypothesis: string | null;
+    distribution: string | null;
+    mvp: string | null;
+    next_action: string | null;
+    excluded_features: string[];
+    origin_markets: string[];
+    risk_flags: string[];
+  }>('SELECT * FROM ideas WHERE external_id = $1', [externalId]);
+  const r = ideaRow.rows[0];
+  const idea = r
+    ? {
+        id: r.id,
+        slug: r.slug,
+        synthetic: r.synthetic,
+        content_hash: r.content_hash,
+        content: {
+          slug: r.slug,
+          title: r.title,
+          pitch: r.pitch,
+          segment: r.segment,
+          category: r.category,
+          geography: r.geography,
+          targetPersona: r.target_persona,
+          problem: r.problem,
+          ruUnmetJob: r.ru_unmet_job,
+          whyNow: r.why_now,
+          thesis: r.thesis,
+          monetization: r.monetization,
+          priceHypothesis: r.price_hypothesis,
+          distribution: r.distribution,
+          mvp: r.mvp,
+          nextAction: r.next_action,
+          excludedFeatures: r.excluded_features,
+          originMarkets: r.origin_markets,
+          riskFlags: [...r.risk_flags].sort(),
+        },
+      }
+    : null;
   const ex: Existing = { idea, stage: null, evidence: new Map(), competitors: new Map(), assessmentHashes: new Set(), latestAssessmentAt: null };
   if (!idea) return ex;
   const st = await c.query<{ stage: string; effective_at: Date }>(
@@ -316,7 +417,8 @@ export async function planImport(c: PoolClient, file: { bytes: Buffer | string; 
     const path = `ideas.${i}(${idea.externalId})`;
     const notes: string[] = [];
     const ex = await loadExisting(c, idea.externalId);
-    const content = ideaContent(idea);
+    const merged = mergeIdeaContent(idea, ex.idea?.content ?? null);
+    const content = merged.content;
     const hash = contentHash(content);
     let change: IdeaAction['change'] = 'insert';
 
@@ -325,7 +427,10 @@ export async function planImport(c: PoolClient, file: { bytes: Buffer | string; 
         diags.push({ level: 'error', path, message: `идея уже существует как ${ex.idea.synthetic ? 'синтетическая' : 'реальная'} — смешивать синтетические и реальные данные нельзя` });
       }
       if (ex.idea.slug !== content.slug) diags.push({ level: 'error', path: `${path}.slug`, message: `slug нельзя менять ("${ex.idea.slug}" → "${content.slug}")` });
-      change = ex.idea.content_hash === hash ? 'unchanged' : 'update';
+      change = merged.changed.length === 0 ? 'unchanged' : 'update';
+      if (merged.cleared.length) {
+        diags.push({ level: 'warning', path, message: `явно очищены поля досье (null/[]): ${merged.cleared.join(', ')} — прежние значения останутся только в истории ревизий` });
+      }
     } else {
       const taken = await c.query('SELECT external_id FROM ideas WHERE slug = $1', [content.slug]);
       if (taken.rows[0]) diags.push({ level: 'error', path: `${path}.slug`, message: `slug "${content.slug}" уже занят другой идеей` });
@@ -333,7 +438,7 @@ export async function planImport(c: PoolClient, file: { bytes: Buffer | string; 
     if (change === 'insert') counts.ideas.inserted++;
     else if (change === 'update') {
       counts.ideas.updated++;
-      notes.push('обновлены описательные поля (старая версия сохранена в истории)');
+      notes.push(`обновлены поля: ${merged.changed.join(', ')} (остальные сохранены; прежняя версия — в истории)`);
     } else counts.ideas.unchanged++;
 
     // Evidence
@@ -362,6 +467,17 @@ export async function planImport(c: PoolClient, file: { bytes: Buffer | string; 
         }
       }
     }
+
+    // Evidence references: this file's sources ∪ evidence already stored for this idea.
+    const knownEvidence = new Set([...idea.sources.map((x) => x.id), ...ex.evidence.keys()]);
+    const checkRefs = (refs: string[], where: string) => {
+      for (const ref of refs) {
+        if (!knownEvidence.has(ref)) diags.push({ level: 'error', path: `${path}.${where}`, message: `ссылка на неизвестный источник "${ref}" (нет ни в файле, ни среди сохранённых источников идеи)` });
+      }
+    };
+    if (idea.assessment) checkRefs(idea.assessment.evidenceIds, 'assessment.evidenceIds');
+    idea.westernProducts.forEach((w, j) => checkRefs(w.evidenceIds, `westernProducts.${j}.evidenceIds`));
+    idea.russianCompetitors.forEach((r, j) => checkRefs(r.evidenceIds, `russianCompetitors.${j}.evidenceIds`));
 
     // Competitors / Western products
     const competitorInserts: IdeaAction['competitorInserts'] = [];

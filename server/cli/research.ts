@@ -2,7 +2,8 @@
  * npm run research:validate -- <file>            schema-only check, no database access
  * npm run research:import   -- <file>            DRY-RUN: diff against the DB, writes nothing
  * npm run research:import   -- <file> --apply    write everything in one transaction
- * npm run research:snapshot -- [--as-of YYYY-MM-DD] [--id top10-...] [--apply]
+ * npm run research:snapshot -- [--as-of YYYY-MM-DD] [--id top10-...] [--dataset real|test] [--apply]
+ *   (default dataset: real — synthetic test imports are snapshotted only with --dataset test)
  *
  * Files are only read from inside research/ (e.g. research/inbox, research/examples).
  */
@@ -19,7 +20,7 @@ const opt = (name: string) => {
   const i = rest.indexOf(name);
   return i >= 0 ? rest[i + 1] : undefined;
 };
-const positional = rest.filter((a, i) => !a.startsWith('--') && !['--as-of', '--id', '--actor'].includes(rest[i - 1] ?? ''));
+const positional = rest.filter((a, i) => !a.startsWith('--') && !['--as-of', '--id', '--actor', '--dataset'].includes(rest[i - 1] ?? ''));
 const actor = opt('--actor') ?? process.env.VL_ACTOR ?? `local:${safeUser()}`;
 
 function safeUser(): string {
@@ -75,7 +76,10 @@ async function main() {
       if (flags.has('--apply')) {
         const r = await applyImport(pool, file, { actor });
         printPlan(r, 'apply');
-        if (r.applied) console.log('✔ Импорт записан в базу (одна транзакция).');
+        if (r.applied) {
+          console.log('✔ Импорт записан в базу (одна транзакция).');
+          if (r.synthetic) console.log('ℹ Синтетические данные изолированы: они видны только в режиме «Тестовые импорты» и никогда не попадают в REAL-рейтинг, KPI и срезы.');
+        }
         else if (r.status === 'already-imported') console.log('= Повторный импорт того же файла — ничего не изменено.');
         else {
           console.log('✖ Импорт отклонён — в базу ничего не записано.');
@@ -88,13 +92,16 @@ async function main() {
         else if (p.status !== 'already-imported') process.exitCode = 1;
       }
     } else if (cmd === 'snapshot') {
-      const r = await createSnapshot(pool, { asOf: opt('--as-of'), id: opt('--id'), apply: flags.has('--apply'), actor });
+      const ds = opt('--dataset') ?? 'real';
+      if (ds !== 'real' && ds !== 'test') throw new Error('--dataset должен быть real или test');
+      const r = await createSnapshot(pool, { asOf: opt('--as-of'), id: opt('--id'), apply: flags.has('--apply'), actor, dataset: ds });
+      console.log(`Набор данных: ${ds === 'real' ? 'реальные исследования' : 'ТЕСТОВЫЕ синтетические импорты'}`);
       console.log(r.message);
       for (const e of r.entries.slice(0, 10)) console.log(`  #${e.rank}  ${String(e.score).padStart(3)}  ув.${String(e.confidence).padStart(3)}  ${e.title}`);
       if (r.entries.length > 10) console.log(`  … ещё ${r.entries.length - 10} позиций сохраняются для точного расчёта движения`);
       if (r.status === 'conflict' || r.status === 'invalid') process.exitCode = 1;
     } else {
-      console.error('Команды: validate <file> | import <file> [--apply] | snapshot [--as-of YYYY-MM-DD] [--id ID] [--apply]');
+      console.error('Команды: validate <file> | import <file> [--apply] | snapshot [--as-of YYYY-MM-DD] [--id ID] [--dataset real|test] [--apply]');
       process.exitCode = 2;
     }
   } finally {

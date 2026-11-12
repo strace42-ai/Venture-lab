@@ -42,7 +42,6 @@ describe('vl-research-1 schema validation', () => {
       ['score 6', (e) => (((e.ideas[0]!.assessment as Record<string, Record<string, unknown>>).scores!).westernNeed = 6)],
       ['missing dimension', (e) => delete ((e.ideas[0]!.assessment as Record<string, Record<string, unknown>>).scores!).retention],
       ['rubric v2', (e) => ((e.ideas[0]!.assessment as Record<string, unknown>).rubricVersion = 'v2.0')],
-      ['unknown evidence ref', (e) => ((e.ideas[0]!.assessment as Record<string, unknown>).evidenceIds = ['nope'])],
       ['no evidence ref', (e) => ((e.ideas[0]!.assessment as Record<string, unknown>).evidenceIds = [])],
       ['short rationale', (e) => ((e.ideas[0]!.assessment as Record<string, unknown>).rationale = 'too short')],
       ['synthetic flag mismatch', (e) => (e.synthetic = false)],
@@ -106,7 +105,7 @@ describeDb('research import (integration, isolated schema)', () => {
     const run = await db.pool.query('SELECT checksum, origin, actor, counts FROM import_runs');
     expect(run.rows[0]).toMatchObject({ checksum: exampleFile('synthetic-run-1.json').checksum, origin: 'synthetic-test', actor: 'test-suite' });
 
-    const ideas = await loadIdeas(db.pool);
+    const ideas = await loadIdeas(db.pool, 'test');
     const inv = ideas.find((i) => i.id === 'test-invoice-reminders')!;
     expect(inv.synthetic).toBe(true);
     const w1 = inv.evidence.find((e) => e.id === 'w1')!;
@@ -164,7 +163,7 @@ describeDb('research import (integration, isolated schema)', () => {
     const after = (await db.pool.query('SELECT id, content_hash, scores FROM assessments ORDER BY id')).rows;
     expect(after.slice(0, firstAssessments.length)).toEqual(firstAssessments);
 
-    const ideas = await loadIdeas(db.pool);
+    const ideas = await loadIdeas(db.pool, 'test');
     const inv = ideas.find((i) => i.id === 'test-invoice-reminders')!;
     expect(inv.assessments).toHaveLength(2);
     expect(inv.evidence.find((e) => e.id === 'w1')!.verificationStatus).toBe('checked');
@@ -210,9 +209,28 @@ describeDb('research import (integration, isolated schema)', () => {
     expect(await count(db.pool, 'import_runs')).toBe(1);
   });
 
+  it('evidence refs resolve against the file AND stored evidence; unknown refs reject the file', async () => {
+    const bad = loadExample('synthetic-run-1.json');
+    (bad.ideas[0]!.assessment as Record<string, unknown>).evidenceIds = ['nope'];
+    const r = await applyImport(db.pool, jsonFile(bad), ACTOR);
+    expect(r.applied).toBe(false);
+    expect(r.diagnostics.some((d) => /неизвестный источник "nope"/.test(d.message))).toBe(true);
+    expect(Object.values(await counts(db.pool)).every((x) => x === 0)).toBe(true);
+
+    // A later run may reference evidence stored by an earlier run (cumulative research).
+    await applyImport(db.pool, exampleFile('synthetic-run-1.json'), ACTOR);
+    const later = loadExample('synthetic-run-1.json');
+    later.runId = 'synthetic-later-ref';
+    later.researchedAt = '2026-11-08';
+    later.ideas = [{ ...later.ideas[0]!, sources: [], assessment: { ...(later.ideas[0]!.assessment as Record<string, unknown>), assessedAt: '2026-11-08', rationale: 'Ревизия, опирающаяся на ранее сохранённые источники w1 и r1.', evidenceIds: ['w1', 'r1'] } }];
+    const ok = await applyImport(db.pool, jsonFile(later), ACTOR);
+    expect(ok.applied).toBe(true);
+    expect(ok.counts.assessments.inserted).toBe(1);
+  });
+
   it('data survives a restart (new connection pool)', async () => {
     await applyImport(db.pool, exampleFile('synthetic-run-1.json'), ACTOR);
     const fresh = db.reconnect();
-    expect((await loadIdeas(fresh)).map((i) => i.id).sort()).toEqual(['test-catalog-photos', 'test-contract-clauses', 'test-invoice-reminders', 'test-tutor-groups']);
+    expect((await loadIdeas(fresh, 'test')).map((i) => i.id).sort()).toEqual(['test-catalog-photos', 'test-contract-clauses', 'test-invoice-reminders', 'test-tutor-groups']);
   });
 });

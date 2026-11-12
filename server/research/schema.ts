@@ -140,7 +140,9 @@ export const ideaSchema = z.strictObject({
   pitch: text(1000),
   segment: z.enum(['B2B', 'B2C']),
   category: text(60),
-  geography: text(80).default('Россия'),
+  // Descriptive fields use PATCH semantics on re-import (docs/research-import-format.md):
+  // absent key = keep the stored value, explicit null / [] = clear it. No defaults here on purpose.
+  geography: text(80).optional(),
   targetPersona: text(1000).nullable().optional(),
   problem: text(2000).nullable().optional(),
   ruUnmetJob: text(2000).nullable().optional(),
@@ -151,9 +153,9 @@ export const ideaSchema = z.strictObject({
   distribution: text(2000).nullable().optional(),
   mvp: text(2000).nullable().optional(),
   nextAction: text(1000).nullable().optional(),
-  excludedFeatures: z.array(text(300)).max(30).default([]),
-  originMarkets: z.array(text(60)).max(20).default([]),
-  riskFlags: z.array(z.enum(RISK_FLAGS)).max(RISK_FLAGS.length).default([]),
+  excludedFeatures: z.array(text(300)).max(30).optional(),
+  originMarkets: z.array(text(60)).max(20).optional(),
+  riskFlags: z.array(z.enum(RISK_FLAGS)).max(RISK_FLAGS.length).optional(),
   stage: z.enum(STAGES).optional(),
   stageReason: text(1000).nullable().optional(),
   stageChangedAt: isoDate.optional(),
@@ -212,16 +214,12 @@ export const envelopeSchema = z
         list.forEach((c, j) => {
           if (compIds.has(c.id)) ctx.addIssue({ code: 'custom', path: [...p, key, j, 'id'], message: `повтор id конкурента/аналога "${c.id}"` });
           compIds.add(c.id);
-          for (const ref of c.evidenceIds) {
-            if (!sourceIds.has(ref)) ctx.addIssue({ code: 'custom', path: [...p, key, j, 'evidenceIds'], message: `ссылка на неизвестный источник "${ref}"` });
-          }
+          // Evidence references are resolved by the importer against this file's sources AND the
+          // evidence already stored for the idea (cumulative updates), see planImport.
         });
       }
       const a = idea.assessment;
       if (a) {
-        for (const ref of a.evidenceIds) {
-          if (!sourceIds.has(ref)) ctx.addIssue({ code: 'custom', path: [...p, 'assessment', 'evidenceIds'], message: `оценка ссылается на неизвестный источник "${ref}"` });
-        }
         if (a.assessedAt.slice(0, 10) > today) ctx.addIssue({ code: 'custom', path: [...p, 'assessment', 'assessedAt'], message: 'дата оценки в будущем' });
       }
       if (idea.stage === 'rejected' && !idea.stageReason) {

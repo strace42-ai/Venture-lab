@@ -88,3 +88,49 @@ export async function counts(pool: Pool): Promise<Record<string, number>> {
 }
 
 export const ACTOR = { actor: 'test-suite' };
+
+// ------------------------------------------------------------- envelope builders (tests)
+const DIMS = ['westernNeed', 'westernPay', 'ruWeakness', 'ruUnmetJob', 'monetization', 'speedToPilot', 'mvpFeasible', 'fastTest', 'distribution', 'retention', 'defensibility', 'riskManageable'] as const;
+
+/** 12 raw scores all equal to `v` (0–5); total = 20 × v. */
+export function uniformScores(v: number): Record<(typeof DIMS)[number], number> {
+  return Object.fromEntries(DIMS.map((k) => [k, v])) as Record<(typeof DIMS)[number], number>;
+}
+
+export function ideaJson(externalId: string, opts: { score?: number; assessedAt?: string; title?: string; extra?: Record<string, unknown>; assessment?: boolean } = {}) {
+  const withAssessment = opts.assessment ?? true;
+  return {
+    externalId,
+    title: opts.title ?? `Идея ${externalId}`,
+    pitch: `Описание ${externalId}`,
+    segment: 'B2B',
+    category: 'Test',
+    sources: [{ id: 's1', region: 'west', claim: `claim ${externalId}`, url: `https://example.org/${externalId}`, publisher: 'example.org', observedAt: '2026-11-01', verificationStatus: 'checked' }],
+    ...(withAssessment
+      ? {
+          assessment: {
+            assessedAt: opts.assessedAt ?? '2026-11-01',
+            assessor: 'tester',
+            rubricVersion: 'v1.0',
+            scores: uniformScores(opts.score ?? 3),
+            confidence: { completeness: 50, corroboration: 50, recency: 50, reliability: 50, russiaValidation: 50 },
+            rationale: `Обоснование для ${externalId}, достаточно длинное.`,
+            evidenceIds: ['s1'],
+          },
+        }
+      : {}),
+    ...(opts.extra ?? {}),
+  };
+}
+
+export function envelope(runId: string, researchedAt: string, ideas: unknown[], synthetic = false) {
+  return {
+    schemaVersion: 'vl-research-1',
+    runId,
+    researchedAt,
+    source: synthetic ? 'synthetic-test' : 'human-reviewed',
+    synthetic,
+    reviewedBy: 'tester',
+    ideas,
+  };
+}
