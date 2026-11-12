@@ -1,7 +1,7 @@
 # Venture Lab — Latest implementation handoff
 
 **Task:** VL-003 / Research Operations & Evidence Review (`tasks/current-task.md` v1.0 + `docs/research-operations-vl003.md` v1.0)
-**Status:** IMPLEMENTED. Awaiting independent audit (ChatGPT) and founder approval. **Not merged.**
+**Status:** IMPLEMENTED + REVIEW ROUND 1 CORRECTIVE PASS. Awaiting ChatGPT re-audit and founder approval. **Not merged.**
 **As of:** 2026-11-12
 **Implementer:** Claude Code
 (The VL-002 handoff is in git history, commit `a98e1c9` and earlier.)
@@ -11,8 +11,30 @@
 |---|---|
 | Base | `main` @ `a98e1c9` (VL-002 merged, VL-003 docs) |
 | Feature branch | `claude/vl-003-research-operations` |
-| Implementation commit | `8d34ca4` (+ this handoff update) |
+| Implementation commit | `8d34ca4` |
+| Audited by ChatGPT | `5dc81a0` — https://github.com/strace42-ai/Venture-lab/pull/3#pullrequestreview-5870490987 |
+| Corrective-pass commit | the latest commit on the branch (see PR) |
 | PR | https://github.com/strace42-ai/Venture-lab/pull/3 (not merged) |
+
+## Review round 1 — corrective pass
+| # | Finding | Root cause | Fix | Regression tests |
+|---|---|---|---|---|
+| **P1** | A manually rejected source that the current assessment relies on did not affect recommendations. A 90/100 idea stayed «сильнейшая находка» and counted as a high-confidence lead. | Ranking, `strongestFind` and the KPIs looked only at score, confidence, risks and stage. Nothing connected `assessment.evidenceIds` to the current review status of those sources. | New **derived, current** flag `src/domain/integrity.ts` → `assessmentIntegrity(idea, assessment)` with four states: `needs-review` (a cited source is rejected or missing), `unverified` (unreviewed or unattributed: weak, **not** refuted), `verified`, `unlinked`. It is attached to every `ScoredIdea`/`RankedEntry` as `integrity`. `isFindEligible` excludes `needs-review`. `highConfidenceLeads` excludes it, and a new KPI is `assessmentsNeedingReview`. The idea **stays in the ranking with its stored score**, so the rubric is not silently changed. **Nothing is written:** assessments, the review history and frozen snapshots are unchanged. UI: an Overview alert listing ideas and source ids; a «Оценка требует пересмотра» badge in the TOP-10, Radar (table and cards) and the dossier header; a dossier notice that says what the flag changes and what it does not, and **how to lift it** (a new assessment revision that does not cite the rejected sources, or reversing a mistaken rejection with `research:review`); evidence queue cards note that the current assessment relies on this rejected source. `/api/top10` current entries also carry `integrity`. Documented in `docs/scoring-model.md`. | `server/test/vl003.test.ts` › «evidence integrity…» (4 PostgreSQL integration tests). Import a scored REAL idea, then: it is the lead and counted as strong → manual `rejected` of its cited source → `/api/overview`, `/api/ideas/:id` and `/api/top10` show `needs-review` with `rejected: ['s1']`; same score and rank; the lead moves to the next idea (whose cited source is only *unreviewed*, so not excluded); KPIs 2→1 strong and 1 needing review; assessment count and `top10_entries` unchanged → a new revision citing a checked `s2` lifts the flag, the lead returns, and both revisions plus the rejected review stay in history → a revision that still cites `s1` is flagged again. `src/test/integrity.test.tsx` (10): domain states, uncited rejection ignored, strongest find and KPIs, unreviewed not excluded, historical as-of ranking unchanged, Overview alert and flagged row and a different hero, no alert when checked, dossier notice text, Radar flag. |
+| **P2** | The mobile journal intro pushed the queue and runs far down | Long lede, an always-expanded explainer, 8 filters, and 5 full-size stat cards | ≤640 px: a compact title and a one-line lede; «Открытие ссылки — не доказательство» stays visible as the summary of a collapsible «Как проверяются источники» (`<details>`, keyboard accessible); secondary filters sit behind «Ещё фильтры · N» (status and idea stay visible); the stats are a compact swipeable strip. The desktop layout is unchanged. | Existing journal UI tests still pass (filters, explainer text). Responsive QA. Screenshots: `evidence-queue-test-390.png` (count and queue now on the first screen) and `journal-runs-test-390.png` (run selector and run on the first screen). |
+| boundary | Run evidence status is the current one, not the status at import | — | The label now reads «статус на сегодня (не на дату импорта)». | — |
+
+The pilot remains an unreviewed ai-draft. It was **not** imported into REAL.
+
+**QA data note:** to demonstrate P1 in the TEST dataset, `test-invoice-reminders/r3` was rejected locally with `research:review --dataset test … --apply`. This changed the local development database only and nothing in the repository. See `overview-integrity-test-*.png`, `dossier-integrity-test-*.png`, `radar-integrity-test-1440.png` and `evidence-rejected-cited-test-1440.png`.
+
+### Checks for the corrective pass (2026-11-12)
+| Check | Result |
+|---|---|
+| `npm run lint` / `npm run typecheck` / `npm run build` | ✔ / ✔ / ✔ |
+| `CI=true TEST_DATABASE_URL=… npm test` | ✔ **12 files, 166 tests** (+14: 4 integration, 10 UI/domain) |
+| `npm audit --omit=dev` | ✔ 0 vulnerabilities |
+| Responsive QA, Playwright at 390/768/1024/1280/1440 on journal tabs (REAL/TEST/DEMO), overview, radar and dossiers including a flagged idea | ✔ no horizontal overflow, no console or page errors |
+| GitHub Actions | result recorded in the PR after push |
 
 ## What was built
 ### A. UI — `/journal` (replaces the placeholder; tabs `?tab=runs|evidence|history`)

@@ -16,7 +16,7 @@ import { applyGate, applyImport, validateResearch } from '../research/importer';
 import { loadJournal } from '../research/journal';
 import { createSnapshot } from '../research/snapshot';
 import { reviewEvidence } from '../research/review';
-import { ACTOR, count, counts, createTestDb, describeDb, envelope, exampleFile, ideaJson, jsonFile, type TestDb } from './helpers';
+import { ACTOR, count, counts, createTestDb, describeDb, envelope, exampleFile, ideaJson, jsonFile, uniformScores as uniformScoresForTest, type TestDb } from './helpers';
 
 const TODAY = '2026-11-12';
 
@@ -434,5 +434,105 @@ describeDb('full TEST import scenario is reproducible (examples)', () => {
     expect(j.runs).toHaveLength(2);
     expect(j.runs.every((r) => r.synthetic)).toBe(true);
     expect((await loadJournal(db.pool, 'real', TODAY)).runs).toEqual([]);
+  });
+});
+
+describeDb('evidence integrity: a rejected cited source blocks the recommendation (integration)', () => {
+  let db: TestDb;
+  let app: FastifyInstance;
+  const get = async (url: string) => (await app.inject({ method: 'GET', url })).json();
+  const strongAssessment = (assessedAt: string, evidenceIds: string[], revisionReason?: string) => ({
+    assessedAt,
+    assessor: 'founder (test)',
+    rubricVersion: 'v1.0',
+    scores: uniformScoresForTest(5),
+    confidence: { completeness: 80, corroboration: 80, recency: 80, reliability: 80, russiaValidation: 80 },
+    rationale: 'Сильная оценка, опирающаяся на один проверенный источник.',
+    evidenceIds,
+    ...(revisionReason ? { revisionReason } : {}),
+  });
+  const src = (id: string) => ({ id, region: 'west', claim: `claim ${id}`, url: `https://example.org/int/${id}`, publisher: 'example.org', observedAt: '2026-11-01', verificationStatus: 'checked', reviewedBy: 'founder (human)' });
+
+  beforeAll(async () => {
+    db = await createTestDb();
+    app = await buildApp({ pool: db.pool, today: () => TODAY });
+    await applyImport(
+      db.pool,
+      jsonFile(
+        envelope('int-run-1', '2026-11-01', [
+          { ...ideaJson('int-lead'), sources: [src('s1')], assessment: strongAssessment('2026-11-01', ['s1']) },
+          // Second idea: lower score, its cited source is only unreviewed → weak, but NOT excluded.
+          { ...ideaJson('int-second', { score: 4 }), sources: [{ ...src('s1'), verificationStatus: 'unreviewed', reviewedBy: undefined }], assessment: { ...strongAssessment('2026-11-01', ['s1']), scores: uniformScoresForTest(4) } },
+        ]),
+      ),
+      ACTOR,
+    );
+    await createSnapshot(db.pool, { asOf: '2026-11-02', apply: true, actor: 'test', today: TODAY, dataset: 'real' });
+  });
+  afterAll(async () => {
+    await app?.close();
+    await db?.drop();
+  });
+
+  it('before rejection: the lead is recommended and counted as a strong, substantiated idea', async () => {
+    const o = await get('/api/overview');
+    expect(o.lead.idea.slug).toBe('int-lead');
+    expect(o.ranking[0].integrity).toMatchObject({ status: 'verified', rejected: [] });
+    expect(o.ranking[1].integrity).toMatchObject({ status: 'unverified', unverified: ['s1'] });
+    expect(o.kpis).toMatchObject({ highConfidenceLeads: 2, assessmentsNeedingReview: 0 });
+  });
+
+  it('after a manual rejection: flagged with concrete ids, not recommended; score, assessments and snapshot unchanged', async () => {
+    const snapBefore = (await db.pool.query('SELECT * FROM top10_entries ORDER BY rank')).rows;
+    const assessmentsBefore = await count(db.pool, 'assessments');
+    const scoreBefore = (await get('/api/overview')).ranking[0].score;
+
+    const r = await reviewEvidence(db.pool, { dataset: 'real', ideaId: 'int-lead', evidenceId: 's1', status: 'rejected', reason: 'На странице нет этого утверждения', actor: 'founder' }, { apply: true });
+    expect(r.applied).toBe(true);
+
+    const o = await get('/api/overview');
+    const lead = o.ranking.find((e: { idea: { slug: string } }) => e.idea.slug === 'int-lead');
+    expect(lead.integrity).toMatchObject({ status: 'needs-review', rejected: ['s1'] });
+    expect(lead.score).toBe(scoreBefore); // the rubric is not silently changed
+    expect(lead.rank).toBe(1); // still visible in the ranking, with a flag
+    expect(o.lead.idea.slug).toBe('int-second'); // unreviewed ≠ refuted: the next idea is recommended
+    expect(o.kpis).toMatchObject({ highConfidenceLeads: 1, assessmentsNeedingReview: 1 });
+    const detail = await get('/api/ideas/int-lead');
+    expect(detail.entry.integrity.status).toBe('needs-review');
+    const top = await get('/api/top10');
+    expect(top.current[0].integrity.status).toBe('needs-review');
+
+    expect(await count(db.pool, 'assessments')).toBe(assessmentsBefore);
+    expect((await db.pool.query('SELECT * FROM top10_entries ORDER BY rank')).rows).toEqual(snapBefore);
+  });
+
+  it('a new assessment revision that does not rely on the rejected source lifts the block (history kept)', async () => {
+    await applyImport(
+      db.pool,
+      jsonFile(
+        envelope('int-run-2', '2026-11-05', [
+          { ...ideaJson('int-lead', { assessment: false }), sources: [src('s2')], assessment: strongAssessment('2026-11-05', ['s2'], 'Источник s1 отклонён; оценка пересмотрена на основе s2') },
+        ]),
+      ),
+      ACTOR,
+    );
+    const o = await get('/api/overview');
+    expect(o.lead.idea.slug).toBe('int-lead');
+    expect(o.ranking[0].integrity).toMatchObject({ status: 'verified', rejected: [] });
+    expect(o.kpis.assessmentsNeedingReview).toBe(0);
+    const d = await get('/api/ideas/int-lead');
+    expect(d.idea.assessments).toHaveLength(2); // the refuted revision stays in history
+    expect(d.idea.evidence.find((e: { id: string }) => e.id === 's1').verificationStatus).toBe('rejected');
+  });
+
+  it('a revision that still cites the rejected source stays flagged', async () => {
+    await applyImport(
+      db.pool,
+      jsonFile(envelope('int-run-3', '2026-11-06', [{ ...ideaJson('int-lead', { assessment: false }), sources: [], assessment: strongAssessment('2026-11-06', ['s1', 's2']) }])),
+      ACTOR,
+    );
+    const o = await get('/api/overview');
+    expect(o.ranking.find((e: { idea: { slug: string } }) => e.idea.slug === 'int-lead').integrity).toMatchObject({ status: 'needs-review', rejected: ['s1'] });
+    expect(o.lead.idea.slug).toBe('int-second');
   });
 });

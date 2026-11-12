@@ -1,5 +1,6 @@
 import { AlertTriangle, ArrowLeft, CircleHelp, FileQuestion, Globe2, Link2Off, MapPin, ShieldAlert, Target, Users } from 'lucide-react';
 import type { ReactNode } from 'react';
+import { IntegrityFlag, IntegrityNotice } from '../components/IntegrityNotice';
 import { Link, useParams } from 'react-router-dom';
 import { LoadError } from '../components/StateViews';
 import { SourceLink } from '../components/SourceLink';
@@ -16,6 +17,7 @@ import {
   SOURCE_TYPE_LABEL,
   confidenceBand,
 } from '../domain/labels';
+import { assessmentIntegrity } from '../domain/integrity';
 import { effectiveEvidenceStatus, type IdeaDetailView } from '../domain/selectors';
 import { CONFIDENCE_WEIGHTS, DIMENSIONS, breakdown, evidenceConfidence, founderFit, latestAssessment, marketScore, scoreHistory } from '../domain/scoring';
 import type { Assessment, Competitor, ConfidenceComponents, Evidence, Idea } from '../domain/types';
@@ -66,6 +68,7 @@ function Dossier({ view }: { view: IdeaDetailView }) {
   const isReal = isLiveMode(view.mode);
   const a = latestAssessment(idea);
   const critical = idea.riskFlags.filter((r) => CRITICAL_RISKS.has(r));
+  const integrity = a ? assessmentIntegrity(idea, a) : null;
 
   return (
     <article className="page page--dossier" aria-labelledby="dossier-title">
@@ -98,10 +101,17 @@ function Dossier({ view }: { view: IdeaDetailView }) {
                 Требует ревью
               </Badge>
             )}
+            {integrity?.status === 'needs-review' && (
+              <a href="#integrity-title" className="integrity-jump">
+                <IntegrityFlag integrity={integrity} />
+              </a>
+            )}
           </div>
         </div>
         {a ? <ScoreCard idea={idea} a={a} entry={entry} /> : <UnscoredCard />}
       </header>
+
+      {integrity && <IntegrityNotice integrity={integrity} live={isReal} />}
 
       <div className="dossier-grid">
         <div className="dossier-col">

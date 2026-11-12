@@ -1,4 +1,4 @@
-import { ArrowDownRight, ArrowRight, ArrowUpRight, BookOpenText, CalendarDays, Check, ClipboardCopy, FileCheck2, GitCompareArrows, History, Link2Off, Minus, ShieldAlert, ShieldCheck, Sparkles, UserCheck } from 'lucide-react';
+import { ArrowDownRight, ArrowRight, ArrowUpRight, BookOpenText, CalendarDays, Check, ClipboardCopy, FileCheck2, GitCompareArrows, History, Link2Off, Minus, ShieldAlert, ShieldCheck, ShieldX, Sparkles, UserCheck } from 'lucide-react';
 import { useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { SourceLink } from '../components/SourceLink';
@@ -72,8 +72,11 @@ export default function JournalPage() {
           {mode === 'test' && <SyntheticBadge compact />}
         </div>
         <h1 className="display display--sm">Что исследовано, что проверено, что сдвинулось</h1>
-        <p className="page-head__lede">
-          Датированные прогоны с провенансом, очередь проверки источников и история ТОП-10 по сохранённым срезам. Ежедневные отчёты ChatGPT не синхронизируются автоматически: в базу попадает только то, что основатель одобрил и импортировал командой.
+        <p className="page-head__lede journal-lede">
+          <span className="journal-lede__long">
+            Датированные прогоны с провенансом, очередь проверки источников и история ТОП-10 по сохранённым срезам. Ежедневные отчёты ChatGPT не синхронизируются автоматически: в базу попадает только то, что основатель одобрил и импортировал командой.
+          </span>
+          <span className="journal-lede__short">Только одобренные и импортированные вручную исследования — без автосинхронизации с ChatGPT.</span>
         </p>
       </header>
 
@@ -245,7 +248,7 @@ function RunDetail({ run, mode }: { run: JournalRun; mode: DataMode }) {
       {total > 0 && (
         <div className="run__evidence">
           <div className="run__evidence-head">
-            <span className="field-label">Источники этого прогона — статус сейчас</span>
+            <span className="field-label">Источники этого прогона — статус на сегодня (не на дату импорта)</span>
             <Link to="?tab=evidence" className="link-cta">
               К проверке <ArrowRight size={14} aria-hidden />
             </Link>
@@ -458,6 +461,9 @@ function EvidenceTab() {
   const [params, setParams] = useSearchParams();
   const { q, page } = readQuery(params);
   const state = useLoad(`evidence:${mode}:${JSON.stringify(q)}:${page}`, () => source.evidence(q, page));
+  /** Mobile only: secondary filters are collapsed so the queue itself is reachable quickly. */
+  const [moreOpen, setMoreOpen] = useState(false);
+  const extraActive = [q.market !== 'all', q.sourceType !== 'all', q.dimension !== 'all', q.risk !== 'all', q.minAgeDays !== null, q.missingUrl].filter(Boolean).length;
 
   function update(key: string, value: string | null) {
     const next = new URLSearchParams(params);
@@ -470,12 +476,17 @@ function EvidenceTab() {
 
   return (
     <>
-      <div className="panel review-explainer">
-        <ShieldCheck size={20} aria-hidden className="review-explainer__icon" />
-        <div>
-          <strong>Открытие ссылки — не доказательство.</strong> «Проверено» означает, что человек прочитал источник и подтвердил, что он действительно поддерживает именно это утверждение (дата, издатель, формулировка). Статус меняется только командой <code>research:review</code> с причиной и именем, каждое решение сохраняется как неизменяемое событие. Утверждение без ссылки, издателя и даты наблюдения проверенным не станет.
+      <details className="panel review-explainer">
+        <summary className="review-explainer__summary">
+          <ShieldCheck size={18} aria-hidden className="review-explainer__icon" />
+          <span>
+            <strong>Открытие ссылки — не доказательство.</strong> <span className="review-explainer__more">Как проверяются источники</span>
+          </span>
+        </summary>
+        <div className="review-explainer__body">
+          «Проверено» означает, что человек прочитал источник и подтвердил, что он действительно поддерживает именно это утверждение (дата, издатель, формулировка). Статус меняется только командой <code>research:review</code> с причиной и именем, каждое решение сохраняется как неизменяемое событие. Утверждение без ссылки, издателя и даты наблюдения проверенным не станет. Если отклонён источник, на который опирается текущая оценка идеи, идея получает пометку «Оценка требует пересмотра» и не рекомендуется до новой ревизии оценки.
         </div>
-      </div>
+      </details>
 
       <div className="panel filters filters--evidence" role="region" aria-label="Фильтры источников">
         <div className="filters__field">
@@ -504,6 +515,10 @@ function EvidenceTab() {
             {q.idea !== 'all' && state.status === 'ready' && !state.data.ideas.some((i) => i.id === q.idea) && <option value={q.idea}>{q.idea}</option>}
           </select>
         </div>
+        <button type="button" className="btn btn--ghost filters__more-toggle" aria-expanded={moreOpen} aria-controls="ev-more" onClick={() => setMoreOpen((v) => !v)}>
+          {moreOpen ? 'Скрыть фильтры' : `Ещё фильтры${extraActive ? ` · ${extraActive}` : ''}`}
+        </button>
+        <div id="ev-more" className={cx('filters__more', moreOpen && 'is-open')}>
         <div className="filters__field">
           <label htmlFor="ev-market" className="field-label">
             Рынок
@@ -568,6 +583,7 @@ function EvidenceTab() {
           <input type="checkbox" checked={q.missingUrl} onChange={(e) => update('nourl', e.target.checked ? '1' : null)} />
           <span>Только без ссылки</span>
         </label>
+        </div>
       </div>
 
       {state.status === 'loading' ? (
@@ -663,6 +679,11 @@ function EvidenceCard({ row, mode }: { row: EvidenceRow; mode: DataMode }) {
         </Link>
       </div>
       <p className="evc__claim">{e.claim}</p>
+      {row.usedInAssessment && row.status === 'rejected' && (
+        <p className="evc__integrity">
+          <ShieldX size={13} aria-hidden /> Текущая оценка идеи опирается на этот отклонённый источник — идея не рекомендуется до новой ревизии оценки.
+        </p>
+      )}
       <div className="evc__source">
         {e.url ? (
           <SourceLink url={e.url}>{e.title ?? e.publisher ?? e.url}</SourceLink>

@@ -2415,14 +2415,49 @@
 
 /* ---------- evidence queue ---------- */
 .review-explainer {
-  display: flex;
-  gap: var(--s-3);
-  padding: var(--s-4) var(--s-5);
+  padding: 0;
   font-size: var(--fs-13);
   color: var(--text-2);
   line-height: 1.6;
   border-color: var(--accent-line);
   background: linear-gradient(135deg, var(--accent-soft), transparent 60%), var(--panel);
+}
+
+.review-explainer__summary {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  min-height: 44px;
+  padding: var(--s-3) var(--s-5);
+  cursor: pointer;
+  list-style: none;
+}
+
+.review-explainer__summary::-webkit-details-marker {
+  display: none;
+}
+
+.review-explainer__summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: inherit;
+}
+
+.review-explainer__more {
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.review-explainer__more::after {
+  content: ' ▾';
+}
+
+.review-explainer[open] .review-explainer__more::after {
+  content: ' ▴';
+}
+
+.review-explainer__body {
+  padding: 0 var(--s-5) var(--s-4) calc(var(--s-5) + 18px + var(--s-3));
 }
 
 .review-explainer strong {
@@ -2431,7 +2466,61 @@
 
 .review-explainer__icon {
   color: var(--accent);
-  margin-top: 2px;
+  margin-top: 3px;
+  flex: none;
+}
+
+/* Secondary evidence filters: inline on desktop, collapsible on phones. */
+.filters__more {
+  display: contents;
+}
+
+.filters__more-toggle {
+  display: none;
+}
+
+.journal-lede__short {
+  display: none;
+}
+
+@media (max-width: 640px) {
+  .page--journal {
+    gap: var(--s-4);
+  }
+  .page--journal .page-head {
+    margin-bottom: 0;
+  }
+  .page--journal .display--sm {
+    font-size: 1.25rem;
+    line-height: 1.25;
+  }
+  .page--journal .page-head .eyebrow {
+    margin-bottom: var(--s-1);
+  }
+  .journal-lede__long {
+    display: none;
+  }
+  .journal-lede__short {
+    display: inline;
+  }
+  .page--journal .page-head__lede {
+    font-size: var(--fs-13);
+    margin-top: var(--s-2);
+  }
+  .review-explainer__summary {
+    padding: var(--s-3) var(--s-4);
+  }
+  .review-explainer__body {
+    padding: 0 var(--s-4) var(--s-3);
+  }
+  .filters__more-toggle {
+    display: inline-flex;
+    grid-column: 1 / -1;
+    justify-content: center;
+  }
+  .filters__more:not(.is-open) {
+    display: none;
+  }
 }
 
 .filters--evidence {
@@ -2846,4 +2935,57 @@
   font-size: var(--fs-12);
   color: var(--text-3);
   line-height: 1.45;
+}
+
+/* ---------------------------------------------------- VL-003 corrective: evidence integrity */
+.integrity-flag { margin-top: 6px; }
+.lb__idea .integrity-flag, .t-idea + .integrity-flag { display: inline-flex; width: fit-content; }
+.integrity-notice {
+  display: flex; gap: 14px; align-items: flex-start; margin: 0 0 var(--s-5, 20px);
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--border));
+  background: color-mix(in srgb, var(--danger) 8%, var(--panel));
+}
+.integrity-notice__icon { color: var(--danger); flex: none; margin-top: 2px; }
+.integrity-notice__title { font-size: 1rem; font-weight: 600; margin: 0 0 6px; }
+.integrity-notice p { margin: 0 0 6px; line-height: 1.5; }
+.integrity-alert {
+  display: flex; gap: 12px; align-items: flex-start; margin-bottom: var(--s-5, 20px);
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
+  background: color-mix(in srgb, var(--danger) 7%, var(--panel));
+  font-size: 0.9rem; line-height: 1.5;
+}
+.integrity-alert__icon { color: var(--danger); flex: none; margin-top: 3px; }
+.integrity-alert__list { margin: 6px 0 0; padding-left: 18px; }
+.integrity-alert__list a { color: var(--text); font-weight: 500; }
+.evc__integrity { display: flex; gap: 6px; align-items: flex-start; color: var(--danger); font-size: 0.85rem; margin: 4px 0 8px; }
+.evc__integrity svg { flex: none; margin-top: 3px; }
+.integrity-jump { text-decoration: none; display: inline-flex; }
+.integrity-jump .integrity-flag { margin-top: 0; }
+.integrity-jump:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 999px; }
+
+/* Phones: the journal summary is a compact, swipeable strip so the runs are reachable sooner. */
+@media (max-width: 640px) {
+  .journal-stats {
+    display: flex;
+    gap: var(--s-2);
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin: 0 calc(-1 * var(--s-4));
+    padding: 0 var(--s-4);
+  }
+  .journal-stats::-webkit-scrollbar {
+    display: none;
+  }
+  .jstat {
+    flex: 0 0 auto;
+    padding: var(--s-2) var(--s-3);
+    min-width: 96px;
+  }
+  .jstat__value {
+    font-size: var(--fs-18, 1.125rem);
+  }
+  .jstat__label {
+    font-size: var(--fs-11);
+    line-height: 1.3;
+  }
 }

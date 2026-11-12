@@ -197,7 +197,7 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
     const snapshots = await listSnapshots(opts.pool, dataset);
     const current = fullRanking(data)
       .slice(0, 10)
-      .map((e) => ({ rank: e.rank, ideaId: e.idea.id, slug: e.idea.slug, title: e.idea.title, score: e.score, confidence: e.confidence, movement: e.movement, scoreDelta: e.scoreDelta }));
+      .map((e) => ({ rank: e.rank, ideaId: e.idea.id, slug: e.idea.slug, title: e.idea.title, score: e.score, confidence: e.confidence, movement: e.movement, scoreDelta: e.scoreDelta, integrity: e.integrity }));
     return {
       dataset,
       rankAsOf: t,
