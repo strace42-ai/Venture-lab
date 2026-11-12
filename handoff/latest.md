@@ -113,6 +113,7 @@ Environment: Node v22.23.4 and npm 10.9.9 in a Linux container. **PostgreSQL 16 
 | `npm test` without `TEST_DATABASE_URL` | 63 passed, 30 DB-integration tests **skipped** (in CI, `CI=true` makes a missing DB URL a hard error) |
 | `npm run build` | ✅ exit 0 |
 | `npm audit --omit=dev` | ✅ found 0 vulnerabilities |
+| **GitHub Actions CI** (`.github/workflows/ci.yml`, Postgres 16 service) | ✅ run #1 on `d6981af` — **success** (lint, typecheck, all 93 tests with `CI=true`, build, CLI smoke): https://github.com/strace42-ai/Venture-lab/actions/runs/43145608292 |
 | `npm audit` (incl. dev) | 1 moderate advisory chain: `minimatch` via `@typescript-eslint/typescript-estree` (lint-time only; npm's fix is a downgrade) |
 
 The test suites, by file:
@@ -182,7 +183,6 @@ psql: UPDATE assessments …                       → ERROR: append-only table 
 
 **NOT run / not verified:**
 - `docker compose up` (no Docker daemon here); the compose file and init script are untested in this environment.
-- GitHub Actions — its first run is on PR #2. Check the run status before merging.
 - Real devices, Firefox / WebKit, screen reader, axe / Lighthouse.
 - Import of real (non-synthetic) research: none exists yet.
 
