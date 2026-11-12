@@ -1,54 +1,46 @@
-# CURRENT TASK — VL-003 / Research Operations & Evidence Review
+# CURRENT TASK — VL-003P / First Real Research Pilot (NOT a product feature sprint)
 Version: 1.0
-Status: READY FOR CLAUDE
-Owner: Founder + ChatGPT
-Repository: strace42-ai/Venture-lab
-Base: latest `main` (VL-002 merged)
-Suggested feature branch: `claude/vl-003-research-operations`
+Status: READY FOR CLAUDE (research and verification only)
+Date: 2026-11-12
+Base: latest main including merged VL-003
+Suggested branch: claude/vl-003p-first-real-research-pilot
 
-## Mission
-Transform the VL-002 research database into a **daily usable founder intelligence cockpit**: premium Research Journal, citation/evidence review queue, snapshot comparison, and an honest manual pipeline for taking ChatGPT research through review to the REAL database. Keep previous score logic, data integrity and visual identity. No unattended automation or paid APIs yet.
+## Goal
+Run the first **real operational acceptance test** of Venture Lab with credible market research. Do not build another app feature until the data and review/import workflow work on a real research batch. Produce a **founder-review-ready package of up to 10 strong candidate opportunities** with Western analogues, named Russian competitors, original source URLs, concrete unmet use case, key technical/market risks and realistic validation plans. No synthetic market metrics, no fabricated TOP-10, no automated approvals.
 
-## Required reading
-`CLAUDE.md`, `docs/product-vision.md`, `docs/design-principles.md`, `docs/scoring-model.md`, `docs/research-import-format.md`, `docs/research-operations-vl003.md`, `docs/agent-workflow.md`, `docs/roadmap.md`; inspect current code and tests first. **The detailed specification is in `docs/research-operations-vl003.md` and is part of acceptance criteria.**
+## Read first
+CLAUDE.md; docs/research-export-guide.md; docs/research-import-format.md; docs/scoring-model.md; docs/research-operations-vl003.md; docs/research-engine-contract.md; existing pilot `research/drafts/draft-2026-11-12-pilot-001.json`; `server/research/schema.ts`; `server/research/draft.ts`; `handoff/latest.md`.
 
-## Required vertical user journey
-1. User opens Research Journal: sees dated research runs and what changed in each.
-2. User opens evidence queue: unreviewed claims, exact source links, publisher, dates, claim, idea and rubric dimensions. Status is honest.
-3. User marks a source `checked` or `rejected` through a locally safe review CLI with rationale and explicit `--apply`; immutable review event appears in Journal/queue.
-4. User compares two stored snapshots: rank changes, new/exited ideas, score/confidence deltas and frozen snapshot-era titles.
-5. A new strictly validated research JSON draft can be checked, founder-approved and imported by explicit existing commands; journal, current top-10 and dossier reflect it without demo/test contamination. No real research automatically imported without a human approval step.
+## Step A — verify updated pilot (mandatory)
+1. Pull latest main and inspect the latest pilot JSON committed on 2026-11-12. It contains **3 candidates**, source type `ai-draft`, 17 source records, 9 RU competitor records (existing and newly found); no scores, no approval, REAL untouched.
+2. Run actual `npm run research:draft-check -- research/drafts/draft-2026-11-12-pilot-001.json` and `npm run research:import -- research/drafts/draft-2026-11-12-pilot-001.json` **DRY RUN ONLY**. Record results and warnings. Correct schema/format errors if any but NEVER set `human-reviewed`, `checked` or `approval` on behalf of founder.
+3. Evaluate fresh Russian competitor overlap especially for Quote Compare: Vnikli, Vortholm, Aether Lab. Prior hypothesis `there is no file-to-table SaaS in Russia` is refuted by available product pages. Lower qualitative novelty assessment and mark that exact market gap unsupported; no scores before source review.
+4. Do not treat visited URL as independent verification, and don't state actual market share or paying customer counts without evidence.
 
-## Deliverables (must)
-### A. UI
-- Fully functional Research Journal `/journal` (replace placeholder); consistent with premium-dark design; date/run navigation, source provenance, coverage/limitations, linked idea changes, honest counts.
-- Evidence review workbench as a Journal tab or route; source filtering (status/market/source type/idea/age), review history, clickable source, clear "checking URL != proof" messaging.
-- Historical Top-10 comparator from two actual stored snapshots; illustrate movement and exits, no fabricated full ten if <10 supported.
-- Clean loading/empty/error states in REAL/TEST, separate DEMO; excellent 390px mobile and 1440px desktop.
+## Step B — expand to 10 candidates, evidence first
+Research ~7 additional existing previously investigated opportunities without repeating the first three, e.g. VAG Report (professional VCDS CSV/TXT interpretation), Client Room for solo contractors, Pain Radar for market pain, Guest Guide short-stay, AI micro-apps for groups (Bonds / Igray), fixable appliance assistance, niche B2B gamified campaigns. Re-evaluate alternatives if a candidate has fatal blockers or very saturated RU competition.
+For EACH:
+- 1+ real Western source that demonstrates real existing product/use, and 1+ relevant RU direct or adjacent competitor source (or explicit documented negative-search coverage: queries, marketplaces and limitations).
+- Confirm current source links and what the pages actually claim. Vendor claims are vendor claims, not independent proof.
+- Capture target buyer, pain severity/frequency, narrow RU gap, what is different from existing tools, price hypothesis, first 10 customers distribution, cheap 7–14 day demand test, MVP technical feasibility and cost/API/legal constraints.
+- Use genuine web access only. If unavailable, do NOT guess sources or metrics. Produce fewer candidates and document limitations.
+- **Structured draft(s)** at `research/drafts/` strictly matching vl-research-1. No approval, no per-source checked status. Use stable externalIds and unique runIds. Avoid accidentally duplicating an idea that already appears in an earlier draft. Keep assessment: null until founder verifies evidence.
+- Use source dates observed on lookup; no claims about actual transactions unless independently substantiated.
 
-### B. Data + review CLI
-- Add only necessary read APIs and database migration(s); preserve immutable audit history and existing VL-002 behavior.
-- `research:review` CLI supports safe dry-run, explicit `--apply`, actor/reason/status, append-only human review, validation and dataset isolation. Do NOT introduce unauthenticated public write endpoints.
-- Derive run-level added/updated/rejected counts faithfully from existing import records; if insufficient, add forward-compatible immutable action history with clear legacy limitations.
-- Top-10 snapshot compare MUST use stored snapshot entries for period A/B, not current mutable score/title/stage, with accurate "new/exit" and score changes.
-- No copy of scoring rules in another layer.
+## Step C — founder review package
+Create `research/reviews/first-real-pilot-review.md`: one compact decision table for ALL candidates: candidate, Western analogous product, named key RU rivals, concrete niche, evidence URLs, confidence/caveats, proposed 7-day proof test and recommendation `review further / reject / validate commercially`. Include claim-by-claim checklist so founder can approve high-impact claims without hunting through 10 JSON files.
+Create `research/reviews/first-real-pilot-source-index.csv` (if useful; plain UTF-8) listing each source ID, idea ID, URL, claim, claimed publisher, observation date, independent vs self-reported, review status and review priority. No personal information.
+Give `Research Opportunity` scoring as **proposed draft rationale only** if needed; don't materialize `assessment` until verified, and don't force unscored ideas into TOP-10. Existing score weight model must remain unchanged.
 
-### C. Import preparation
-- Versioned ChatGPT research export guide/template matching **actual** `vl-research-1` Zod schema. Provide a helper to validate source coverage/duplicates without claiming independent truth.
-- Distinguish `draft` vs `founder-approved human-reviewed REAL import`. Never set `checked` based on AI output alone. Explicit founder sign-off needed before a real apply. If current importer can be misused to bypass this, add suitable safe workflow/gate without breaking prior tests.
-- Prepare a small **draft** of 3–5 previously investigated candidate ideas with verifiable grounded public URLs only if access to current sources is available. If not, stop at reusable template and document that actual primary-source verification/import is pending. No fabricated figures or artificial top-ten fill.
-- Reproduce one full import using isolated TEST data; in REAL only explicitly approved public research may enter.
+## Step D — prove importer works, WITHOUT inserting into REAL
+- Run checks for each created draft, report warnings. Use dry-run import only.
+- If local DB available, run validation/snapshot workflow with synthetic TEST fixture to confirm importer/history still works, but do not alter REAL.
+- Run existing lint/typecheck/tests/build if code/config touched; otherwise running relevant research CLI validation is primary acceptance.
+- No large UI/backend rewrite, no paid APIs, no cloud deploy, no unsolicited outreach, no scheduled jobs.
+- No adding manual approval as if founder gave it. If actual 10 high-quality candidates unavailable, report honest smaller number.
 
-### D. Quality and handoff
-- Preserve current suite; add database review/atomicity/isolation tests, journal API/UI, snapshot compare with edge cases, draft helper validation, responsive QA; run lint/types/tests/build and CI.
-- Provide screenshots for desktop/mobile and a handoff with PR link, exact commands, test results, demo-vs-real disclosure, risks and future work.
-- Work in a new branch from main, commit/push and open PR; DO NOT MERGE.
-
-## Important constraints
-- Existing daily ChatGPT research automation delivers chat reports, **not** direct Github/DB writes. This sprint cannot claim auto-sync. Founder-approved export and import are manual.
-- No OpenAI/Claude APIs, autonomous crawling, scheduled ingestion, paid services, public deployment, customer outreach or credentials in repo.
-- No automatic market scoring of AI-authored claims as "verified". Evidence integrity and current UI take priority over number of features.
-- No need to ask the founder to pick mundane technical libraries; decide and document.
-
-## Definition of Done
-An operator can execute **candidate draft → source review → approved import → real Journal/Radar/Top-10 update → compare with earlier snapshot**, or gets an explicitly documented hold when no founder-approved data are available. TEST scenario fully reproducible locally and in CI; GitHub PR open awaiting founder's approval.
+## Delivery / approval gate
+- New branch, PR to main; DO NOT MERGE.
+- Handoff contains draft filenames, source coverage, factual caveats, CLI outputs, why candidates accepted/rejected, exact commands and known gaps.
+- Once founder and ChatGPT audit the candidate research, founder separately approves specific ideas/source claims; only then does a future explicit command import them into REAL. Preserving an initially incomplete N/10 is correct.
+- This is *research operations acceptance*, not the next large implementation sprint. The future authorized automation bridge may come only after this pilot validates a reliable manual path.
