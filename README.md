@@ -14,7 +14,9 @@ Venture Lab не должен превращаться в «таблицу ид�
 - [docs/scoring-model.md](docs/scoring-model.md) — строгие правила оценивания.
 - [docs/design-principles.md](docs/design-principles.md) — дизайн-система.
 - [docs/data-contracts.md](docs/data-contracts.md) — сущности продукта.
-- [docs/research-engine-contract.md](docs/research-engine-contract.md) — формат загрузки проверенных исследований и контракт Research Engine.
+- [docs/research-engine-contract.md](docs/research-engine-contract.md) — контракт Research Engine.
+- [docs/research-import-format.md](docs/research-import-format.md) — фактическая схема JSON-импорта.
+- [docs/research-operations-vl003.md](docs/research-operations-vl003.md) — требования к журналу, ревью источников и историческому топ-10.
 - [docs/agent-workflow.md](docs/agent-workflow.md) — взаимодействие ChatGPT / Claude / Codex.
 - [docs/roadmap.md](docs/roadmap.md) — последовательность разработки.
 - [handoff/latest.md](handoff/latest.md) — отчёт по последнему этапу.
@@ -62,7 +64,7 @@ npm run research:import   -- research/examples/synthetic-run-2.json --apply  # �
 Реальные исследования кладите в `research/inbox/` (формат — [docs/research-import-format.md](docs/research-import-format.md)).
 
 ### Режимы REAL / TEST / DEMO
-- **Реальные** — только проверенные исследования (`human-reviewed`) из локальной БД.
+- **Реальные** — импортированные с явным подтверждением исследовательские записи (`human-reviewed`) из локальной БД; отдельные источники могут иметь статус `unreviewed` и требуют проверки человеком.
 - **Тест** — только синтетические тестовые импорты (`synthetic-test`) из той же БД, изолированный набор данных.
 - **Демо** — фикстура VL-001 в браузере.
 - Переключатель «Источник данных» в боковой панели/меню, баннер режима вверху каждой страницы; смена режима полностью перемонтирует страницу — данные одного источника не могут остаться на экране другого.
