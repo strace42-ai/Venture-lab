@@ -12,11 +12,14 @@ Premium dated research journal, evidence review queue with append-only human che
 ## VL-003P — First real research pilot [COMPLETED, merged]
 Validate the 3-idea AI draft and build a source-rich pilot batch of up to 10 real opportunities. This is a legacy **manual review/import compatibility test**, NOT an ongoing requirement. Following founder's newer decision, daily research will no longer require human source sign-off. See `tasks/current-task.md` and `docs/no-vpn-automation-architecture.md` v2.
 
-## VL-004A — Autonomous Research Worker, fixture-first [CURRENT TASK]
+## VL-004A — Autonomous Research Worker, fixture-first [COMPLETED, merged PR #5]
 **Zero-human-in-the-loop automated research**: server-side worker with swappable RU/world search and LLM provider interfaces, independent adversarial machine review, programmatic source checks, evidence quality gates and automatically published PRIMARY machine TOP-10 with immutable history, cost/freshness and premium dashboard. No mandatory manual review. Legacy human-reviewed records remain separate; no paid APIs or deployment without one-time founder authorization. See `docs/no-vpn-automation-architecture.md` and `tasks/backlog/VL-004A-autonomous-research-worker.md`.
 
-## VL-004B — Official provider trial [PLANNED, requires user consent]
-Validate Yandex Search API worldwide/RU and Yandex AI Studio model access through lawful official APIs; one-time founder setup/authorized capped test budget and real-source quality benchmark. Subsequent runs within configured budget are fully automated. ChatGPT/Claude subscriptions do not include these API calls.
+## VL-004B — Live-provider integration and controlled trial [CURRENT TASK — PHASE A ONLY]
+Build real-provider adapters for Yandex Search API (RU/world) and Yandex AI Studio (distinct analyst and skeptic model families), secure real webpage reader, source-grounding, metered real-cost safety and realistic adversarial tests. **Phase A uses only mocked/recorded HTTP and zero paid calls.** Phase B requires separately approved one-time API budget, credentials and network test; daily manual approvals are NOT part of the research pipeline. See `tasks/current-task.md`.
+
+## VL-004B Phase B — Controlled REAL-source smoke [BLOCKED PENDING FOUNDER APPROVAL]
+After Phase A PR passes audit, run small explicitly authorized capped provider trial on real RU/world searches and foreign-page reachability; report cost/quality/coverage. Do not activate recurring paid jobs yet.
 
 ## VL-004C — Hosted no-VPN dashboard [PLANNED]
 Authorized secure HTTPS web app reachable from Russia without user VPN, backups, monitoring, user auth and unattended daily execution with automatic ranked publication. Never expose unauthenticated database or mutation endpoints.
