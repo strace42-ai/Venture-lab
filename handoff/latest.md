@@ -139,7 +139,7 @@ Environment: Node v22.23.4 and npm 10.9.9 in a Linux container. **PostgreSQL 16 
 | `npm test` without `TEST_DATABASE_URL` | 70 passed, 42 DB-integration tests **skipped** (in CI, `CI=true` makes a missing DB URL a hard error) |
 | `npm run build` | ✅ exit 0 |
 | `npm audit --omit=dev` | ✅ found 0 vulnerabilities |
-| **GitHub Actions CI** (`.github/workflows/ci.yml`, Postgres 16 service) | Before the review: run #1 on `d6981af` succeeded. After the fixes, run #4 on `372858e` **failed**: all 111 tests passed, but Vitest caught 1 unhandled promise rejection, which is treated as an error. Root cause and fix are in the table below. The run on the fixing commit is reported in the PR description. |
+| **GitHub Actions CI** (`.github/workflows/ci.yml`, Postgres 16 service) | Before the review: run #1 on `d6981af` succeeded. After the fixes, run #4 on `372858e` **failed**: all 111 tests passed, but Vitest caught 1 unhandled promise rejection, which is treated as an error. Root cause and fix are in the table below. Run #5 on `5678fcd` (the fix) **succeeded**: lint, typecheck, 112 tests with a Postgres service and 0 unhandled errors, build, and the CLI smoke test including the «REAL snapshot is empty» isolation assertion — https://github.com/strace42-ai/Venture-lab/actions/runs/43165764567 |
 | `npm audit` (incl. dev) | 1 moderate advisory chain: `minimatch` via `@typescript-eslint/typescript-estree` (lint-time only; npm's fix is a downgrade) |
 
 The test suites, by file:
