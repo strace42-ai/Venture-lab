@@ -1,107 +1,92 @@
-# Venture Lab — автономный Research Worker без VPN (архитектура v1.0)
+# Venture Lab — полностью автономный Research Worker без VPN (архитектура v2.0)
 Date: 2026-11-12
-Status: DESIGN / not deployed / no external credentials provisioned
+Status: DESIGN, NOT IMPLEMENTED, NOT DEPLOYED
 Owner: Founder + ChatGPT
-Prerequisite: complete the current VL-003P pilot. This document is **not** authorization for purchases, provider registrations, deployments, public endpoints or changing `tasks/current-task.md`.
+Decision: Founder explicitly requested **zero-human-in-the-research-loop**. This supersedes the human-approval REQUIREMENT for the future autonomous worker in v1.0. Preserve compatibility with historical human-approved data, but do not require human review to publish the automatic evidence-ranked TOP-10.
+Current engineering task `tasks/current-task.md` is VL-003P and was not modified while Claude may be working on it. The next development task will explicitly implement this architecture.
 
-## Product outcome
-The founder opens Venture Lab from Russia over ordinary HTTPS without enabling a VPN. A **server-side** worker searches **Western and Russian** product markets, records claim-level source evidence, de-duplicates competitors/ideas, proposes draft scores and an updated **provisional** TOP-10 each day. Results appear in the dashboard once the daily research run has completed. Founder-review remains the gate to **verified/approved REAL history** and to any announcement that claims are checked.
+## Non-negotiable product outcome
+Venture Lab researches foreign and Russian digital-product markets independently on a schedule from a server accessible in Russia **without VPN on the user's device**. It collects source evidence, checks claims using programmatic extraction and independent AI critique, rates opportunities against the same 12-factor 100-point rubric, keeps date-stamped history, and **publishes a primary machine-researched TOP-10 automatically**. No human approval, clicking each source, copying chat replies, operating the importer, or approving research jobs is required. When fewer than 10 candidates pass quality gates, show N/10; never fill ten by invention.
 
-This is NOT a promise that scheduled ChatGPT conversations directly write to Venture Lab. ChatGPT Plus / Claude Pro do not include external API quotas and aren't the runtime of the worker.
+Only **initial product administration** remains a founder action: providing lawful cloud/API credentials, enabling spending up to an explicit ceiling, choosing domain/hosting, authorizing deployment, and high-impact external actions. Those are one-time system setup/security authorizations, not daily research review. Do not automatically buy APIs, send sales messages, deploy unsafe code, or open public write endpoints.
 
-## Validated provider options (official documentation checked 2026-11-12)
-### Search
-- Yandex Search API: web search can target worldwide / Russian search indexes, REST and SDK. Documentation: https://aistudio.yandex.ru/ru/docs/search-api/concepts/ and https://aistudio.yandex.ru/ru/docs/search-api/operations/web-search-sync
-- Prices as of 2026-11-12, RUB incl. VAT: nighttime deferred search 25.41 ₽/1,000 requests; nighttime synchronous 366 ₽/1,000; daytime synchronous 488 ₽/1,000. Verify current rates before activating: https://aistudio.yandex.ru/ru/docs/search-api/pricing
-- Async search may take minutes/hours and is subject to permitted Moscow time windows. Do NOT promise a report exactly at 08:00 unless completed; show last successful run/freshness and retry. Use synchronous fallback within budget if needed.
-- Worldwide index does not guarantee fetchable complete primary pages. Unreachable pages remain **unverified**, not fabricated.
+### Three independent states, not false labels
+1. `DISCOVERED`: candidate exists; sources may be sparse. Stored in candidate registry; **not yet ranked**.
+2. `AUTOMATED_EVIDENCE_PASSED`: machine checks passed according to recorded policy/version; eligible for the automatic official research TOP-10. Display **"Проверено системой"**, never "Проверено человеком", with evidence grade and last observed date. This does not certify absolute truth.
+3. `RESEARCH_HOLD`: insufficient / contradicted / inaccessible evidence or critical safety/legal/network constraint; excluded from recommended TOP-10, can be revisited automatically on later days.
 
-### Model
-- Yandex AI Studio via OpenAI-compatible APIs supports as of 2026-11-12: DeepSeek V4.1 Flash, Qwen3.6 35B, YandexGPT 5.1 and others. Exact available models/deprecations: https://aistudio.yandex.ru/ru/docs/ai-studio/concepts/generation/models
-- Official token rates as of 2026-11-12 (RUB incl. VAT / 1,000 tokens): DeepSeek V4.1 Flash 0.3 in/0.5 out; Qwen3.6 35B 0.2 in/0.3 out; YandexGPT Pro 5.1 0.8 in/0.8 out. Recheck: https://aistudio.yandex.ru/ru/docs/ai-studio/pricing
-- Never choose deprecated model IDs by default; pin provider/model version and support fallback with model-provenance records.
-- A model must work on **retrieved source material**. Model opinion is not evidence; source links and corroboration are required.
+Existing VL-003 `human-reviewed` records remain preserved as **legacy human-review history**. Do NOT forge `approvedBy`, `checked`, or `human-reviewed` to bypass the import gate. Create a **new typed, migration-backed machine-assessed dataset and statuses** with its own immutable assessments and snapshots; make the auto-verified feed the dashboard default after launch. Do not mix synthetic tests, legacy human-checked evidence or automated evidence unnoticed.
 
-### Host / browser
-- Deploy web app, worker and DB on a legally accessible server/hosting with normal HTTPS reachability from Russia; preferably Russian hosting for first release, subject to backup and legal/privacy review. NO VPN needed on the founder's device for dashboard viewing.
-- DB is NOT internet exposed; API restricted behind TLS, authenticated admin; no direct unauthenticated research approvals or arbitrary URL-fetch endpoints.
-- The ability of our server to reach individual non-Russian websites must be tested; if unavailable, record coverage gap. Do not claim all web pages are accessible without VPN.
-- Official OpenAI API service does not list Russia in supported countries as of check; do not require it or plan evasive access. Official source: https://developers.openai.com/api/docs/supported-countries
+## Where research comes from
+The autonomous runtime is an independent server-side worker: **not a ChatGPT Plus automation and not Claude Pro**. Source acquisition may use official Yandex Search API worldwide and RU indexes and permitted vendor sites/feeds. AI analysis may use officially available models through Yandex AI Studio. Access to some overseas primary pages from a Russian server can fail; explicitly capture page-read failures, coverage and last successful fetch. Do not use VPN or evasive proxies as a default. Confirm actual provider connectivity on the target server before production.
 
-## Automated daily pipeline (Asia/Novokuznetsk UTC+7)
-00. Maintain a live **Idea Registry** with stable IDs, prior findings and competitors.
-01. Scheduler before morning (e.g. 05:00 local) creates `research_job` with time budget, provider budget and idempotent run key, based on a 00:00–06:00 Moscow window for deferred search where appropriate.
-02. Discover new Western products (official vendor sites, authorized feeds / permitted discovery APIs, English and other languages); use rotating sector buckets and novelty dedup.
-03. Find RU competition with Russian Search plus Russian brand/feature queries and adjacent substitutes. Record exact query, timestamp, search type, top results and *coverage limitations*. "Nothing found" ≠ "doesn't exist".
-04. Retrieve permitted primary sources, claim statements and supporting exact passages with source metadata. Follow robots/terms; respect rate limits; block internal addresses/SSRF/private-network fetches, oversized pages, sensitive content. Website content is untrusted; prompt-injection isolation.
-05. Analyze at least two passes: cheap candidate extraction/classification (Qwen), deeper Russian competitive comparison and hypothesis challenges (DeepSeek). A distinct checker checks claim-source matches where access exists; the checker is still AI, not a human.
-06. Distinguish `confirmed_in_source` (source page has the claim), `unverified`, `conflicted`, `human_checked` (manual action only). Company self-report != independent evidence.
-07. Deduplicate by stable idea ID and competitor product URLs; avoid duplicate scoring; compare to stored incumbents; record score rationales under unchanged 12-criterion rubric and separate confidence metrics, founder-fit, risk and missing evidence. Proposal does not automatically become a human-approved score.
-08. Store **candidate** research and model-generated draft assessments in separate staging tables with complete provider/source/queries/timestamps/cost provenance. DO NOT fake `human-reviewed`, `checked`, or import AI draft via bypass into REAL. Existing VL-003 approval gate remains authoritative.
-09. Generate two distinctly labeled leaderboards:
-    - **PROVISIONAL TOP-10**: automatically calculated, source-linked, AI-draft and visibly "требует проверки"; can refresh daily and include new candidates.
-    - **APPROVED TOP-10**: existing frozen/approved REAL snapshot and rank, unchanged until founder explicitly approves/imports. If <10, show honest N/10.
-   Historical snapshots of provisional rankings separate from approved and must never overwrite immutable REAL snapshots.
-10. Publish dashboard run summary and optional Telegram digest via a permitted bot integration (only after founder authorizes token and delivery). Include fresh run date, status, new discoveries, deltas, 10 provisional ideas when enough, review queue, costs and failures.
-11. Founder opens source queue and approves specific claims/assessments or rejects candidates; API/CLI must maintain human audit log. A single "Approve all" that falsely marks every source human checked is NOT acceptable.
-12. Recover gracefully: stale-run banner, retries with budget caps, rerun idempotently, dead-letter queue, cancel/skip reprocessing.
+Providers documented as of 2026-11-12 (verify rates/availability again before activation):
+- Yandex Search API: https://aistudio.yandex.ru/ru/docs/search-api/concepts/ ; pricing https://aistudio.yandex.ru/ru/docs/search-api/pricing
+- Yandex AI Studio models: https://aistudio.yandex.ru/ru/docs/ai-studio/concepts/generation/models ; pricing https://aistudio.yandex.ru/ru/docs/ai-studio/pricing
+- OpenAI API access is not a required dependency. Normal ChatGPT Plus tasks do not push their output into PostgreSQL or supply included API tokens.
 
-## Model/provider design (swappable)
-`SearchProvider.search(query, region, locale, filters): SearchResult[]`
-`SourceReader.read(url): {retrievedAt, content, status, sourceType, error?}`
-`LLMProvider.structured<T>(task, sources, schema, budget): T`
-`EvidenceVerifier.check(claim, source): VerificationFinding`
-`ReviewQueue.enqueue(draft)`
-`Publisher.publishProvisional(run)`
-Each adapter can run in fixture mode. Do not tie production execution to a ChatGPT conversation, web widget, or Claude Code subscription.
+## Fully autonomous daily flow (default timezone Asia/Novokuznetsk)
+1. Schedule research early enough for 08:00 local delivery, with correct timezone, deadlines, partial-run status and last successful run timestamps.
+2. Discovery: rotate markets (US/EU/Asia/global) and product sectors, find **new** existing products with working references; cross-reference existing idea registry to avoid repeat novelty.
+3. Competitor search: distinct Russian keyword/brand/category queries, synonyms, adjacent/free substitutes and RU product directories. Log searches, timestamps and *coverage*. "Not found" never means "no competitors".
+4. Evidence collection: fetch lawfully accessible primary pages with URL, publisher, observed date, source type, exact relevant excerpt or structured feature, hash, and fetch status. Store source-of-truth content excerpts within copyright limits. Never treat a search snippet alone as independent proof.
+5. Independent verification: **two structurally separate agents** (candidate analyst and skeptical reviewer; use different model families if practical) plus deterministic code checks (schema, URL reachability, exact quote/claim correspondence, date, duplication, unit/currency arithmetic). Skeptical reviewer searches for **counterevidence** including RU rivals and mistaken economics. AI reviewers must cite exact source IDs and cannot certify "checked by human".
+6. Classify each material claim: `corroborated` / `vendor_claim` / `single_source` / `contradicted` / `unretrievable` / `unknown`; show **what the source claims**, not that the claim is independently true. Published prices are offers, investments are not revenue, GMV is not company revenue.
+7. Apply **automatic quality gates**, before score publication. Each ranked candidate must have at least one retrievable real Western product primary source; a documented attempt to find RU competitors and relevant substitutes; source-linked descriptions of the unmet job, business model and distribution path; no unresolved contradictions on high-impact claims. Important commercial claims require independent corroboration when possible; unsupported numbers are not counted. If source access blocked or competition search thin, lower confidence, keep in discovered/hold as appropriate, do not award high RU-gap score.
+8. Score independently on the *existing* versioned 12-dimension /100 rubric, with separately derived evidence-confidence /100 and Founder Fit /40. A 0 score means evidence of failing the criterion; lack of evidence = UNKNOWN. Never copy aggregate score from generated prose or manually force scores. Record cited claim IDs and rationale per criterion.
+9. Challenge gate: skeptical reviewer tries to reject the idea. Machine detects evidence invalidation and contradictory RU competitors; invalid prior high score is flagged immediately. If critical supports are rejected/unretrievable, exclude idea from strongest recommendation pending an **automatic re-research pass**. This is automated review, not a human blocking queue.
+10. Commit **immutable machine assessments, review events and machine TOP-10 snapshots**, with previous rank, score delta, source changes and model/version provenance. Automatically publish dashboard's official **automated TOP-10** at end of successful run (or N/10). Historical snapshots never rewritten. Legacy human-approved snapshots stay distinct.
+11. Display new candidates, TOP-10 rank/movements, evidence certainty, confidence, competitive changes, why this ranks, network effects, payback hypotheses, model/request costs and timestamps. Full report in Russian with sources.
+12. Handle retries, dedup, expiring sources, out-of-date pages, short/outage days: mark partial/stale rather than pretending fresh, preserve last successful snapshot, optionally run catch-up within hard budgets.
+13. In future, automated weekly deeper re-check of incumbents and source freshness; promotions/demotions are versioned decisions.
 
-## Proposed server modules (not mandatory names)
-- `server/worker/scheduler` — cron / queue and idempotent daily run record
-- `server/worker/discover` — feeds, search queries, world markets
-- `server/worker/ru-competition` — competition coverage matrix
-- `server/worker/evidence` — source extraction and provenance
-- `server/worker/score` — rubric and challenge pass
-- `server/worker/publish` — provisional read model and digest
-- `server/worker/providers/{search,llm,web}` — provider adapters with fixtures
-- `server/worker/metrics` — latency, requests/tokens/costs, alerts
-- `server/worker/security` — allowlisted hosts where useful, SSRF/robots/PII
-Use existing Fastify, Zod, PostgreSQL, shared scoring domain and existing UI styling. Prefer a queue/storage native to Postgres for first single-node server instead of adding Redis infrastructure without evidence.
+## Required publication rules
+- **No approval click, no manual source-check requirement** for daily automated rankings. All decisions are made by deterministic gates + evidence-aware AI.
+- "Проверено системой" means structural/source correspondence and corroboration rules were applied; it is NOT equivalent to external independent certification or human verification.
+- Ideas with unknown or contested evidence remain visible in the **watchlist**, not misrepresented as confidently ranked.
+- Autonomous TOP-10 is the primary product surface. Do not bury it beneath the old human-approved TOP-10. Provide a separate historical/legacy view if useful.
+- The assistant can and will err; every material rating requires evidence links, date, confidence, reviewed-by model provenance, and transparently noted limitations.
+- No mandatory human decision in pipeline. Founder may optionally correct a record, which becomes a separate versioned input to later automatic runs.
 
-## Operating costs (illustrative arithmetic only; no actual spend yet)
-A fixed illustrative workload **100 search requests/day** = 3,000/month:
-- nighttime deferred: 3,000/1,000 × 25.41 ≈ **76.23 ₽/month** (if all queries eligible and succeed at that rate);
-- nighttime synchronous: 3,000/1,000 × 366 ≈ **1,098 ₽/month**.
-A workload **100k input + 25k output DeepSeek V4.1 Flash tokens/day**:
-- per day 100×0.3 + 25×0.5 = **42.5 ₽**, or **1,275 ₽ per 30 days**.
-**Not included:** VPS, domains, paid feed providers, downloads/processing, retries, other tools, storage, and vendor price changes. These aren't forecasts of necessary volume.
-Implement configurable per-day and per-month **hard caps** per provider and per job; start in dry-run, do not silently spend. Show estimated vs actual costs in cockpit. Activation requires founder's explicit permission and account/API key.
+## Security and operational constraints
+- Source content is untrusted: prompt-injection isolation, no tool calls caused by embedded webpage instructions, SSRF/private-address protections, robots/terms/rate limits, safe redirects and timeouts.
+- No public unprotected mutation or approval endpoints, no credentials in repo/logs; encrypted secret storage; least privilege and backups.
+- Use cost-limited independent agent passes, bounded page/content/token budgets; **hard daily/monthly spend ceilings**, skip or degrade when exhausted; no user approval per run inside the configured authorized spending envelope.
+- Store model version/provider, token/API usage, pricing version and request ID per job. Avoid infinite re-verification loops. Billing limits do not themselves guarantee provider charges are capped; implement application hard stop and usage alert.
+- DB/API only privately reachable unless authenticated and HTTPS protected. Test access from Russia without VPN; server access to foreign web remains separate concern.
+- No proactive contacting buyers, making purchases, legal attestations, arbitrary repository merges or deploying code as part of the research worker.
 
-## Delivery stages
-**VL-004A / dry-run engineering** (after VL-003P):
-- Implement worker's interfaces, scheduler, research-run/staging DB migration, deterministic fixture providers, provenance, dedup, provisional leaderboard and safe review UI/API. No API keys or paid services, no public hosting.
-- Demonstrate autonomous mock-run on local DB after restart; intact approved REAL dataset; smoke tests and CI.
-**VL-004B / single paid source trial with approval**:
-- Founder separately creates Yandex Cloud account and keys (never share keys in chat/repo). Validate RU+world search and model endpoints from actual host, verify 5–10 source pages. Cost cap 300–500 ₽ for testing, or founder-approved amount. Measure quality and spend.
-- Schedule 3 consecutive daily test runs; compare outcome against manually researched baseline; no automatic approval.
-**VL-004C / hosted operating release**:
-- Authenticated site on HTTPS accessible from Russia without VPN, isolated Postgres, encrypted secrets, backups, monitoring, retry and Telegram opt-in delivery. First run/health check and threat model before opening access.
-**VL-004D / quality and growth**:
-- More discovery sources within terms, verification passes, coverage-score calibration, cost/quality analytics, bounded automatic candidate research. Potential future migration to other lawful supported providers.
+## Technical boundaries
+Reusable adapters:
+`SearchProvider.search(query, region,...)`,
+`SourceReader.read(url)`,
+`LLMProvider.structured(task, excerpts, schema, budget)`,
+`ClaimChecker.check(claim, sourceRefs)`,
+`ContradictionHunter.challenge(idea, sources)`,
+`QualityGate.evaluate(idea, claims, coverage)`,
+`MachineAssessmentPublisher.commit(assessment, run)`,
+`RankPublisher.publishMachineTop10(asOf)`.
+Use TypeScript/Fastify/Zod/PostgreSQL, **share existing scoring code** instead of maintaining diverging rules. PostgreSQL-backed queue for single VPS is fine. Strict tests and migrations for new dataset types are essential.
 
-## Acceptance tests
-- 3 simulated "days" deliver different daily drafts with persistent history, prevent duplicate runs, include source metadata and RU competitor proof.
-- New direct Russian competitor reduces/flags provisional RU gap estimate with change explanation; do not keep the old claim "no competitors".
-- Poisoned/prompt-injected vendor webpage cannot cause instructions to execute or cross into API keys / admin approval.
-- AI cannot sign human approval or set human_checked; attempts rejected in DB and API.
-- Staging does not leak into approved REAL score/Top10 or overwrite current assessments.
-- A run with missing search access or source fetch reports partial coverage and no invented references.
-- Budget cap prevents further search/LLM calls; failures retried with bounded backoff, no double spend on duplicates.
-- Correct local timezone and scheduling; when late, mark stale/in-progress honestly.
-- App works from normal browser, API not exposed without auth, no public database port.
-- Provider can be replaced via adapter, all outputs Zod validated.
-- CI green with deterministic fixtures. Real external API smoke only via explicit approval; no secret leaks.
+## Sprint boundaries
+**VL-004A: fixture-based engineering**, after VL-003P is closed: provider interfaces, deterministic multi-day synthetic cases, machine-review statuses, independent quality gates, immutable automated-rank history, no manual gate, dashboard highlighting machine TOP-10. No billable API, keys or live hosting in this sprint.
+**VL-004B: small, explicitly authorized paid API trial**: official Yandex Search API RU/world + Yandex AI Studio, validate actual access, citations and models from the target host. Founder enables a *one-time* budget/credentials; then each run needs no approval. Compare machine outcomes to source-grounded benchmark / adversarial tests.
+**VL-004C: hosted operation**: secure VPS, scheduled jobs, backups, monitoring, regular browser accessible from Russia without VPN, daily results after successful worker completion. No fake precise readiness promises.
+**VL-004D: quality optimization**: source diversity, counterevidence, scores calibration, cost/performance. Extend only as trustworthy evidence permits.
 
-## Critical honesty
-- Scheduled ChatGPT reports are NOT ingested automatically unless separately supported by an authorized integration. Existing daily chat automation may continue as an independent editorial cross-check. Do not advertise ChatGPT as model of the autonomous worker when worker actually uses DeepSeek/Qwen/YandexGPT.
-- "No VPN for dashboard" is a user-side access promise that requires real connectivity tests on chosen host/network and locale. This says nothing about availability of every target foreign website.
-- Never auto-publish commercial claims as independently verified; separate provisional research from official founder-approved data.
+## Acceptance and adversarial tests
+- Three fixture days with truly different Western discoveries; old incumbents remain and TOP-10 is all-time, not just today's batch.
+- Direct RU rival discovered on day 2 causes justified RU-gap score reduction, changed rank and stored dated explanation.
+- An analyst and challenger disagree → separate contradictory claim states; unresolved material conflict triggers hold, not confident 95/100.
+- Vendor inflated revenue claim is labeled company self-report; investments/GMV are never treated as audited net revenue.
+- Unreachable Western site and weak Russian search → no invented website text, downgraded confidence, no unsupported "no competitors".
+- Scoring rubric v1.0 math and confidence distinct; all assessment changes source-linked and versioned.
+- No user review event exists or is required to publish a machine TOP-10; never set human-approved flags automatically.
+- Same schedule key re-run is idempotent; successful prior snapshots unchanged; failing run preserves last valid score.
+- Prompt injection against reviewer cannot trigger dangerous tools, network calls or false "human checked".
+- Runtime budget exhausted prevents additional billable requests; retry bounded; costs and freshness visible.
+- CI fixture runs, migration tests and 390/1440px UX all green; provider integration separately authorized.
+
+## Honest limitations
+Automatic research can be highly useful but is not guaranteed true or complete. Financial and legal claims are particularly error-prone; document evidence gaps and machine confidence explicitly. Autonomous research may publish wrong interpretations; controls reduce and surface error risk but cannot eliminate it.
+The current ChatGPT chat schedule is **not** the autonomous runtime. Our worker can run independently without the device VPN, once API/provider accounts, secure hosting and deployment are explicitly configured.
