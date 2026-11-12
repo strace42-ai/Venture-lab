@@ -71,3 +71,15 @@ jobs:
           if npm run research:review -- --dataset real --idea "$IDEA" --evidence "$SRC" --status rejected --reason "CI smoke: must be refused" --actor ci --apply; then
             echo "cross-dataset review was accepted"; exit 1
           fi
+      - name: CLI smoke — VL-004A autonomous worker (fixture providers, no approval step)
+        run: |
+          npm run research:worker:run -- --fixture --as-of 2026-11-10
+          npm run research:worker:run -- --fixture --as-of 2026-11-11
+          npm run research:worker:run -- --fixture --as-of 2026-11-12 | tee /tmp/day3.txt
+          grep -q "4/10" /tmp/day3.txt
+          # idempotent: re-running a finished day changes nothing
+          npm run research:worker:run -- --fixture --as-of 2026-11-12 | tee /tmp/again.txt
+          grep -q "already-succeeded" /tmp/again.txt
+          npm run research:worker:status -- --fixture
+          # live providers are not configured in this sprint and must be refused
+          if npm run research:worker:run -- --as-of 2026-11-12; then echo "live run was not refused"; exit 1; fi

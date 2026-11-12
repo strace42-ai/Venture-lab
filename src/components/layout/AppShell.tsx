@@ -256,6 +256,7 @@ export function AppShell() {
   const [collapsed, setCollapsed] = useState(readCollapsed);
   const [drawer, setDrawer] = useState(false);
   const location = useLocation();
+  const isMachine = location.pathname === '/machine' || location.pathname.startsWith('/machine/');
   const mainRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -320,13 +321,20 @@ export function AppShell() {
             <span className="topbar__model">Модель оценки {SCORING_MODEL_VERSION}</span>
           </div>
           <GlobalSearch key={location.pathname === '/radar' ? 'radar' : 'other'} />
-          <DemoBadge label="Демо-данные" />
-          {mode === 'real' && <span className="mode-pill">Реальные данные</span>}
-          {mode === 'test' && <span className="mode-pill mode-pill--test">Тестовые импорты</span>}
+          {isMachine ? (
+            <span className="mode-pill mode-pill--machine">Машинная лента</span>
+          ) : (
+            <>
+              <DemoBadge label="Демо-данные" />
+              {mode === 'real' && <span className="mode-pill">Реальные данные</span>}
+              {mode === 'test' && <span className="mode-pill mode-pill--test">Тестовые импорты</span>}
+            </>
+          )}
         </header>
 
         <main id="main" ref={mainRef} className="main" tabIndex={-1}>
-          <ModeBanner />
+          {/* The machine dataset has its own feed banner; the DEMO/REAL/TEST mode does not apply there. */}
+          {!isMachine && <ModeBanner />}
           {/* Keyed by mode: switching the data source remounts the page, so no page-local state
               (cached rows, filters-in-flight, pending requests) can survive into another source. */}
           <Suspense key={mode} fallback={<PageSkeleton />}>

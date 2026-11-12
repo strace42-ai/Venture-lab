@@ -1,57 +1,131 @@
 # Venture Lab — Latest handoff
 
-**Task:** VL-003P / First Real Research Pilot (`tasks/current-task.md` v1.0) — research only, no feature sprint
-**Status:** REVISION 2 AFTER CHATGPT AUDIT. Awaiting re-audit. **Nothing was imported into REAL, no approval was given on the founder's behalf, not merged.**
-**As of:** 2026-11-12
-**Implementer:** Claude Code
-
-## How this PR fits the founder's v2.0 decision
-`main` now contains `docs/no-vpn-automation-architecture.md` v2.0 and `tasks/backlog/VL-004A-autonomous-research-worker.md`: **daily research is fully autonomous, with no mandatory human step.** This PR is therefore:
-1. a **legacy manual-import compatibility test** (the ai-draft → draft-check → dry-run → gate path still works, and the gate still refuses drafts);
-2. a **source-rich corpus for the future zero-human VL-004A worker**: 41 sources, competitors, negative searches, and refuted hypotheses that can serve as challenger and quality-gate test cases.
-
-Manual review of the links, manual approval and manual import are **not** preconditions for VL-004A or for future daily research. No `human-reviewed`, `checked` or `approval` values were added. VL-004A has **not** been started.
+**Task:** VL-004A / Zero-human Autonomous Research Worker (fixture-first) — `tasks/current-task.md`, architecture `docs/no-vpn-automation-architecture.md` v2.0
+**Status:** IMPLEMENTED + REVIEW ROUND 1 + ROUND 2 FIXES (ChatGPT, PR #5 reviews 5875231122, 5876011621). Awaiting final audit. **Not merged.**
+**As of:** 2026-11-12 · **Implementer:** Claude Code
 
 ## Git
 | | |
 |---|---|
-| Branch | `claude/vl-003p-first-real-research-pilot` (`origin/main` merged in, which brings in the v2.0 docs; nothing in them was reverted) |
-| PR | https://github.com/strace42-ai/Venture-lab/pull/4 (not merged) |
-| Audited commit | `f08f716` — review https://github.com/strace42-ai/Venture-lab/pull/4#pullrequestreview-5873369468 |
+| Base | `main` @ `56ef07b` (VL-003P merged, VL-004A activated) |
+| Branch | `claude/vl-004a-autonomous-research-worker` |
+| PR | see the PR list (opened to `main`, not merged) |
 
-## Revision 2 — audit findings and fixes
-| # | Finding | Fix |
+## Review round 2 — fixes (audit of `89d7736`)
+| # | Finding | Root cause | Fix | Tests (`server/test/machine-review2.test.ts`, 13) |
+|---|---|---|---|---|
+| **P1** | The skeptic could invent rivals | `findings.competitors` was accepted whenever its `sourceKey` existed; name, market and kind were taken as given | Code accepts a skeptic rival only when search actually surfaced it: same `sourceKey`, name, **market** and URL, on a page fetched `ok`. Anything else is dropped and recorded in the review as «отклонено: конкурент … не найден на загруженной странице». Skeptic verdicts are cross-checked too: `supported` must cite only sources that contain the quote; `refuted` must cite a validated direct rival in the claimed market (absence claims) or a fetched page (other claims). A failed verdict becomes `needs_more_evidence` (fail-closed), and a critical dispute resting on it becomes minor. `PIPELINE_VERSION` is now `vl-004a-pipeline-3`. | Unit: «RealtyCalendar» invented as a direct RU rival on the Focusmate page → dropped, same competitors, scores, score and state as the baseline; the Focusmate (western) offer relabelled as a RU rival → dropped; a rival on a page not fetched OK → dropped; a refutation citing only the phantom → not contradicted, the critical dispute does not hold the idea; `supported` citing a page without the quote → downgraded. Integration (worker + PostgreSQL): a run with invented and re-marketed rivals publishes **exactly the baseline TOP** (rank, score, confidence, grade), stores no phantom competitors, and leaves the focus assessment unchanged; a phantom refutation leaves the TOP order unchanged. |
+| **P1** | With a 3000 budget and 3 attempts a normal run got only 1000 and then stopped for good | The reservation was capped at `budget ÷ max_attempts` with no way to extend it | **Chunked reservation with top-up.** An attempt starts with a chunk (`budget ÷ max_attempts`). When it needs more, `CallContext` calls `topUpAttempt`, which takes the same feed+month lock, checks that the attempt still owns the job with a live lease, grants min(want ≥ one chunk, job left, month left), grows `mr_attempts.reserved` and renews the lease (heartbeat). A superseded or expired attempt gets 0 → `BudgetExhausted`, so it never holds more than it already reserved. DB trigger: a reservation may only grow, and only while its attempt is `running` with no recorded usage. `CallContext.charge` is now async and serialised. | Budget 3000 / 3 attempts with a run costing >1000: completes in **one** attempt, `used` ≤ `reserved` ≤ 3000, the ledger equals the usage rows. A run that needs more than the budget stops «partial» at the cap; top-ups respect the monthly cap. Stuck attempt: A is blocked with its first chunk (500 of 1500), its lease expires, B takes over, tops up and publishes; A is released, its top-up is refused → «partial»; ledger: A `superseded` with reserved 500 and used ≤ 500, B `succeeded`, A + B ≤ 1500, `job.spent` = A.used + B.used, one snapshot. `topUpAttempt` refuses a non-owner or a finished job. Trigger: growth is refused on a settled attempt and shrinking is always refused. |
+
+Non-blocking item addressed: `claimVerdicts[].sourceKeys` are checked against the claim's supporting keys (above). The registry recheck cost and the SSRF/injection guards remain for VL-004B.
+
+Fixture scenario unchanged: day 1 64/63/53, day 2 69/64/56, day 3 4/10; per-day cost 657 / 763 / 859 units.
+
+Checks (round 2): `lint` ✔ · `typecheck` ✔ · `build` ✔ · `CI=true npm test` ✔ **16 files, 231 tests** · fresh-database CLI smoke for the 3 days ✔. The UI was not changed in this round (rejected-rival notes appear as existing skeptic findings), so no new QA screenshots.
+
+## Review round 1 — fixes (audit of `f1abce4`)
+| # | Finding | Root cause | Fix | Regression tests (`server/test/machine-review.test.ts`, 21) |
+|---|---|---|---|---|
+| **P1** | The monthly budget was not a hard cap. Spend from a lease takeover could be lost. | `acquire` only checked `month ≥ cap` and then handed the attempt the whole job budget. Different dates were not serialised. A superseded attempt's usage was written but `mr_jobs.spent` did not include it. | New **spend ledger `mr_attempts`**. Each attempt **reserves** min(job left, month left, job budget ÷ max_attempts) under a per feed+month advisory lock, and the `CallContext` cannot spend more than that reservation. Committed spend is actual usage, or the full reservation until the actual is known. An attempt's usage is always settled, even after it lost ownership; only the owner publishes or changes job status. Reservations and recorded usage are immutable (DB triggers). `monthly_cap` is stored per job and shown in the UI. | (a) 39 950 of 40 000 already spent → the run reserves 50, ends «partial», the month total stays ≤ 40 000, nothing is published; (b) two dates in one month run in parallel → total ≤ cap, at most one succeeds; (c) A blocked mid-run, its lease expires, B takes over and publishes, then A returns: ledger `superseded`+`succeeded`, both usages counted, `job.spent` = A + B, exactly one snapshot; recorded usage and reservations cannot be rewritten or deleted. |
+| **P1** | The «skeptic» only generated extra search queries | `SkepticalReviewer` had just `counterQueries`; all judgements were made by pipeline code | New `SkepticalReviewer.challenge(input) → SkepticFindings`. Input: seed, analyst proposal, checked claims, source excerpts, raw rivals. Output: a verdict per claim (supported / refuted / needs_more_evidence, with source ids and reason), a classification of every rival with a reason, and critical/minor disputes. It is Zod-validated, and references to missing claims or sources are rejected. Its output drives scoring and the gate: a critical dispute means hold, and a claim counts only if both the code and the skeptic support it. The skeptic has its own model id and usage, and its verdicts are stored in `mr_claims.skeptic_verdict/reason` and `mr_competitors.classification_reason`. The fixture skeptic emulates semantic review via the fixture pages' `relevantTo` annotation; VL-004B plugs a real model in behind the same interface. | A refutation that is a content judgement, not a job-tag match («a price list is not proof of paying users») → contradicted, critical dispute, hold; a missing verdict means the claim is not counted; invalid skeptic schema or dangling references → never scored; skeptic usage is metered. |
+| **P1** | Quote verification gave false positives, and the evidence grade was inflated | `includes('')` is always true; there was no runtime validation of model output; the grade looked at any fetched independent page; 0 rivals plus 3 queries gave 5/5 | `quoteProblem`: at least 12 characters, at least 2 words, no boilerplate. Analyst and discovery output are validated with Zod (`server/machine/schemas.ts`). Each claim stores `supporting_source_keys`. The **grade is computed only from sources that support scored claims**, and an unresolved high-impact `needs_more_evidence` lowers it. **Zero rivals found gives a cap of 3**, or 4 with an independent Russian source, never 5. An «absence» claim without independent support is `needs_more_evidence`. A refuted RU basis gives 0, never a new score. | Empty and boilerplate quotes; a true quote from an unrelated page; an unrelated independent page leaves the grade at C; three zero-hit RU searches give 3 (4 with an independent RU source); an absence claim with no rivals is not supported; invalid analyst output (missing field, ghost claim reference, out-of-range value) is rejected; vendor-only support stays C. |
+| **P2** | Feed and provenance integrity in the DB | Single-column FKs; snapshot entries were not tied to the snapshot's job or to the assessment's values | Every event table has `feed` plus composite FKs `(job_id, feed)` and `(candidate_id, feed)`. Assessments, sources and snapshots reference `(job_id, feed, as_of)`, so no backdating. Entries reference `(snapshot_id, job_id, feed)` and `(assessment_id, job_id, candidate_id, title, market_score, confidence, evidence_grade, state)`, so an entry can only be an exact copy of a passed assessment from the same job. A passed assessment cannot have grade D. Job identity is immutable and jobs cannot be deleted. Migration 004 was edited in place because it is not yet on `main`. | Direct SQL: a cross-feed review, claim or usage row is refused; a held idea or another candidate's assessment in the TOP is refused; an inflated frozen score is refused while an exact copy is accepted; another job's entry is refused; a backdated assessment is refused; changing a job's feed or date and deleting jobs are refused; passed + grade D is refused. |
+
+Non-blocking items addressed:
+- the overview shows the configured monthly cap;
+- in the fixture feed, the analyst and skeptic passes are labelled «— эмуляция» and each claim shows the skeptic verdict;
+- the docs no longer imply that a mocked model verified real sources.
+
+Effect on the fixture scenario (stricter evidence lowers some scores; the regressions still hold):
+- **Day 1** TOP: invoice 64 / focus 63 / appliance 53.
+- **Day 2:** contract 69 / invoice 64 / focus **56** (a new direct RU rival refutes both RU claims → 0) / appliance withdrawn (404).
+- **Day 3:** appliance is requalified; 4/10.
+- Guest guide, VAG and quote compare remain on hold for the reasons found by the skeptic.
+
+Checks: `lint` ✔ · `typecheck` ✔ · `build` ✔ · `CI=true npm test` ✔ **15 files, 218 tests** · fresh-database CLI smoke (3 days, idempotent re-run, live refusal) ✔ · responsive QA on 8 routes × 5 widths ✔ (no overflow or errors) · screenshots refreshed in `docs/screenshots/vl-004a/` (new: `skeptic-verdicts-focus-1440.png`).
+
+## What was built (end-to-end: worker → PostgreSQL → automatic TOP-10 → read API → premium UI)
+- **Migration `004_machine_research.sql`** adds a separate, typed machine dataset, with every table except `mr_jobs` append-only:
+  - `mr_jobs`: idempotent key, lease, attempts, hard budget, partial/failed state;
+  - `mr_candidates`: registry plus the discovery seed;
+  - `mr_sources`: fetch status, hash, excerpt (quarantined pages have no text);
+  - `mr_claims`: verification status with reason;
+  - `mr_searches`: coverage, including queries with 0 hits;
+  - `mr_competitors`: who found each one, analyst or skeptic;
+  - `mr_reviews`: analyst / claim_checker / skeptic / quality_gate;
+  - `mr_assessments`: 12 typed score columns, confidence components, Founder Fit, grade, state, hold reasons;
+  - `mr_snapshots` + `mr_snapshot_entries`: frozen machine TOP-10 with previous rank and score delta;
+  - `mr_usage`: provider, operation, model, request id, tokens, cost, price version.
+
+  Legacy tables are not touched. Each row belongs to one feed, `fixture` or `live`.
+- **Provider interfaces** (`server/machine/types.ts`): `SearchProvider`, `SourceReader`, `LLMProvider`, `SkepticalReviewer`, plus a deterministic `ClaimChecker` and `QualityGate` in code. Only **fixture implementations** exist in this sprint; there is no network access and nothing is billed.
+- **Pipeline** (`server/machine/pipeline.ts`): discovery, then analyst, then source reads (prompt-injection quarantine, HTTP and access errors, rate limits), then RU/West competitor search with **independent skeptic counter-queries**, then exact quote ↔ source checks, then the contradiction hunt, then competition-aware re-scoring (unsupported evidence dimensions = unknown; RU dimensions capped by the rivals found), then the quality gate, then rubric v1.0 scoring through `src/domain/scoring.ts` (no copy of the rules). Incumbents are re-researched on every run. Details: `docs/machine-research-worker.md`.
+- **Worker** (`server/machine/worker.ts`):
+  - job lease and advisory lock, so a duplicate concurrent attempt gets «already-running»;
+  - an expired lease is taken over; attempts are bounded, then the job is «exhausted»;
+  - all rows and the snapshot are written in **one transaction**, so a failure leaves the previous TOP-10 published;
+  - hard per-job budget across all attempts plus a monthly cap; exceeding either gives `partial`, nothing is published, usage is kept;
+  - scheduler in Asia/Novokuznetsk at 06:00 local (`research:worker:tick`).
+- **CLI:** `npm run research:worker:run -- --fixture --as-of YYYY-MM-DD`, `research:worker:tick`, `research:worker:status`. Without `--fixture` (live) the CLI refuses: that is VL-004B.
+- **Read API** (GET only, validated): `/api/machine/overview`, `/runs`, `/snapshots`, `/snapshots/:asOf`, `/candidates/:id`, each with `?feed=fixture|live`.
+- **UI:**
+  - `/machine` «Автоматический TOP-10» is the first nav item and the first mobile tab. It shows a run-status strip (last success, latest run or failure, stale indicator, costs, schedule), the TOP-10 as a table on desktop and cards on mobile (N/10 note, movement, evidence grade, «Проверено системой»), new today, a change feed (entered/exited/up/down, state changes, new competitors), the watchlist with automatic hold reasons, and the runs list.
+  - `/machine/:id` is the machine dossier: hold notice, claims with verification status, competitors (flagged when the skeptic found them), sources with fetch status, the 12-dimension breakdown with adjustment notes, machine reviews, search coverage and the immutable assessment history. It carries a «Человек не проверял» badge.
+  - The DEMO/REAL/TEST mode banner is hidden on machine routes; a feed banner (fixture emulation vs live) replaces it.
+
+## VL-003P mistakes as regression scenarios (fixture world, `server/machine/fixtures/world.ts`)
+| Scenario | What the machine must do | Result |
 |---|---|---|
-| **P1** | Guest guide was wrongly presented as the favourite. The negative claim rested on an OTA overview article. | I opened the vendors' own pages and added sources r2–r8 and competitors rc3–rc8 to `pilot-002`. **RealtyCalendar «Автопилот»** has a «Цифровой гид для гостя» section; its auto-messages send check-in instructions, house rules and Wi-Fi. **RYNTO Guest Portal** offers a digital guide with a link and PIN per booking; it is free until 31.12.2027 and FREE for up to 3 units forever. **GuestCom** offers a Telegram/MAX check-in scenario: Free 0 ₽ for 1 property, Pro 498 ₽ per property per month. **Bnovo «Гости.Биново»** provides a guest cabinet. **TravelLine** has a guest cabinet without a guide. **Glamp Connect** did not load in the worker environment (503); it is listed as unconfirmed. `ruUnmetJob` now reads «ГИПОТЕЗА ОПРОВЕРГНУТА». The «cheap guide for 1–3 units» niche is already served by free tiers. Recommendation: **RESEARCH_HOLD → reject; not a favourite.** |
-| **P2** | VAG Report missed VAGLOGS. | I read vaglogs.com through headless Chromium. It analyses CSV data logs from VCDS, ME7Logger, MHD, JB4 and others for free (injectors, boost, ignition), and AI plain-language explanations are «coming soon». Added as w4 / wp3. The idea is narrowed to **Auto-Scan / DTC interpretation in Russian**; dynamic-log analysis is already covered for free. Demand is unproven → **RESEARCH_HOLD**. |
-| **P3** | Outdated mandatory-human-review language | The review package is reframed around the v2.0 states (`DISCOVERED` / `RESEARCH_HOLD`; nobody is `AUTOMATED_EVIDENCE_PASSED`). The checklist became an automated re-check queue. The legacy manual path is described as optional. 7-day tests are labelled as hypotheses for a separately commissioned future experiment, with no outreach. |
-| note | beamai.ru | Marked «not fetched in worker environment (DNS)», not «unavailable». |
+| Guest guide (analyst cites only a Sostav overview) | Skeptic queries «гостевой портал…», «инструкция по заселению бот…», «автосообщения гостям pms…», «аналог Touch Stay» | Finds **RealtyCalendar «Автопилот», RYNTO, GuestCom** (direct, RU) → `ru-gap` contradicted → ruWeakness/ruUnmetJob 5→1 → **RESEARCH_HOLD** |
+| VAG Report («no western automation») | Skeptic queries «VCDS log analyzer online» | Finds **VAGLOGS** (free, direct) → claim contradicted → defensibility 1 → HOLD; drive2 403 is recorded as unretrievable |
+| Quote compare (day 3) | Skeptic category synonyms | **ВНИКЛИ, Vortholm** → HOLD |
 
-**Overall:** there is **no strong favourite** on current evidence. 9 candidates (not 10). The best targets for automated re-research are the 1-on-1 focus coworking and the appliance self-diagnosis assistant. This is a research priority, not a launch recommendation.
+Three fixture days:
+- **Day 1:** TOP 3/10.
+- **Day 2:** a new direct RU rival («Пример: ФокусПара») drops focus coworking from 68 to 64 and from #2 to #3; the appliance assistant's key source returns 404, so it is held and exits the TOP; a new idea enters.
+- **Day 3:** automatic re-research finds a new independent source and the appliance assistant is **requalified**; TOP 4/10.
 
-## Deliverables
-| File | Content |
+Also covered: prompt injection is quarantined and cannot inflate the score; vendor pages produce `vendor_claim`.
+Fixture items with real URLs paraphrase the VL-003P corpus. Fictional items use example.* domains and names that start with «Пример:». The fixture world is labelled an emulation everywhere.
+
+## Checks actually run (local PostgreSQL 16, Node 22)
+| Check | Result |
 |---|---|
-| `research/drafts/draft-2026-11-12-pilot-001.json` | ChatGPT pilot, 3 candidates. Content unchanged. |
-| `research/drafts/draft-2026-11-12-pilot-002.json` | Revision 2: 6 candidates, **24 sources**, 24 competitors. ai-draft; every source unreviewed; `assessment: null`. |
-| `research/reviews/first-real-pilot-review.md` | Rewritten for v2.0: summary table with proposed v2.0 states, changes in revision 2, automated re-check queue, no scores. |
-| `research/reviews/first-real-pilot-source-index.csv` | **41 sources**. New columns: `machine_status` (not evaluated, pre VL-004A), `fetch_status`, `recheck_priority`. |
+| `npm run lint` | ✔ 0 problems |
+| `npm run typecheck` / `npm run build` | ✔ / ✔ |
+| `CI=true TEST_DATABASE_URL=… npm test` | ✔ (round 2) **16 files, 231 tests** (+`machine-review2.test.ts` 13); round 1: 15 files, 218 tests (`machine.test.ts` 23, `machine-review.test.ts` 21, `src/test/machine.test.tsx` 8; all VL-001–VL-003 regressions pass) |
+| CLI three days + idempotent re-run + status (dev DB) | ✔ 3/10 → 3/10 → 4/10; re-run «already-succeeded» |
+| Responsive QA, Playwright at 390/768/1024/1280/1440 on 10 routes (machine top, live empty, 4 dossiers, legacy demo/test pages) | ✔ no horizontal overflow, no console or page errors |
+| CI | a new «VL-004A autonomous worker» smoke step in `.github/workflows/ci.yml`; result in the PR |
 
-No application code changed. The `draft-check` «next steps» text still describes the legacy manual path. I left it as is on purpose, because changing code is out of scope here.
+Integration tests cover:
+- the three days and the three regressions;
+- the injection quarantine and access errors;
+- vendor self-reports;
+- two independent passes plus code checks;
+- no «human» labels;
+- immutable day-1 snapshot, with UPDATE/DELETE forbidden on machine tables;
+- idempotency;
+- isolation (legacy tables untouched, `feed=live` empty, legacy API unchanged);
+- API validation and 404s;
+- concurrent duplicate attempts producing exactly one snapshot;
+- failure → retry, and rollback mid-persist;
+- takeover of an expired lease, and the bounded «exhausted» state;
+- a live lease blocking a second worker;
+- the job budget («partial», no publication, no retry overspend) and the monthly cap;
+- rate limits leaving candidates as DISCOVERED and unranked;
+- live without providers being refused;
+- the timezone schedule and stale detection.
 
-## Checks (revision 2)
-- `research:draft-check` pilot-002 → exit 0, verdict «готов к проверке основателем (НЕ одобрен)», warnings only for missing assessments.
-- `research:import` pilot-002 (dry-run) → ready, +6 ideas, +24 sources, +24 competitors. **⛔ The gate blocks apply.**
-- `research:validate` on both drafts → ✔.
-- REAL in the local database: 0 ideas, 0 `human-reviewed` runs.
-- `npm run lint` ✔, `npm run typecheck` ✔, `CI=true … npm test` ✔ 12 files / 166 tests.
-- `git diff origin/main -- docs tasks src server` is empty: the v2.0 docs on main are intact and no code changed.
+Screenshots: `docs/screenshots/vl-004a/` (TOP-10 at 1440 and 390, guest-guide regression at 1440 and 390, VAG regression, requalified appliance, injection quarantine, live feed empty).
 
-## Factual caveats
-- Every claim is an AI paraphrase of vendor pages. Vendor pages confirm that an offer exists; they say nothing about customers or revenue.
-- Pages loaded with headless Chromium: vaglogs.com, rynto.io/ru/pricing.
-- Pages that did not load in the worker environment: glampconnect.ru (503), beamai.ru (DNS), drive2.ru (403), kontur.ru (403), vaglogs.com/about_app (error).
-- Skillbox prices date from 2021. The GummySearch shutdown date comes from an interested author.
+## Known limitations / risks
+- Fixture «LLM» passes are deterministic emulations. Competitor matching relies on structured `offer.jobs` tags; in live mode an extraction model will produce these and can make mistakes. The gate thresholds (3 RU queries, ≥2 direct or free rivals) are policy v1 and need calibration on live data (VL-004D).
+- The registry re-researches every candidate on every run. That suits fixtures; live mode needs rotation and budgets per candidate.
+- The cost units are emulated (`fixture-prices-2026-11`). Real provider prices and connectivity from a Russian server are still unverified (VL-004B).
+- No production scheduler, hosting or HTTPS (VL-004C). The API remains local-only, read-only, GET.
+- The `/` overview still shows the legacy DEMO/REAL/TEST ranking. The machine TOP-10 is the first nav item; making it the landing page after live launch is a product decision.
+- Docker was not used (no daemon); a native PostgreSQL 16 was used instead. Testing on real devices was not done; responsive checks used Playwright emulation.
 
-## Next step
-ChatGPT re-audit of PR #4. After the founder closes VL-003P, implement **VL-004A** (zero-human, fixture-first). It is not started in this PR.
+## Next
+ChatGPT final audit of this PR (round 2 fixes). Then VL-004B: a bounded paid trial of real providers after the founder sets credentials and a spend cap.
