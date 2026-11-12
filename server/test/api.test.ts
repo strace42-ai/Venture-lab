@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../api/app';
 import { loadConfig } from '../config';
 import { createPool } from '../db/pool';
+import { listMigrations } from '../db/migrate';
 import { applyImport } from '../research/importer';
 import { createSnapshot } from '../research/snapshot';
 import { ACTOR, createTestDb, describeDb, exampleFile, type TestDb } from './helpers';
@@ -48,7 +49,7 @@ describeDb('local read API (integration)', () => {
   it('empty database: health ok, overview honestly empty', async () => {
     const h = await get('/api/health');
     expect(h.statusCode).toBe(200);
-    expect(h.json()).toMatchObject({ status: 'ok', db: 'up', ideas: { real: 0, test: 0 }, migrations: ['001_research_engine', '002_dataset_isolation'] });
+    expect(h.json()).toMatchObject({ status: 'ok', db: 'up', ideas: { real: 0, test: 0 }, migrations: listMigrations().map((m) => m.id) });
     const o = (await get('/api/overview?dataset=test')).json();
     expect(o).toMatchObject({ mode: 'test', ranking: [], lead: null, baseline: null, experiments: [], activity: [] });
     expect(o.kpis).toMatchObject({ totalIdeas: 0, verifiedPaidSignals: 0 });

@@ -182,7 +182,7 @@ function TabBar({ onMore, moreOpen }: { onMore: () => void; moreOpen: boolean })
       {primary.map((item) => (
         <NavLink key={item.to} to={item.to} end={item.to === '/'} className={({ isActive }) => cx('tabbar__item', isActive && 'is-active')}>
           <item.icon size={20} strokeWidth={1.8} aria-hidden />
-          <span>{item.label}</span>
+          <span>{item.short ?? item.label}</span>
         </NavLink>
       ))}
       <button type="button" className={cx('tabbar__item', moreOpen && 'is-active')} onClick={onMore} aria-expanded={moreOpen} aria-controls="mobile-nav">

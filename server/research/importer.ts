@@ -78,7 +78,13 @@ function isAttributed(s: Pick<ResearchSource, 'url' | 'publisher' | 'observedAt'
 
 // ------------------------------------------------------------------ planning
 
-type Status = 'ready' | 'already-imported' | 'conflict' | 'invalid';
+type Status = 'ready' | 'already-imported' | 'conflict' | 'invalid' | 'blocked';
+
+/** Why an otherwise valid plan may NOT be applied (VL-003 approval gate). */
+export interface ApplyGate {
+  allowed: boolean;
+  reasons: string[];
+}
 
 export interface ImportCounts {
   ideas: { inserted: number; updated: number; unchanged: number };
@@ -145,8 +151,8 @@ interface IdeaAction {
   content: IdeaContent;
   hash: string;
   stage: { stage: string; effectiveAt: string; reason: string | null } | null;
-  evidenceInserts: { externalId: string; content: EvidenceContent; hash: string; status: string }[];
-  reviewAppends: { externalId: string; status: string }[];
+  evidenceInserts: { externalId: string; content: EvidenceContent; hash: string; status: string; reviewedBy: string | null }[];
+  reviewAppends: { externalId: string; status: string; reviewedBy: string | null }[];
   competitorInserts: { externalId: string; content: CompetitorContent; hash: string }[];
   assessmentInsert: { a: ResearchAssessment; assessedAt: string; hash: string } | null;
 }
@@ -290,7 +296,7 @@ function assessmentContent(a: ResearchAssessment) {
 interface Existing {
   idea: { id: number; slug: string; synthetic: boolean; content_hash: string; content: IdeaContent } | null;
   stage: { stage: string; effective_at: Date } | null;
-  evidence: Map<string, { hash: string; status: string }>;
+  evidence: Map<string, { hash: string; status: string; origin: string }>;
   competitors: Map<string, string>;
   assessmentHashes: Set<string>;
   latestAssessmentAt: Date | null;
@@ -358,13 +364,14 @@ async function loadExisting(c: PoolClient, externalId: string): Promise<Existing
     [idea.id],
   );
   ex.stage = st.rows[0] ?? null;
-  const ev = await c.query<{ external_id: string; content_hash: string; status: string }>(
-    `SELECT e.external_id, e.content_hash,
-            (SELECT r.status FROM evidence_reviews r WHERE r.evidence_id = e.id ORDER BY r.id DESC LIMIT 1) AS status
-       FROM evidence e WHERE e.idea_id = $1`,
+  const ev = await c.query<{ external_id: string; content_hash: string; status: string; origin: string }>(
+    `SELECT e.external_id, e.content_hash, lr.status, lr.origin
+       FROM evidence e
+       CROSS JOIN LATERAL (SELECT r.status, r.origin FROM evidence_reviews r WHERE r.evidence_id = e.id ORDER BY r.id DESC LIMIT 1) lr
+      WHERE e.idea_id = $1`,
     [idea.id],
   );
-  for (const r of ev.rows) ex.evidence.set(r.external_id, { hash: r.content_hash, status: r.status });
+  for (const r of ev.rows) ex.evidence.set(r.external_id, { hash: r.content_hash, status: r.status, origin: r.origin });
   const co = await c.query<{ external_id: string; content_hash: string }>('SELECT external_id, content_hash FROM competitors WHERE idea_id = $1', [idea.id]);
   for (const r of co.rows) ex.competitors.set(r.external_id, r.content_hash);
   const as = await c.query<{ content_hash: string; assessed_at: Date }>('SELECT content_hash, assessed_at FROM assessments WHERE idea_id = $1 ORDER BY assessed_at', [idea.id]);
@@ -451,17 +458,25 @@ export async function planImport(c: PoolClient, file: { bytes: Buffer | string; 
       if (status === 'checked' && !isAttributed(s)) {
         status = 'unreviewed';
         counts.evidence.downgraded++;
+      } else if (env.source === 'human-reviewed' && status !== 'unreviewed' && !s.reviewedBy) {
+        // VL-003: a REAL import may only carry a verification decision made by a named human.
+        status = 'unreviewed';
+        counts.evidence.downgraded++;
+        diags.push({ level: 'warning', path: `${path}.sources.${j}`, message: `источник "${s.id}": статус ${s.verificationStatus} без reviewedBy (кто проверил) — сохранён как unreviewed; проверьте через research:review` });
       }
       const prev = ex.evidence.get(s.id);
       if (!prev) {
-        evidenceInserts.push({ externalId: s.id, content: ec, hash: eh, status });
+        evidenceInserts.push({ externalId: s.id, content: ec, hash: eh, status, reviewedBy: status === 'unreviewed' ? null : (s.reviewedBy ?? null) });
         counts.evidence.inserted++;
       } else if (prev.hash !== eh) {
         diags.push({ level: 'error', path: `${path}.sources.${j}`, message: `источник "${s.id}" уже сохранён с другим содержимым — доказательства неизменяемы, используйте новый id` });
       } else {
         counts.evidence.unchanged++;
-        if (prev.status !== status) {
-          reviewAppends.push({ externalId: s.id, status });
+        if (prev.status !== status && prev.origin === 'manual') {
+          // A later import never overrides a manual human review (research:review).
+          notes.push(`статус источника ${s.id} не изменён: последнее решение принято вручную (${prev.status})`);
+        } else if (prev.status !== status) {
+          reviewAppends.push({ externalId: s.id, status, reviewedBy: status === 'unreviewed' ? null : (s.reviewedBy ?? null) });
           counts.evidence.reviewsAppended++;
           notes.push(`статус источника ${s.id}: ${prev.status} → ${status}`);
         }
@@ -555,6 +570,24 @@ export interface ImportFile {
   bytes: Buffer | string;
   checksum: string;
   name: string;
+  /** Absolute path when read from disk; files under research/drafts/ can never be applied. */
+  path?: string;
+}
+
+/**
+ * VL-003 approval gate — evaluated for every plan, enforced by `applyImport`:
+ * - `ai-draft` research is never applied (it must be approved and re-labelled first);
+ * - files inside `research/drafts/` are never applied (approved files live in `research/inbox/`);
+ * - `human-reviewed` (REAL) research needs a founder `approval` block.
+ * Synthetic TEST imports are not gated (isolated dataset).
+ */
+export function applyGate(env: ResearchEnvelope | null, file: Pick<ImportFile, 'path'>): ApplyGate {
+  const reasons: string[] = [];
+  if (!env) return { allowed: false, reasons: ['файл не прошёл валидацию'] };
+  if (env.source === 'ai-draft') reasons.push('source="ai-draft": черновик не применяется. Основатель проверяет его, меняет source на "human-reviewed", добавляет блок approval и переносит файл в research/inbox/.');
+  if (file.path && /[\\/]research[\\/]drafts[\\/]/.test(file.path)) reasons.push('файл находится в research/drafts/ — черновики не применяются; одобренный файл должен лежать в research/inbox/.');
+  if (env.source === 'human-reviewed' && !env.approval) reasons.push('нет блока approval (approvedBy, approvedAt, statement) — REAL-импорт требует явного одобрения основателя.');
+  return { allowed: reasons.length === 0, reasons };
 }
 
 export interface ApplyOptions {
@@ -582,15 +615,33 @@ export async function applyImport(pool: Pool, file: ImportFile, opts: ApplyOptio
     await client.query('BEGIN');
     await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', ['vl-research-import']);
     const plan = await planImport(client, file);
+    const gate = applyGate(plan.envelope, file);
+    if (plan.status === 'ready' && !gate.allowed) {
+      await client.query('ROLLBACK');
+      return { ...plan, status: 'blocked', applied: false, diagnostics: [...plan.diagnostics, ...gate.reasons.map((m) => ({ level: 'error' as const, path: 'approval', message: m }))] };
+    }
     if (plan.status !== 'ready' || !plan.envelope) {
       await client.query('ROLLBACK');
       return { ...plan, applied: false };
     }
     const env = plan.envelope;
     await client.query(
-      `INSERT INTO import_runs (run_id, checksum, schema_version, file_name, origin, actor, counts, diagnostics, started_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [env.runId, file.checksum, env.schemaVersion, file.name, env.source, opts.actor, JSON.stringify(plan.counts), JSON.stringify(plan.diagnostics), startedAt],
+      `INSERT INTO import_runs (run_id, checksum, schema_version, file_name, origin, actor, counts, diagnostics, started_at, approved_by, approved_at, approval_statement)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
+      [
+        env.runId,
+        file.checksum,
+        env.schemaVersion,
+        file.name,
+        env.source,
+        opts.actor,
+        JSON.stringify(plan.counts),
+        JSON.stringify(plan.diagnostics),
+        startedAt,
+        env.approval?.approvedBy ?? null,
+        env.approval?.approvedAt ?? null,
+        env.approval?.statement ?? null,
+      ],
     );
     await client.query(
       `INSERT INTO research_runs (run_id, researched_at, origin, synthetic, reviewed_by, title, coverage, limitations, markets, source_refs,
@@ -623,13 +674,13 @@ export async function applyImport(pool: Pool, file: ImportFile, opts: ApplyOptio
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id`,
           [ideaId, e.externalId, e.content.region, e.content.claim, e.content.url, e.content.title, e.content.publisher, e.content.sourceType, e.content.language, e.content.publishedAt, e.content.observedAt, e.content.retrievedAt, e.content.dimensions, e.content.supportNote, env.runId, e.hash],
         );
-        await client.query('INSERT INTO evidence_reviews (evidence_id, status, run_id) VALUES ($1, $2, $3)', [r.rows[0]!.id, e.status, env.runId]);
+        await client.query("INSERT INTO evidence_reviews (evidence_id, status, run_id, origin, actor) VALUES ($1, $2, $3, 'import', $4)", [r.rows[0]!.id, e.status, env.runId, e.reviewedBy]);
       }
       for (const rv of a.reviewAppends) {
         await client.query(
-          `INSERT INTO evidence_reviews (evidence_id, status, run_id)
-           SELECT id, $3, $4 FROM evidence WHERE idea_id = $1 AND external_id = $2`,
-          [ideaId, rv.externalId, rv.status, env.runId],
+          `INSERT INTO evidence_reviews (evidence_id, status, run_id, origin, actor)
+           SELECT id, $3, $4, 'import', $5 FROM evidence WHERE idea_id = $1 AND external_id = $2`,
+          [ideaId, rv.externalId, rv.status, env.runId, rv.reviewedBy],
         );
       }
       for (const co of a.competitorInserts) {

@@ -102,6 +102,18 @@ export type VerificationStatus = 'unreviewed' | 'checked' | 'rejected';
  * A source-linked claim. In DEMO no source is attached (url = null) and that must be visible.
  * A claim without url + publisher + observedAt can never be shown as checked.
  */
+/** One append-only verification event (VL-003). */
+export interface EvidenceReview {
+  status: VerificationStatus;
+  /** ISO datetime (UTC). */
+  at: string;
+  /** `import` = carried by a research import; `manual` = `npm run research:review`. */
+  origin: 'import' | 'manual';
+  actor: string | null;
+  reason: string | null;
+  runId: string | null;
+}
+
 export interface Evidence {
   id: string;
   market: EvidenceMarket;
@@ -117,6 +129,10 @@ export interface Evidence {
   retrievedAt: ISODate | null;
   verificationStatus: VerificationStatus;
   supportNote: string | null;
+  /** Full review history, oldest first (REAL/TEST). Absent in DEMO. */
+  reviews?: EvidenceReview[];
+  /** Research run that first recorded this evidence (REAL/TEST). */
+  runId?: string | null;
 }
 
 export type CompetitorKind = 'direct' | 'adjacent' | 'substitute';

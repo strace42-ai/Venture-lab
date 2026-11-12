@@ -1,0 +1,97 @@
+{
+  "schemaVersion": "vl-research-1",
+  "runId": "draft-yyyy-mm-dd-topic-001",
+  "researchedAt": "2026-11-12",
+  "source": "ai-draft",
+  "synthetic": false,
+  "reviewedBy": "ChatGPT (черновик, не проверен человеком)",
+  "title": "ШАБЛОН — замените: тема прогона исследования",
+  "coverage": "ШАБЛОН — что именно искали: запросы, рынки, языки, площадки; где искали российских конкурентов.",
+  "limitations": "ШАБЛОН — чего НЕ проверили; какие цифры — гипотезы; где источники самоотчёты компаний.",
+  "markets": [
+    "ШАБЛОН-категория"
+  ],
+  "sourceReferences": [
+    "https://example.org/replace-me"
+  ],
+  "ideas": [
+    {
+      "externalId": "template-idea-slug",
+      "title": "ШАБЛОН — название идеи (3–200 символов)",
+      "pitch": "ШАБЛОН — проблема и решение одной-двумя фразами.",
+      "segment": "B2B",
+      "category": "ШАБЛОН-категория",
+      "targetPersona": "ШАБЛОН — кто платит и кто пользуется",
+      "problem": "ШАБЛОН — конкретная боль",
+      "ruUnmetJob": "ШАБЛОН — что именно не закрыто в РФ и почему (со ссылками)",
+      "whyNow": "ШАБЛОН — почему сейчас (гипотеза, если нет источника)",
+      "monetization": "ШАБЛОН — кто платит, за что",
+      "priceHypothesis": "ШАБЛОН — цена как ГИПОТЕЗА, не измеренная конверсия",
+      "riskFlags": [
+        "demandUnverified"
+      ],
+      "sources": [
+        {
+          "id": "w1",
+          "region": "west",
+          "claim": "ШАБЛОН — одно конкретное утверждение, которое подтверждает этот источник",
+          "url": "https://example.org/replace-me",
+          "title": "ШАБЛОН — заголовок страницы",
+          "publisher": "ШАБЛОН — издатель",
+          "sourceType": "company_self_report",
+          "language": "en",
+          "observedAt": "2026-11-12",
+          "dimensions": [
+            "westernNeed"
+          ],
+          "supportNote": "ШАБЛОН — почему это подтверждение и чем ограничено",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r1",
+          "region": "ru",
+          "claim": "ШАБЛОН — утверждение о российском рынке/конкуренте",
+          "url": "https://example.com/replace-me",
+          "title": "ШАБЛОН",
+          "publisher": "ШАБЛОН",
+          "sourceType": "independent",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness"
+          ],
+          "verificationStatus": "unreviewed"
+        }
+      ],
+      "westernProducts": [
+        {
+          "id": "wp1",
+          "name": "ШАБЛОН — западный аналог",
+          "url": "https://example.org/replace-me",
+          "kind": "direct",
+          "coverage": "high",
+          "note": "ШАБЛОН",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "w1"
+          ]
+        }
+      ],
+      "russianCompetitors": [
+        {
+          "id": "rc1",
+          "name": "ШАБЛОН — российский конкурент/заменитель",
+          "url": "https://example.com/replace-me",
+          "kind": "adjacent",
+          "coverage": "partial",
+          "gap": "ШАБЛОН — чего не хватает",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r1"
+          ]
+        }
+      ],
+      "assessment": null
+    }
+  ]
+}

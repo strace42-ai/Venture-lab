@@ -55,3 +55,19 @@ jobs:
           # REAL dataset must still be empty: synthetic imports never leak into it.
           npm run research:snapshot -- --as-of 2026-11-06 --apply | tee /tmp/real-snap.txt
           grep -q "нет оценённых идей" /tmp/real-snap.txt
+      - name: CLI smoke — VL-003 draft gate, manual review, stored snapshot history
+        run: |
+          # The committed pilot draft is checked (structure only) and can NEVER be applied.
+          npm run research:draft-check -- research/drafts/draft-2026-11-12-pilot-001.json
+          if npm run research:import -- research/drafts/draft-2026-11-12-pilot-001.json --apply; then
+            echo "ai-draft was applied — approval gate is broken"; exit 1
+          fi
+          npm run research:snapshot -- --dataset test --as-of 2026-11-11 --apply
+          IDEA=$(node -e "console.log(require('./research/examples/synthetic-run-1.json').ideas[0].externalId)")
+          SRC=$(node -e "console.log(require('./research/examples/synthetic-run-1.json').ideas[0].sources[0].id)")
+          npm run research:review -- --dataset test --idea "$IDEA" --evidence "$SRC" --status rejected --reason "CI smoke: manual review event" --actor ci
+          npm run research:review -- --dataset test --idea "$IDEA" --evidence "$SRC" --status rejected --reason "CI smoke: manual review event" --actor ci --apply
+          # Cross-dataset review must be refused.
+          if npm run research:review -- --dataset real --idea "$IDEA" --evidence "$SRC" --status rejected --reason "CI smoke: must be refused" --actor ci --apply; then
+            echo "cross-dataset review was accepted"; exit 1
+          fi

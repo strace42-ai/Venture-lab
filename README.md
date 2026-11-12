@@ -25,7 +25,7 @@ Venture Lab не должен превращаться в «таблицу ид�
 Открой репозиторий `strace42-ai/Venture-lab`. Прочитай `CLAUDE.md` и `tasks/current-task.md`, затем связанные документы. Выполняй только текущий scope в отдельной ветке, проверяй результат, делай commit/push и PR. В конце обнови `handoff/latest.md`. Не выдумывай результаты проверок.
 
 ## Состояние
-**VL-002 — Research Engine Foundation (PR на ревью).** Работает вертикальная цепочка: проверенный JSON-файл исследования (`vl-research-1`) → dry-run и импорт одной транзакцией → локальный PostgreSQL с append-only историей → расчёт рейтинга той же доменной логикой `src/domain` → отображение в интерфейсе (режим REAL) → неизменяемые срезы ТОП-10. Демо-набор VL-001 доступен как отдельный режим DEMO; режимы никогда не смешиваются. Нет авторизации, публичного API, деплоя, платных API и автоматического сбора исследований.
+**VL-003 — Research Operations & Evidence Review (PR на ревью).** Журнал исследований `/journal`: датированные прогоны с провенансом, очередь проверки источников и сравнение сохранённых срезов ТОП-10; ручная проверка источников локальной командой `research:review` (append-only); шлюз одобрения основателем для REAL-импорта; руководство и шаблон черновика для ChatGPT/Claude ([docs/research-export-guide.md](docs/research-export-guide.md)). Автоматического обмена с ChatGPT нет. **VL-002 — Research Engine Foundation (влит).** Работает вертикальная цепочка: проверенный JSON-файл исследования (`vl-research-1`) → dry-run и импорт одной транзакцией → локальный PostgreSQL с append-only историей → расчёт рейтинга той же доменной логикой `src/domain` → отображение в интерфейсе (режим REAL) → неизменяемые срезы ТОП-10. Демо-набор VL-001 доступен как отдельный режим DEMO; режимы никогда не смешиваются. Нет авторизации, публичного API, деплоя, платных API и автоматического сбора исследований.
 
 ## Принципы
 1. **Evidence first:** каждое серьёзное утверждение — со ссылкой, датой и уровнем уверенности.
@@ -63,6 +63,17 @@ npm run research:import   -- research/examples/synthetic-run-2.json --apply  # �
 
 Реальные исследования кладите в `research/inbox/` (формат — [docs/research-import-format.md](docs/research-import-format.md)).
 
+### Черновик → проверка → одобрение → импорт (VL-003)
+```bash
+npm run research:draft-check -- research/drafts/<файл>.json      # структура и покрытие, НЕ истинность
+# основатель открывает каждую ссылку; source → "human-reviewed", блок approval, файл → research/inbox/
+npm run research:import -- research/inbox/<файл>.json            # dry-run
+npm run research:import -- research/inbox/<файл>.json --apply    # только с approval; ai-draft и research/drafts/ — отказ
+npm run research:review -- --dataset real --idea <externalId> --evidence <id> --status checked --reason "что проверено" --actor "Имя" [--apply]
+npm run research:snapshot -- --dataset real --apply              # срез для «Истории ТОП-10»
+```
+Пилотный черновик ИИ: `research/drafts/draft-2026-11-12-pilot-001.json` (3 идеи, все источники `unreviewed`, без оценок) — **не импортирован**, ждёт проверки основателем.
+
 ### Режимы REAL / TEST / DEMO
 - **Реальные** — импортированные с явным подтверждением исследовательские записи (`human-reviewed`) из локальной БД; отдельные источники могут иметь статус `unreviewed` и требуют проверки человеком.
 - **Тест** — только синтетические тестовые импорты (`synthetic-test`) из той же БД, изолированный набор данных.
@@ -81,6 +92,7 @@ npm run research:import   -- research/examples/synthetic-run-2.json --apply  # �
 | `npm test` | все тесты; интеграционные с БД требуют `TEST_DATABASE_URL`, иначе пропускаются локально (в CI — обязательны) |
 | `npm run test:unit`, `npm run test:integration` | только UI/домен; только server (PostgreSQL) |
 | `npm run db:up`, `db:down`, `db:migrate`, `db:status` | контейнер БД, миграции |
+| `npm run research:draft-check`, `research:review` | проверка черновика; ручное ревью источника (dry-run, `--apply`) |
 | `npm run db:reset -- --yes` | **удаляет все данные** локальной БД и пересоздаёт схему (только localhost) |
 
 Интеграционные тесты: `TEST_DATABASE_URL=postgres://venture_lab:venture_lab_local@127.0.0.1:5433/venture_lab_test npm test` — каждый тестовый файл работает в собственной временной схеме и удаляет её.

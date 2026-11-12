@@ -11,6 +11,7 @@ import type {
   ConfidenceComponents,
   Dataset,
   Evidence,
+  EvidenceReview,
   FounderFitComponents,
   Idea,
   RankBaseline,
@@ -104,12 +105,26 @@ export async function loadIdeas(db: Queryable, dataset: LiveDataset): Promise<Id
       retrieved_at: string | null;
       dimensions: Evidence['dimensions'];
       support_note: string | null;
-      status: Evidence['verificationStatus'];
-    }>(
-      `SELECT e.*, (SELECT r.status FROM evidence_reviews r WHERE r.evidence_id = e.id ORDER BY r.id DESC LIMIT 1) AS status
-         FROM evidence e WHERE e.${inDataset} ORDER BY e.id`,
-      [syn],
-    );
+      id: number;
+      run_id: string;
+    }>(`SELECT e.* FROM evidence e WHERE e.${inDataset} ORDER BY e.id`, [syn]);
+  // Full append-only review history (import + manual). Legacy import rows have no actor: it is the
+  // run's reviewer (research_runs.reviewed_by).
+  const reviews = await db.query<{ evidence_id: number; status: Evidence['verificationStatus']; reviewed_at: Date; origin: 'import' | 'manual'; actor: string | null; reason: string | null; run_id: string | null }>(
+    `SELECT r.evidence_id, r.status, r.reviewed_at, r.origin, COALESCE(r.actor, rr.reviewed_by) AS actor, r.reason, r.run_id
+       FROM evidence_reviews r
+       JOIN evidence e ON e.id = r.evidence_id
+       LEFT JOIN research_runs rr ON rr.run_id = r.run_id
+      WHERE e.${inDataset}
+      ORDER BY r.id`,
+    [syn],
+  );
+  const reviewsBy = new Map<number, EvidenceReview[]>();
+  for (const r of reviews.rows) {
+    const arr = reviewsBy.get(r.evidence_id) ?? [];
+    arr.push({ status: r.status, at: r.reviewed_at.toISOString(), origin: r.origin, actor: r.actor, reason: r.reason, runId: r.run_id });
+    reviewsBy.set(r.evidence_id, arr);
+  }
   const competitors = await db.query<{
       idea_id: number;
       external_id: string;
@@ -182,8 +197,10 @@ export async function loadIdeas(db: Queryable, dataset: LiveDataset): Promise<Id
           publishedAt: e.published_at,
           observedAt: e.observed_at,
           retrievedAt: e.retrieved_at,
-          verificationStatus: e.status,
+          verificationStatus: (reviewsBy.get(e.id) ?? []).at(-1)?.status ?? 'unreviewed',
           supportNote: e.support_note,
+          reviews: reviewsBy.get(e.id) ?? [],
+          runId: e.run_id,
         }),
       ),
       competitors: (coBy.get(r.id) ?? []).map(
@@ -239,10 +256,11 @@ export interface StoredSnapshot {
   sourceRunId: string | null;
   createdBy: string;
   createdAt: string;
+  entryCount: number;
   entries: StoredSnapshotEntry[];
 }
 
-type SnapshotRow = { id: string; as_of: string; rubric_version: string; source_run_id: string | null; created_by: string; created_at: Date; synthetic: boolean };
+type SnapshotRow = { id: string; as_of: string; rubric_version: string; source_run_id: string | null; created_by: string; created_at: Date; synthetic: boolean; entry_count: number };
 
 const snapMeta = (x: SnapshotRow): Omit<StoredSnapshot, 'entries'> => ({
   id: x.id,
@@ -252,6 +270,7 @@ const snapMeta = (x: SnapshotRow): Omit<StoredSnapshot, 'entries'> => ({
   sourceRunId: x.source_run_id,
   createdBy: x.created_by,
   createdAt: x.created_at.toISOString(),
+  entryCount: x.entry_count,
 });
 
 export async function listSnapshots(db: Queryable, dataset: LiveDataset): Promise<Omit<StoredSnapshot, 'entries'>[]> {

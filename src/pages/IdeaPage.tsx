@@ -1,7 +1,8 @@
-import { AlertTriangle, ArrowLeft, CircleHelp, ExternalLink, FileQuestion, Globe2, Link2Off, MapPin, ShieldAlert, Target, Users } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CircleHelp, FileQuestion, Globe2, Link2Off, MapPin, ShieldAlert, Target, Users } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { LoadError } from '../components/StateViews';
+import { SourceLink } from '../components/SourceLink';
 import { PageSkeleton } from '../components/ui/PageSkeleton';
 import { Badge, ConfidenceMeter, DemoBadge, EmptyState, MovementIndicator, Panel, ScoreRing, StageBadge, SyntheticBadge } from '../components/ui/primitives';
 import { useDataSource, useLoad } from '../data/context';
@@ -57,25 +58,6 @@ function NotFound({ slug, real }: { slug: string; real: boolean }) {
         </EmptyState>
       </div>
     </div>
-  );
-}
-
-/** Safe external link: only http(s), opened without referrer/opener. */
-function SourceLink({ url, children }: { url: string; children: ReactNode }) {
-  let safe: string | null = null;
-  try {
-    const u = new URL(url);
-    if (u.protocol === 'https:' || u.protocol === 'http:') safe = u.toString();
-  } catch {
-    safe = null;
-  }
-  if (!safe) return <span className="muted">{children}</span>;
-  return (
-    <a href={safe} target="_blank" rel="noopener noreferrer nofollow" className="src-link">
-      {children}
-      <ExternalLink size={12} aria-hidden />
-      <span className="sr-only"> (откроется в новой вкладке)</span>
-    </a>
   );
 }
 
@@ -494,6 +476,18 @@ function CompetitorTable({ items, caption }: { items: Competitor[]; caption: str
   );
 }
 
+/** Who made the current verification decision (append-only history lives in the Journal queue). */
+function LastDecision({ e }: { e: Evidence }) {
+  const last = e.reviews?.[e.reviews.length - 1];
+  if (!last || last.status === 'unreviewed') return null;
+  return (
+    <p className="ev__decision">
+      {last.status === 'checked' ? 'Проверил' : 'Отклонил'} {last.origin === 'manual' ? 'вручную' : 'при импорте'}: {last.actor ?? '—'}, {formatDateShort(last.at.slice(0, 10))}
+      {last.reason && <> · «{last.reason}»</>}
+    </p>
+  );
+}
+
 function EvidenceList({ title, icon, items }: { title: string; icon: ReactNode; items: Evidence[] }) {
   const dimLabel = (k: string) => DIMENSIONS.find((d) => d.key === k)?.short ?? k;
   return (
@@ -521,6 +515,7 @@ function EvidenceList({ title, icon, items }: { title: string; icon: ReactNode; 
                   </div>
                 ) : null}
                 {e.supportNote && <p className="ev__note">{e.supportNote}</p>}
+                <LastDecision e={e} />
                 <div className="ev__meta">
                   {e.dimensions.map((d) => (
                     <span key={d} className="ev__dim">
