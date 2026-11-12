@@ -1,9 +1,9 @@
 # Venture Lab — полностью автономный Research Worker без VPN (архитектура v2.0)
 Date: 2026-11-12
-Status: DESIGN, NOT IMPLEMENTED, NOT DEPLOYED
+Status: VL-004A fixture pipeline IMPLEMENTED and merged; VL-004B live adapters IN DEVELOPMENT, no paid APIs connected, not deployed
 Owner: Founder + ChatGPT
 Decision: Founder explicitly requested **zero-human-in-the-research-loop**. This supersedes the human-approval REQUIREMENT for the future autonomous worker in v1.0. Preserve compatibility with historical human-approved data, but do not require human review to publish the automatic evidence-ranked TOP-10.
-Current engineering task `tasks/current-task.md` is VL-003P and was not modified while Claude may be working on it. The next development task will explicitly implement this architecture.
+Current engineering task is VL-004B (phase A): official Search/LLM adapter implementation with mocked HTTP only until separate founder approval of paid trial. VL-004A fixture-based worker has been merged in PR #5.
 
 ## Non-negotiable product outcome
 Venture Lab researches foreign and Russian digital-product markets independently on a schedule from a server accessible in Russia **without VPN on the user's device**. It collects source evidence, checks claims using programmatic extraction and independent AI critique, rates opportunities against the same 12-factor 100-point rubric, keeps date-stamped history, and **publishes a primary machine-researched TOP-10 automatically**. No human approval, clicking each source, copying chat replies, operating the importer, or approving research jobs is required. When fewer than 10 candidates pass quality gates, show N/10; never fill ten by invention.
