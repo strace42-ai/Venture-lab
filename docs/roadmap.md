@@ -3,11 +3,14 @@
 ## VL-001 — Premium dashboard [COMPLETED, merged]
 React/TypeScript premium dark UI, Overview, Radar, Dossier, scoring v1, typed demo fixtures, 41 tests and responsive screen captures. No backend or live data.
 
-## VL-002 — Research Engine Foundation [CURRENT TASK]
+## VL-002 — Research Engine Foundation [COMPLETED, merged]
 Full vertical slice: PostgreSQL persistence, evidence provenance, strict structured manual import (dry-run/apply), readable API, explicit REAL/DEMO modes, historical assessment/stage and immutable TOP-10 snapshots, CI/integration tests. See `tasks/current-task.md` and `docs/research-engine-contract.md`.
 
-## VL-003 — Research operations & daily delivery [PLANNED]
-Turn daily new research into a machine-readable payload, review queue, deduplication and historical ranking. Automate only after stable manual import. Verify whether scheduled ChatGPT output can be exported using authorized integrations; never assume the daily automation writes directly to repo or database.
+## VL-003 — Research Journal & evidence verification [CURRENT TASK]
+Premium dated research journal, evidence review queue with append-only human checking, stored TOP-10 snapshot comparison and manually approved research draft→import pipeline. See `tasks/current-task.md` and `docs/research-operations-vl003.md`. No automatic ChatGPT→GitHub→DB bridge in this stage.
+
+## VL-003B — Scheduled research delivery bridge [FUTURE, depends on VL-003]
+Find and implement a documented authorized export/integration path for scheduled ChatGPT reports and founder approval. Never assume a chat automation directly writes to GitHub or a local DB; evaluate authorization, credentials, reliability and operating cost separately.
 
 ## VL-004 — Validation laboratory [PLANNED]
 Interview/outreach records, experiment hypotheses, price tests, confirmed payments/retention, decision log and funnel. No automatic unsolicited messaging.
