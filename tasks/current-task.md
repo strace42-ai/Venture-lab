@@ -1,68 +1,54 @@
-# CURRENT TASK — VL-002 / Research Engine Foundation
+# CURRENT TASK — VL-003 / Research Operations & Evidence Review
 Version: 1.0
 Status: READY FOR CLAUDE
 Owner: Founder + ChatGPT
 Repository: strace42-ai/Venture-lab
-Base: main (after merged VL-001)
-Target branch: new `claude/vl-002-research-engine`
+Base: latest `main` (VL-002 merged)
+Suggested feature branch: `claude/vl-003-research-operations`
 
 ## Mission
-Turn Venture Lab from a beautiful demo into a **usable, persistent evidence-backed research product**. A reviewed structured research report should be importable without copy-pasting into dozens of UI fields; Radar, dossier, overview and TOP-10 should then display actual records and their verifiable evidence. Preserve the VL-001 premium UI.
+Transform the VL-002 research database into a **daily usable founder intelligence cockpit**: premium Research Journal, citation/evidence review queue, snapshot comparison, and an honest manual pipeline for taking ChatGPT research through review to the REAL database. Keep previous score logic, data integrity and visual identity. No unattended automation or paid APIs yet.
 
-**Read first**: `CLAUDE.md`, `docs/product-vision.md`, `docs/scoring-model.md`, `docs/data-contracts.md`, and especially `docs/research-engine-contract.md`. Check existing data types/components and actual build scripts before design decisions.
+## Required reading
+`CLAUDE.md`, `docs/product-vision.md`, `docs/design-principles.md`, `docs/scoring-model.md`, `docs/research-import-format.md`, `docs/research-operations-vl003.md`, `docs/agent-workflow.md`, `docs/roadmap.md`; inspect current code and tests first. **The detailed specification is in `docs/research-operations-vl003.md` and is part of acceptance criteria.**
 
-## User-facing success demo (PRIMARY acceptance scenario)
-1. Fresh local project starts with an **empty real research database**. UI explicitly says no research has been imported.
-2. The founder drops an approved, versioned JSON research file into `research/inbox/` (or imports an explicitly synthetic sample).
-3. CLI dry-run validates it without writing; shows inserts, updates, rejects, sources, conflicts. With `--apply`, data persists in DB.
-4. Refresh REAL mode UI: imported ideas appear in Radar, dossier shows evidence names, clickable URLs, observation dates, verification state and competitors.
-5. When a genuine assessment is present, the unchanged rubric v1.0 generates the score; rank, evidence confidence and Founder Fit remain distinct. Unknown/unassessed values are not silently presented as 0-rated ideas.
-6. A dated TOP-10 snapshot can be created explicitly, and prior snapshots do not change if an idea is later reassessed or rejected; movement is computed against the previous stored snapshot.
-7. Re-import the exact same file: no duplicates, scores or rank history changes. Data survives restart.
-8. Switch to DEMO intentionally: old VL-001 fixture returns, visibly labeled. Never mix both modes.
+## Required vertical user journey
+1. User opens Research Journal: sees dated research runs and what changed in each.
+2. User opens evidence queue: unreviewed claims, exact source links, publisher, dates, claim, idea and rubric dimensions. Status is honest.
+3. User marks a source `checked` or `rejected` through a locally safe review CLI with rationale and explicit `--apply`; immutable review event appears in Journal/queue.
+4. User compares two stored snapshots: rank changes, new/exited ideas, score/confidence deltas and frozen snapshot-era titles.
+5. A new strictly validated research JSON draft can be checked, founder-approved and imported by explicit existing commands; journal, current top-10 and dossier reflect it without demo/test contamination. No real research automatically imported without a human approval step.
 
-## Must implement
-### A — Minimal local persistence and API
-- PostgreSQL in a simple `docker compose` configuration for local development, with migrations and isolated test DB. No remote DB, cloud account or paid services. Use TypeScript server (Fastify or another lightweight justified framework), Zod validation, a maintainable query layer. Explain versions/choices in README.
-- Tables/constraints for ideas, stage transitions (append-only), assessments (append-only, rubric version and dimensions), evidence, RU/Western competitors, research runs, immutable top-ten snapshots + entries, import runs and their checksums. Build only fields needed for the primary scenario; migrations must be safe and repeatable.
-- Minimal local read API: overview, ideas with query/filter/sort/pagination, detail, research runs, TOP-10 and health. Validate inputs, safe error handling; restrict CORS and network binding to local development.
-- Keep current `src/domain` scoring and ranking **single source of truth**. Sharing domain types is preferable to duplicating business logic in API; if reorganizing, preserve all existing tests and explain migration.
+## Deliverables (must)
+### A. UI
+- Fully functional Research Journal `/journal` (replace placeholder); consistent with premium-dark design; date/run navigation, source provenance, coverage/limitations, linked idea changes, honest counts.
+- Evidence review workbench as a Journal tab or route; source filtering (status/market/source type/idea/age), review history, clickable source, clear "checking URL != proof" messaging.
+- Historical Top-10 comparator from two actual stored snapshots; illustrate movement and exits, no fabricated full ten if <10 supported.
+- Clean loading/empty/error states in REAL/TEST, separate DEMO; excellent 390px mobile and 1440px desktop.
 
-### B — Honest research import
-- Document versioned `vl-research-1` JSON schema, provide TWO synthetic examples with explicit `demo/test` markers and no purported real evidence. Support import of user-supplied REAL data with original source URLs and provenance.
-- `npm run research:validate -- <path>` and `npm run research:import -- <path> --apply` (or clearly documented equivalents), safe file path handling, useful diagnostics and no-write dry-run by default.
-- Stable idempotency by `runId + checksum`, explicit conflict for same ID/different content, unique idea external ID, transactionality (invalid item must not partially write successful items). No guessing/fuzzy auto-merge.
-- Persist evidence URL/title/publisher, source type, observed/retrieved/published dates, review state and source-linked claim; distinguish unreviewed from checked. If claim lacks sufficient attribution, do not promote it as verified.
-- Accept **optional** 12-dimension assessment with justification and evidence references. If absent, idea is `unscored` in UI, not a fabricated score. Previous assessments and source provenance are immutable; corrections append revisions.
-- Snapshot action is explicit, idempotent per period/snapshot ID; snapshot generated from eligible ideas with assessments on that date. A new import does NOT rewrite a historical snapshot. Keep movement honest.
+### B. Data + review CLI
+- Add only necessary read APIs and database migration(s); preserve immutable audit history and existing VL-002 behavior.
+- `research:review` CLI supports safe dry-run, explicit `--apply`, actor/reason/status, append-only human review, validation and dataset isolation. Do NOT introduce unauthenticated public write endpoints.
+- Derive run-level added/updated/rejected counts faithfully from existing import records; if insufficient, add forward-compatible immutable action history with clear legacy limitations.
+- Top-10 snapshot compare MUST use stored snapshot entries for period A/B, not current mutable score/title/stage, with accurate "new/exit" and score changes.
+- No copy of scoring rules in another layer.
 
-### C — Real UI integration without losing design
-- Preserve existing UI and all VL-001 functionality; add a clear `DEMO / REAL` development-mode choice (URL/query/config with visible banner), not an ambiguous fallback.
-- Replace direct demo-only provider when REAL selected with loading/empty/error states and API-backed data adapter; display actual evidence and competitor names/links with review status, never bare unsupported claims as established facts.
-- For REAL mode, overview/Radar/dossier/Top-10 work with the imported subset and show clear "не оценено / источник требует проверки" states where necessary. No fake payment or agent status.
-- Screenshots of REAL mode with the synthetic test import clearly labeled demo; screenshots of empty real mode; preserve polished 390px / 1440px layout.
-- Do not introduce major redesign unrelated to data ingestion.
+### C. Import preparation
+- Versioned ChatGPT research export guide/template matching **actual** `vl-research-1` Zod schema. Provide a helper to validate source coverage/duplicates without claiming independent truth.
+- Distinguish `draft` vs `founder-approved human-reviewed REAL import`. Never set `checked` based on AI output alone. Explicit founder sign-off needed before a real apply. If current importer can be misused to bypass this, add suitable safe workflow/gate without breaking prior tests.
+- Prepare a small **draft** of 3–5 previously investigated candidate ideas with verifiable grounded public URLs only if access to current sources is available. If not, stop at reusable template and document that actual primary-source verification/import is pending. No fabricated figures or artificial top-ten fill.
+- Reproduce one full import using isolated TEST data; in REAL only explicitly approved public research may enter.
 
-### D — Validation and delivery
-- Tests for migration, schema validation, transaction rollback, duplicate/conflict imports, append-only updates, snapshot immutability, ranking/score consistency, API input validation, REAL empty/error states and DEMO mode regression.
-- CI GitHub Actions for lint/typecheck/tests/build; Postgres service for isolated integration tests (avoid using real credentials). If some suites are local-only, clearly document and justify.
-- Documentation: precise prerequisites (Node and Docker), one-command local start if feasible, run migrations, import example, inspect in browser, clean/reset safely.
-- Run actual checks; report command outputs rather than mere claims. Mobile responsive sweep, check console/errors, include screenshots.
-- `handoff/latest.md`: branch/commit/PR, architecture diagram in text, migrations, validation commands/results, known limitations, cost/security notes and proposed VL-003.
+### D. Quality and handoff
+- Preserve current suite; add database review/atomicity/isolation tests, journal API/UI, snapshot compare with edge cases, draft helper validation, responsive QA; run lint/types/tests/build and CI.
+- Provide screenshots for desktop/mobile and a handoff with PR link, exact commands, test results, demo-vs-real disclosure, risks and future work.
+- Work in a new branch from main, commit/push and open PR; DO NOT MERGE.
 
-## Boundaries and non-goals
-- No OpenAI/Claude API integration; ChatGPT automation does NOT directly write to the live app without an explicit export/integration.
-- No unattended internet browsing, scheduled ingestion, autonomous LLM scoring, browser scraping.
-- No production deployment, public hosting, sign-up/auth, payments, arbitrary client data, automatic messages to prospects or API keys.
-- Never invent sources, sales, Western metrics, competitor coverage or real interview records. Previous chat reports can be imported ONLY as explicitly reviewed input with links. Do not fill REAL mode with fabricated proof.
-- No merging the PR without founder approval.
-- Avoid adding a large general-purpose CRUD app. This is a vertically complete **import → persistent storage → verified display → immutable TOP-10** sprint.
+## Important constraints
+- Existing daily ChatGPT research automation delivers chat reports, **not** direct Github/DB writes. This sprint cannot claim auto-sync. Founder-approved export and import are manual.
+- No OpenAI/Claude APIs, autonomous crawling, scheduled ingestion, paid services, public deployment, customer outreach or credentials in repo.
+- No automatic market scoring of AI-authored claims as "verified". Evidence integrity and current UI take priority over number of features.
+- No need to ask the founder to pick mundane technical libraries; decide and document.
 
-## Definition of done
-- REAL empty → reviewed import → real view → duplicate safe → revised assessment → preserved previous snapshot demonstrated end-to-end.
-- Scores remain accurate and match VL-001 rubric; no history retroactively rewritten.
-- Quality gate: lint/types/tests/build + API integration tests + responsive screenshots; CI added.
-- Handoff updated, separate branch pushed, PR opened and not merged.
-
-## Decision rules
-You may choose detailed implementation libraries and migrate code folders if justified by clear architecture, but keep existing route URLs and general design. If DB or automated tests are unexpectedly blocked, deliver the strongest working vertical slice and accurately mark incomplete acceptance criteria. Do not request extra services or paid tokens for this sprint.
+## Definition of Done
+An operator can execute **candidate draft → source review → approved import → real Journal/Radar/Top-10 update → compare with earlier snapshot**, or gets an explicitly documented hold when no founder-approved data are available. TEST scenario fully reproducible locally and in CI; GitHub PR open awaiting founder's approval.
