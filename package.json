@@ -28,7 +28,8 @@
     "research:review": "tsx server/cli/research.ts review",
     "research:worker:run": "tsx server/cli/worker.ts run",
     "research:worker:tick": "tsx server/cli/worker.ts tick",
-    "research:worker:status": "tsx server/cli/worker.ts status"
+    "research:worker:status": "tsx server/cli/worker.ts status",
+    "research:benchmark": "tsx server/cli/benchmark.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.4.1",

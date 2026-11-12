@@ -6,13 +6,13 @@ export function FeedBanner({ feed }: { feed: MachineFeed }) {
     <div className="mode-banner mode-banner--test machine-banner" role="status">
       <span className="mode-banner__dot" aria-hidden />
       <strong>Эмуляция на фикстурах</strong>
-      <span className="mode-banner__text">детерминированные тестовые провайдеры — не живое исследование. Живые источники подключаются отдельно (VL-004B).</span>
+      <span className="mode-banner__text">детерминированные тестовые провайдеры — не живое исследование. Живые адаптеры готовы; платные прогоны — только после отдельного разрешения (Phase B).</span>
     </div>
   ) : (
     <div className="mode-banner mode-banner--real machine-banner" role="status">
       <span className="mode-banner__dot" aria-hidden />
       <strong>Живой автономный воркер</strong>
-      <span className="mode-banner__text">машинная проверка доказательств — не проверка человеком</span>
+      <span className="mode-banner__text">Yandex Search API + AI Studio · машинная проверка доказательств — не проверка человеком</span>
     </div>
   );
 }

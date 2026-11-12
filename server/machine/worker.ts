@@ -12,9 +12,9 @@
 import { contribution, DIMENSION_KEYS } from '../../src/domain/scoring';
 import type { DimensionKey, ISODate } from '../../src/domain/types';
 import type { Pool, PoolClient } from '../db/pool';
-import { PIPELINE_VERSION, runPipeline, type Providers } from './pipeline';
+import { PIPELINE_VERSION, runPipeline, type PipelineOptions, type Providers } from './pipeline';
 import { FIXTURE_PRICES, FixtureLLMProvider, FixtureSearchProvider, FixtureSkeptic, FixtureSourceReader } from './providers/fixture';
-import { BudgetExhausted, CallContext, type CandidateResult, type DiscoverySeed, type Feed, type UsageRecord } from './types';
+import { BudgetExhausted, CallContext, type DiscoverySeed, type Feed, type UsageRecord } from './types';
 
 export const WORKER_TIMEZONE = 'Asia/Novokuznetsk';
 export const DEFAULT_JOB_BUDGET = 3_000; // units (kopecks) per daily job, all attempts together (≤ 1/3 per attempt)
@@ -44,6 +44,13 @@ export interface RunOptions {
   leaseMs?: number;
   rateLimits?: CallContext['rateLimits'];
   providers?: (asOf: ISODate) => Providers;
+  /** Live: how independent the machine passes are (recorded on the job). */
+  independence?: 'independent' | 'single-model-degraded';
+  /** Live bounds: new candidates per run, rotating incumbent rechecks, carry-forward window, pages per query. */
+  maxNew?: number;
+  maxRechecks?: number;
+  carryDays?: number;
+  pipeline?: PipelineOptions;
   now?: () => Date;
   /** Test-only fault injection. */
   failAt?: 'pipeline' | 'persist';
@@ -57,7 +64,7 @@ export interface RunResult {
   jobId: number;
   attempt: number;
   message: string;
-  snapshot?: { asOf: ISODate; entries: { rank: number; externalId: string; score: number }[]; eligible: number; held: number };
+  snapshot?: { asOf: ISODate; entries: { rank: number; externalId: string; score: number; carriedFrom?: ISODate }[]; eligible: number; held: number; carried: number };
   spent?: number;
 }
 
@@ -192,9 +199,9 @@ export async function topUpAttempt(pool: Pool, feed: Feed, asOf: ISODate, jobId:
 async function insertUsage(c: PoolClient, feed: Feed, jobId: number, attempt: number, usage: UsageRecord[]) {
   for (const u of usage) {
     await c.query(
-      `INSERT INTO mr_usage (job_id, feed, attempt, provider, operation, model, request_id, tokens_in, tokens_out, cost, price_version)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-      [jobId, feed, attempt, u.provider, u.operation, u.model, u.requestId, u.tokensIn, u.tokensOut, u.cost, u.priceVersion],
+      `INSERT INTO mr_usage (job_id, feed, attempt, provider, operation, model, request_id, tokens_in, tokens_out, cost, price_version, estimated_cost, actual_cost, reconciliation, provider_request_id, http_status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+      [jobId, feed, attempt, u.provider, u.operation, u.model, u.requestId, u.tokensIn, u.tokensOut, u.cost, u.priceVersion, u.estimatedCost ?? u.cost, u.actualCost ?? null, u.reconciliation ?? 'emulated', u.providerRequestId?.slice(0, 200) ?? null, u.httpStatus ?? null],
     );
   }
 }
@@ -236,20 +243,51 @@ async function finishUnsuccessful(pool: Pool, feed: Feed, jobId: number, attempt
   }
 }
 
-/** Machine ranking: passed candidates only; score → confidence → first-payment feasibility → id. */
-function rankPassed(cands: CandidateResult[]): CandidateResult[] {
-  return cands
-    .filter((c) => c.assessment.state === 'AUTOMATED_EVIDENCE_PASSED')
-    .sort(
-      (a, b) =>
-        b.assessment.marketScore - a.assessment.marketScore ||
-        b.assessment.confidenceScore - a.assessment.confidenceScore ||
-        contribution(10, b.assessment.scores.speedToPilot) - contribution(10, a.assessment.scores.speedToPilot) ||
-        a.externalId.localeCompare(b.externalId),
-    );
+interface Rankable {
+  externalId: string;
+  title: string;
+  marketScore: number;
+  confidence: number;
+  grade: string;
+  speedToPilot: number | null;
+  /** Set for an assessment carried forward from an earlier job (not re-researched this run). */
+  carried?: { assessmentId: number; jobId: number; asOf: ISODate };
 }
 
-async function persist(pool: Pool, feed: Feed, asOf: ISODate, jobId: number, attempt: number, result: Awaited<ReturnType<typeof runPipeline>>, ctx: CallContext, now: Date, failAt?: RunOptions['failAt']) {
+/** Machine ranking: passed candidates only; score → confidence → first-payment feasibility → id. */
+function rankPassed(xs: Rankable[]): Rankable[] {
+  return [...xs].sort(
+    (a, b) =>
+      b.marketScore - a.marketScore ||
+      b.confidence - a.confidence ||
+      contribution(10, b.speedToPilot as never) - contribution(10, a.speedToPilot as never) ||
+      a.externalId.localeCompare(b.externalId),
+  );
+}
+
+export interface CarryOptions {
+  /** Incumbents NOT re-researched this run. */
+  notRechecked: string[];
+  days: number;
+}
+
+/** Latest PASSED assessment (≤ `days` old) of each incumbent that was not re-researched this run. */
+async function carriedForward(c: PoolClient, feed: Feed, asOf: ISODate, carry: CarryOptions | undefined): Promise<(Rankable & { candidateId: number })[]> {
+  if (!carry || carry.notRechecked.length === 0 || carry.days <= 0) return [];
+  const r = await c.query<{ id: number; job_id: number; as_of: string; state: string; title: string; market_score: number; confidence: number; evidence_grade: string; score_speed_to_pilot: number | null; external_id: string; candidate_id: number }>(
+    `SELECT DISTINCT ON (a.candidate_id) a.id, a.job_id, to_char(a.as_of, 'YYYY-MM-DD') AS as_of, a.state, a.title, a.market_score, a.confidence, a.evidence_grade, a.score_speed_to_pilot, c.external_id, a.candidate_id
+       FROM mr_assessments a JOIN mr_candidates c ON c.id = a.candidate_id
+      WHERE a.feed = $1 AND a.as_of < $2 AND c.external_id = ANY($3)
+      ORDER BY a.candidate_id, a.as_of DESC, a.id DESC`,
+    [feed, asOf, carry.notRechecked],
+  );
+  const oldest = new Date(`${asOf}T00:00:00Z`).getTime() - Math.min(carry.days, 30) * 86_400_000;
+  return r.rows
+    .filter((x) => x.state === 'AUTOMATED_EVIDENCE_PASSED' && new Date(`${x.as_of}T00:00:00Z`).getTime() >= oldest)
+    .map((x) => ({ externalId: x.external_id, candidateId: x.candidate_id, title: x.title, marketScore: x.market_score, confidence: x.confidence, grade: x.evidence_grade, speedToPilot: x.score_speed_to_pilot, carried: { assessmentId: x.id, jobId: x.job_id, asOf: x.as_of } }));
+}
+
+async function persist(pool: Pool, feed: Feed, asOf: ISODate, jobId: number, attempt: number, result: Awaited<ReturnType<typeof runPipeline>>, ctx: CallContext, now: Date, failAt?: RunOptions['failAt'], carry?: CarryOptions) {
   const c = await pool.connect();
   try {
     await c.query('BEGIN');
@@ -268,25 +306,30 @@ async function persist(pool: Pool, feed: Feed, asOf: ISODate, jobId: number, att
       if (!id) {
         id = (
           await c.query<{ id: number }>(
-            `INSERT INTO mr_candidates (feed, external_id, first_job_id, first_seen, seed_title, seed_pitch, segment, category, primary_job, jobs, western_product)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
-            [feed, cand.externalId, jobId, asOf, seed.title, seed.pitch, seed.segment, seed.category, seed.primaryJob, seed.jobs, seed.westernProduct],
+            `INSERT INTO mr_candidates (feed, external_id, first_job_id, first_seen, seed_title, seed_pitch, segment, category, primary_job, jobs, western_product, ru_keywords, source_url)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
+            [feed, cand.externalId, jobId, asOf, seed.title, seed.pitch, seed.segment, seed.category, seed.primaryJob, seed.jobs, seed.westernProduct, seed.ruKeywords ?? [], seed.sourceUrl ?? null],
           )
         ).rows[0]!.id;
       }
       ids.set(cand.externalId, id);
       for (const s of cand.sources) {
         await c.query(
-          `INSERT INTO mr_sources (job_id, candidate_id, feed, source_key, url, publisher, region, source_type, fetch_status, http_status, content_hash, excerpt, observed_at, agent)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-          [jobId, id, feed, s.key, s.url, s.publisher, s.region, s.sourceType, s.fetchStatus, s.httpStatus, s.contentHash, s.excerpt, asOf, s.agent],
+          `INSERT INTO mr_sources (job_id, candidate_id, feed, source_key, url, publisher, region, source_type, fetch_status, http_status, content_hash, excerpt, observed_at, agent,
+                                   canonical_url, fetched_at, page_title, content_type, failure, offer, extraction_model)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+          [
+            jobId, id, feed, s.key, s.url, s.publisher, s.region, s.sourceType, s.fetchStatus, s.httpStatus, s.contentHash, s.excerpt, asOf, s.agent,
+            s.canonicalUrl ?? null, s.fetchedAt ?? null, s.title?.slice(0, 500) ?? null, s.contentType?.slice(0, 200) ?? null, s.failure?.slice(0, 500) ?? null,
+            s.offer ? JSON.stringify(s.offer) : null, s.offer?.grounding?.extractor ?? null,
+          ],
         );
       }
       for (const cl of cand.claims) {
         await c.query(
-          `INSERT INTO mr_claims (job_id, candidate_id, feed, claim_key, dimension, text, quote, source_keys, supporting_source_keys, status, status_reason, skeptic_verdict, skeptic_reason, high_impact)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-          [jobId, id, feed, cl.key, cl.dimension, cl.text, cl.quote, cl.sourceKeys, cl.supportingKeys, cl.status, cl.reason, cl.skepticVerdict, cl.skepticReason, cl.highImpact],
+          `INSERT INTO mr_claims (job_id, candidate_id, feed, claim_key, dimension, text, quote, source_keys, supporting_source_keys, status, status_reason, skeptic_verdict, skeptic_reason, high_impact, quote_locations)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+          [jobId, id, feed, cl.key, cl.dimension, cl.text, cl.quote, cl.sourceKeys, cl.supportingKeys, cl.status, cl.reason, cl.skepticVerdict, cl.skepticReason, cl.highImpact, JSON.stringify(cl.quoteLocations ?? [])],
         );
       }
       for (const s of cand.searches) {
@@ -321,8 +364,14 @@ async function persist(pool: Pool, feed: Feed, asOf: ISODate, jobId: number, att
       if (failAt === 'persist') throw new Error('injected persist failure (test)');
     }
 
-    // Automatic machine TOP-10 (N/10 when fewer pass; never padded)
-    const ranked = rankPassed(result.candidates);
+    // Automatic machine TOP-10 (N/10 when fewer pass; never padded). Incumbents not re-researched this run
+    // (live rotation) keep their latest PASSED assessment if it is recent — shown with its own date.
+    const fresh: Rankable[] = result.candidates
+      .filter((x) => x.assessment.state === 'AUTOMATED_EVIDENCE_PASSED')
+      .map((x) => ({ externalId: x.externalId, title: x.assessment.title, marketScore: x.assessment.marketScore, confidence: x.assessment.confidenceScore, grade: x.assessment.evidenceGrade, speedToPilot: x.assessment.scores.speedToPilot }));
+    const carried = await carriedForward(c, feed, asOf, carry);
+    for (const x of carried) ids.set(x.externalId, x.candidateId);
+    const ranked = rankPassed([...fresh, ...carried]);
     const top = ranked.slice(0, 10);
     const prev = await c.query<{ candidate_id: number; rank: number; market_score: number }>(
       `SELECT e.candidate_id, e.rank, e.market_score FROM mr_snapshot_entries e
@@ -332,20 +381,24 @@ async function persist(pool: Pool, feed: Feed, asOf: ISODate, jobId: number, att
     );
     const prevBy = new Map(prev.rows.map((r) => [r.candidate_id, r]));
     const held = result.candidates.filter((x) => x.assessment.state !== 'AUTOMATED_EVIDENCE_PASSED').length;
-    const snap = (await c.query<{ id: number }>('INSERT INTO mr_snapshots (job_id, feed, as_of, eligible_count, hold_count, published_at) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id', [jobId, feed, asOf, ranked.length, held, now])).rows[0]!.id;
+    const snap = (
+      await c.query<{ id: number }>('INSERT INTO mr_snapshots (job_id, feed, as_of, eligible_count, hold_count, published_at, carried_count) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id', [
+        jobId, feed, asOf, ranked.length, held, now, top.filter((t) => t.carried).length,
+      ])
+    ).rows[0]!.id;
     for (const [i, cand] of top.entries()) {
       const cid = ids.get(cand.externalId)!;
       const p = prevBy.get(cid);
       await c.query(
-        `INSERT INTO mr_snapshot_entries (snapshot_id, job_id, feed, rank, candidate_id, assessment_id, title, market_score, confidence, evidence_grade, prev_rank, score_delta)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-        [snap, jobId, feed, i + 1, cid, assessmentIds.get(cand.externalId), cand.assessment.title, cand.assessment.marketScore, cand.assessment.confidenceScore, cand.assessment.evidenceGrade, p?.rank ?? null, p ? cand.assessment.marketScore - p.market_score : null],
+        `INSERT INTO mr_snapshot_entries (snapshot_id, job_id, feed, rank, candidate_id, assessment_id, title, market_score, confidence, evidence_grade, prev_rank, score_delta, assessment_job_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+        [snap, jobId, feed, i + 1, cid, cand.carried?.assessmentId ?? assessmentIds.get(cand.externalId), cand.title, cand.marketScore, cand.confidence, cand.grade, p?.rank ?? null, p ? cand.marketScore - p.market_score : null, cand.carried?.jobId ?? null],
       );
     }
     await settleAttempt(c, feed, jobId, attempt, ctx, 'succeeded', now);
     await c.query("UPDATE mr_jobs SET status = 'succeeded', lease_until = NULL, finished_at = $2, error = NULL WHERE id = $1", [jobId, now]);
     await c.query('COMMIT');
-    return { asOf, entries: top.map((t, i) => ({ rank: i + 1, externalId: t.externalId, score: t.assessment.marketScore })), eligible: ranked.length, held };
+    return { asOf, entries: top.map((t, i) => ({ rank: i + 1, externalId: t.externalId, score: t.marketScore, ...(t.carried ? { carriedFrom: t.carried.asOf } : {}) })), eligible: ranked.length, held, carried: top.filter((t) => t.carried).length };
   } catch (e) {
     await c.query('ROLLBACK').catch(() => undefined);
     throw e;
@@ -354,12 +407,36 @@ async function persist(pool: Pool, feed: Feed, asOf: ISODate, jobId: number, att
   }
 }
 
-async function knownSeeds(pool: Pool, feed: Feed, asOf: ISODate): Promise<DiscoverySeed[]> {
-  const r = await pool.query<{ external_id: string; seed_title: string; seed_pitch: string; segment: 'B2B' | 'B2C'; category: string; primary_job: string; jobs: string[]; western_product: string }>(
-    'SELECT external_id, seed_title, seed_pitch, segment, category, primary_job, jobs, western_product FROM mr_candidates WHERE feed = $1 AND first_seen <= $2 ORDER BY id',
+async function knownSeeds(pool: Pool, feed: Feed, asOf: ISODate): Promise<(DiscoverySeed & { lastAssessed: string | null })[]> {
+  const r = await pool.query<{ external_id: string; seed_title: string; seed_pitch: string; segment: 'B2B' | 'B2C'; category: string; primary_job: string; jobs: string[]; western_product: string; ru_keywords: string[]; source_url: string | null; last_assessed: string | null }>(
+    `SELECT c.external_id, c.seed_title, c.seed_pitch, c.segment, c.category, c.primary_job, c.jobs, c.western_product, c.ru_keywords, c.source_url,
+            (SELECT to_char(max(a.as_of), 'YYYY-MM-DD') FROM mr_assessments a WHERE a.candidate_id = c.id AND a.as_of < $2) AS last_assessed
+       FROM mr_candidates c WHERE c.feed = $1 AND c.first_seen <= $2 ORDER BY c.id`,
     [feed, asOf],
   );
-  return r.rows.map((x) => ({ externalId: x.external_id, title: x.seed_title, pitch: x.seed_pitch, segment: x.segment, category: x.category, primaryJob: x.primary_job, jobs: x.jobs, westernProduct: x.western_product }));
+  return r.rows.map((x) => ({
+    externalId: x.external_id,
+    title: x.seed_title,
+    pitch: x.seed_pitch,
+    segment: x.segment,
+    category: x.category,
+    primaryJob: x.primary_job,
+    jobs: x.jobs,
+    westernProduct: x.western_product,
+    ...(x.ru_keywords.length ? { ruKeywords: x.ru_keywords } : {}),
+    ...(x.source_url ? { sourceUrl: x.source_url } : {}),
+    lastAssessed: x.last_assessed,
+  }));
+}
+
+/** Rotation: the incumbents assessed longest ago (never assessed first) are re-researched; ties by id order. */
+export function selectRechecks<T extends { externalId: string; lastAssessed: string | null }>(known: T[], max: number | undefined): T[] {
+  if (max === undefined) return known;
+  return [...known]
+    .map((k, i) => ({ k, i }))
+    .sort((a, b) => (a.k.lastAssessed ?? '') .localeCompare(b.k.lastAssessed ?? '') || a.i - b.i)
+    .slice(0, max)
+    .map((x) => x.k);
 }
 
 /** Run (or resume) the daily autonomous job for `feed` / `asOf`. Never asks for approval. */
@@ -385,12 +462,25 @@ export async function runWorkerJob(pool: Pool, opts: RunOptions): Promise<RunRes
   const chunk = Math.ceil(job.budget_limit / job.max_attempts);
   const ctx = new CallContext(key, attempt, reserved, opts.rateLimits ?? {}, (want) => topUpAttempt(pool, o.feed, o.asOf, job.id, attempt, want, o.leaseMs, o.monthlyBudget, now()), chunk);
   const providers = (opts.providers ?? fixtureProviders)(o.asOf);
-  const known = await knownSeeds(pool, o.feed, o.asOf);
+  const knownRows = await knownSeeds(pool, o.feed, o.asOf);
+  const known: DiscoverySeed[] = knownRows.map((k) => { const { lastAssessed, ...seed } = k; void lastAssessed; return seed; });
+  const recheckIds = new Set(selectRechecks(knownRows, opts.maxRechecks).map((k) => k.externalId));
+  const recheck = known.filter((k) => recheckIds.has(k.externalId));
+  const carry: CarryOptions | undefined = opts.maxRechecks === undefined ? undefined : { notRechecked: known.filter((k) => !recheckIds.has(k.externalId)).map((k) => k.externalId), days: opts.carryDays ?? 7 };
+  await pool.query('UPDATE mr_jobs SET independence = $2 WHERE id = $1 AND independence IS NULL', [job.id, opts.independence ?? (o.feed === 'fixture' ? 'emulated' : null)]);
   try {
     if (opts.failAt === 'pipeline') throw new Error('injected pipeline failure (test)');
-    const result = await runPipeline(o.asOf, known, providers, ctx);
-    const snapshot = await persist(pool, o.feed, o.asOf, job.id, attempt, result, ctx, now(), opts.failAt);
-    return { status: 'succeeded', jobKey: key, jobId: job.id, attempt, spent: ctx.spent, snapshot, message: `Опубликован автоматический TOP-${snapshot.entries.length} на ${o.asOf} (${snapshot.entries.length}/10; отложено: ${snapshot.held}).` };
+    const result = await runPipeline(o.asOf, known, providers, ctx, { ...opts.pipeline, maxNew: opts.maxNew, recheck });
+    const snapshot = await persist(pool, o.feed, o.asOf, job.id, attempt, result, ctx, now(), opts.failAt, carry);
+    return {
+      status: 'succeeded',
+      jobKey: key,
+      jobId: job.id,
+      attempt,
+      spent: ctx.spent,
+      snapshot,
+      message: `Опубликован автоматический TOP-${snapshot.entries.length} на ${o.asOf} (${snapshot.entries.length}/10; отложено: ${snapshot.held}${snapshot.carried ? `; перенесено без перепроверки: ${snapshot.carried}` : ''}).`,
+    };
   } catch (e) {
     const msg = (e as Error).message;
     if (e instanceof BudgetExhausted) {

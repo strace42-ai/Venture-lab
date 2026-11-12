@@ -28,6 +28,11 @@ const FETCH_LABEL: Record<string, string> = {
   injection_suspected: 'карантин: попытка инъекции',
   rate_limited: 'лимит запросов',
   budget_exhausted: 'лимит бюджета',
+  robots_disallowed: 'запрещено robots.txt',
+  unsafe_url: 'небезопасный адрес — не открывался',
+  unsupported_content: 'формат не поддерживается',
+  too_large: 'слишком большой ответ',
+  timeout: 'таймаут',
 };
 
 const TYPE_LABEL: Record<string, string> = { independent: 'независимый', company_self_report: 'заявление компании', primary_data: 'первичные данные', unknown: 'тип не указан' };
@@ -200,6 +205,13 @@ function Dossier({ d, feed }: { d: MachineCandidateDetail; feed: MachineFeed }) 
                   <a href={s.url} target="_blank" rel="noopener noreferrer nofollow" className="msource__url">
                     {s.publisher ?? s.url} <ExternalLink size={12} aria-hidden />
                   </a>
+                  {s.fetchedAt && (
+                    <span className="small muted msource__line">
+                      прочитано {s.fetchedAt.slice(0, 16).replace('T', ' ')} UTC{s.canonicalUrl && s.canonicalUrl !== s.url ? ` · канонический адрес: ${s.canonicalUrl}` : ''}
+                    </span>
+                  )}
+                  {s.failure && <span className="small tone-warn msource__line">{s.failure}</span>}
+                  {s.offerUncertain && s.offerUncertain.length > 0 && <span className="small tone-warn msource__line">Не подтверждено страницей: {s.offerUncertain.join('; ')}</span>}
                   {s.excerpt && <p className="msource__excerpt">{s.excerpt}</p>}
                 </li>
               ))}

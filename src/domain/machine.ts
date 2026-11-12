@@ -63,6 +63,9 @@ export interface MachineTopEntry {
   prevRank: number | null;
   scoreDelta: number | null;
   isNew: boolean;
+  /** Date of the assessment shown; older than the snapshot when it was carried forward (live rotation). */
+  assessedAsOf: ISODate;
+  carried: boolean;
 }
 
 export interface MachineWatchItem {
@@ -105,6 +108,25 @@ export interface MachineOverview {
   changes: MachineChange[];
   costs: { lastRun: number; month: number; budgetPerRun: number; monthlyBudget: number; priceVersion: string | null };
   totals: { candidates: number; passed: number; held: number; discovered: number };
+  /** Diagnostics of the latest run (null before the first run). */
+  diagnostics: MachineRunDiagnostics | null;
+}
+
+export interface MachineRunDiagnostics {
+  jobId: number;
+  asOf: ISODate;
+  status: JobStatus;
+  /** emulated (fixtures) | independent (two model families) | single-model-degraded */
+  independence: 'emulated' | 'independent' | 'single-model-degraded' | null;
+  searches: { ru: number; west: number; world: number; failed: number };
+  pages: { ok: number; failed: number; byStatus: Record<string, number> };
+  competitors: { ruDirect: number; ruAdjacent: number; distinctRu: number };
+  contradictions: number;
+  cost: { estimated: number; charged: number; observed: number; unknownCalls: number; anomalies: number };
+  averageConfidence: number | null;
+  partialReason: string | null;
+  error: string | null;
+  carried: number;
 }
 
 export interface MachineSource {
@@ -113,10 +135,16 @@ export interface MachineSource {
   publisher: string | null;
   region: 'west' | 'ru';
   sourceType: 'independent' | 'company_self_report' | 'primary_data' | 'unknown';
-  fetchStatus: 'ok' | 'http_error' | 'blocked' | 'injection_suspected' | 'rate_limited' | 'budget_exhausted';
+  fetchStatus: 'ok' | 'http_error' | 'blocked' | 'injection_suspected' | 'rate_limited' | 'budget_exhausted' | 'robots_disallowed' | 'unsafe_url' | 'unsupported_content' | 'too_large' | 'timeout';
   httpStatus: number | null;
   excerpt: string | null;
   agent: 'analyst' | 'skeptic';
+  /** Live provenance (null for fixtures). */
+  canonicalUrl?: string | null;
+  fetchedAt?: string | null;
+  failure?: string | null;
+  /** What the extraction model claimed that code could not find on the page. */
+  offerUncertain?: string[];
 }
 
 export interface MachineClaim {
