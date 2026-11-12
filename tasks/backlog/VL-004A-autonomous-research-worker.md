@@ -1,33 +1,34 @@
-# BACKLOG — VL-004A / Autonomous Research Worker (no-VPN, fixture-first)
+# BACKLOG — VL-004A / Zero-human Autonomous Research Worker (fixture-first)
 Status: QUEUED — NOT CURRENT
 Owner: Founder + ChatGPT
-Priority: High after VL-003P first real pilot
-Spec: [docs/no-vpn-automation-architecture.md](../../docs/no-vpn-automation-architecture.md)
+Priority: high, after existing VL-003P task closes
+Source of truth: [docs/no-vpn-automation-architecture.md](../../docs/no-vpn-automation-architecture.md), version 2.0 (founder's zero-human decision).
 
-## Why
-Replace manual delivery from the daily ChatGPT chat to Venture Lab with a **separate legitimate server-side scheduled research process**. Founder sees a daily provisional research feed + top-10, source and cost provenance, and maintains explicit approval of official REAL data. No user VPN.
+## Product requirement (do not weaken)
+**NO HUMAN RESEARCH APPROVAL LOOP.** Daily discovery, claim verification, challenger review, scoring, automatic rank changes, TOP-10 and publishing occur without asking founder to inspect links or approve the import. User interacts by opening a dashboard. Initial provider account credentials and a one-time spend ceiling may require user authorization; after setup, research is automatic.
 
-## First engineering slice
-1. Inspect actual `main` and current VL-003P pilot / data schema; plan forward-compatible migrations, do not overwrite already verified sources, snapshots, assessments, or founder approvals.
-2. Implement `SearchProvider` / `LLMProvider` / `SourceReader` adapter interfaces using deterministic **fixture implementations** only.
-3. Add `research_jobs`, `candidate_drafts`, `candidate_sources`, `research_job_usage`, and provisional daily ranking/snapshot data. Names can vary, but strict dataset separation, source provenance, model/version/cost, immutable approved history are required.
-4. Implement safe idempotent schedule in `Asia/Novokuznetsk` and manual trigger `research:worker:run --fixture --as-of ...`. Prevent accidental double-run, record partial failures, budget caps and retry.
-5. Workflow fixture: discovery → RU competitors → evidence → scoring proposal (same rubric, never impersonate human reviewer) → staging → provisional rank → review queue.
-6. Add UI blocks to existing dark Research Journal/Overview for "**Автоматический ресерч — предварительно**", separate provisional TOP-10, last run status/freshness, source quality warnings, API cost. Approved REAL TOP-10 remains unchanged.
-7. Test 3 days with fixture source changes, new direct RU competitor, missing pages, duplicates, injected instructions, provider failures, stale run, automatic score review flags, no REAL contamination and budget caps.
-8. Preserve VL-001/2/3 tests and responsive UX; CI and screenshots. Handoff and PR to `main`, no merge.
+## First engineering slice (fixtures only; no external charges)
+1. Read all VL-001–VL-003 components, the existing scoring model, research importer and historical snapshots. Preserve legacy manually reviewed data; introduce a SEPARATE `machine-assessed` dataset and evidence statuses without lying about 'human checked'.
+2. Implement provider adapter interfaces SearchProvider, SourceReader, LLMProvider, ClaimChecker and SkepticalReviewer with deterministic fixture providers. Provide multiple independent passes in orchestration even though fixture mode does not call an LLM.
+3. Implement DB migrations for scheduler jobs, source/claim provenance, competitor-search coverage, machine-review decisions, assessment versions, auto TOP-10 snapshots, request/token/cost telemetry and typed dataset separation. Avoid building an unstructured generic JSON warehouse.
+4. Schedule daily run in Asia/Novokuznetsk with an idempotent job key, bounded retries, stale/partial state and hard spend caps. Provide local trigger `research:worker:run --fixture --as-of ...`.
+5. Full self-running workflow: discover new products → search Russia/adjacent substitutes → retrieve source claims → programmatic exact-source checks → independent skeptical critic / contradiction hunt → risk and evidence quality gate → compute rubric v1.0 score+confidence+FounderFit → append current assessment and old immutable snapshots → **publish automatic primary TOP-10**. No approval command.
+6. UI: premium-dark dashboard with today's new ideas, **Автоматический TOP-10**, changes over time, evidence-grade and confidence, competitor changes, last successful run/failure indicator and costs. Keep legacy human-verified history in an optional clearly labeled separate view. Do not call AI check 'human verified'.
+7. Automated hold/watchlist for claims with broken URLs, contradicting sources, weak RU competitor coverage or material market risks. Not enough qualifying ideas = N/10. No made-up full top ten.
+8. Test three sequential days (new competing RU analogue lowers an old idea's rank; material source rejection withdraws recommended status, automatic re-research requalifies if evidence arrives); test idempotency, no history mutation, source type/vendor self-report, page access errors, injection attempt, rate/budget cap and dataset isolation.
+9. Run all VL-001–VL-003 regressions; CI, screenshots 390/1440, handoff, PR, no merge.
 
-## Exclusions
-- No real Yandex account creation/keys or calling billable APIs (separate user approval for VL-004B).
-- No production VPS, public deployment or automatic publishing of human-verified scores.
-- No auto-edit of `approval`, `human-reviewed`, `checked` source statuses.
-- No direct implicit access to scheduled ChatGPT chat output.
-- No unapproved crawler or bypass of third-party services' terms; no VPN/proxy workarounds.
-- Do not disturb currently active `tasks/current-task.md` while VL-003P is in progress.
+## Explicit exclusions
+- No live Yandex/other paid API, user account creation or charge; those require a separately authorized VL-004B experiment.
+- No production VPS/deploy yet; no unauthenticated public write endpoints.
+- No fabrication of `human-reviewed`, `approval`, or `checked by human`; **machine evidence passing has its own DB state**.
+- No automatic chat-to-database bridge assumption; autonomous worker runs independently of ChatGPT conversations.
+- No unapproved crawler/terms bypass, VPN evasion, public messages or customer outreach.
+- **Do not change `tasks/current-task.md` while VL-003P is in progress**; activate VL-004A once prior task closes. The old VL-003P human-review pilot is a compatibility test, NOT a product requirement for future zero-human operation.
 
-## Clear next stages (not authorized here)
-VL-004B: verify Yandex Search API world + RU queries, Yandex AI Studio models, official billable trial and budget with the founder's consent.
-VL-004C: deploy secure Russian-accessible HTTPS app, backups, notification and 3-day pilot for real use.
+## Exit test
+A single `--fixture` command launches a fully automatic multi-agent emulation, creates a date-stamped source-grounded machine TOP-10 without human clicks, preserves last successful rank on failure, and displays results in the dashboard, while avoiding accidental inclusion of demo or legacy manual records.
 
-## Acceptance
-A local unattended scheduled fixture run reliably adds ONLY provisional candidates/drafts, with citations and transparent "AI-generated" labels, while REAL human-reviewed ranking stays intact; user has a polished clear preview of new findings. All tests pass.
+## Next stages
+VL-004B: founder configures lawful provider credentials and a one-time spending cap; conduct bounded paid real-source smoke tests.
+VL-004C: deploy app + scheduler securely with HTTPS access from Russia without VPN and backup/observability.
