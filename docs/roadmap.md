@@ -12,8 +12,17 @@ Premium dated research journal, evidence review queue with append-only human che
 ## VL-003P — First real research pilot [CURRENT TASK]
 Validate the 3-idea AI draft with new RU competitors, compile a founder-review-ready batch of up to 10 real sourced opportunities, test dry-run import and obtain specific founder approvals before REAL is ever populated. See `tasks/current-task.md`. No new product features in this pilot.
 
-## VL-003B — Scheduled research delivery bridge [FUTURE, depends on VL-003P]
-Find and implement a documented authorized export/integration path for scheduled ChatGPT reports and founder approval. Never assume a chat automation directly writes to GitHub or a local DB; evaluate authorization, credentials, reliability and operating cost separately.
+## VL-004A — Autonomous Research Worker, fixture-first [QUEUED after VL-003P]
+Separate server-side worker (not ChatGPT chat) with swappable RU/world search and LLM provider interfaces; staging and **provisional** AI-researched TOP-10, human review gate, cost/freshness, retries, tests and premium dashboard. No paid APIs or deployment until separate founder approval. See `docs/no-vpn-automation-architecture.md` and `tasks/backlog/VL-004A-autonomous-research-worker.md`.
+
+## VL-004B — Official provider trial [PLANNED, requires user consent]
+Validate Yandex Search API worldwide/RU and Yandex AI Studio model access through legal official APIs; small capped test budget, actual web-page reachability and provider quality. Do not assume free API quotas from ChatGPT/Claude subscriptions.
+
+## VL-004C — Hosted no-VPN dashboard [PLANNED]
+Authorized secure public HTTPS web app on a host reliably reachable from Russia, backups, monitoring, user auth and server-side automatic daily execution. Never make unauthenticated database or approval actions public.
+
+## Optional ChatGPT chat export bridge [BACKLOG / NOT REQUIRED]
+An authorized integration could deliver current ChatGPT automation reports into review queue, but task execution does not automatically grant it connector write access or a direct PostgreSQL link. Treat as a possible editorial input, not the runtime dependency.
 
 ## VL-004 — Validation laboratory [PLANNED]
 Interview/outreach records, experiment hypotheses, price tests, confirmed payments/retention, decision log and funnel. No automatic unsolicited messaging.
