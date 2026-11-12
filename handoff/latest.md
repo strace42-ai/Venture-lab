@@ -1,7 +1,7 @@
 # Venture Lab — Latest implementation handoff
 
 **Task:** VL-001 / Dashboard Foundation (`tasks/current-task.md`, Version 1.0)
-**Status:** IMPLEMENTED. Awaiting independent review and founder approval. **Not merged.**
+**Status:** IMPLEMENTED + REVIEW ROUND 1 FIXED. Awaiting re-review and founder approval. **Not merged.**
 **As of:** 2026-11-12
 **Implementer:** Claude Code
 
@@ -11,8 +11,23 @@
 | Base | `main` @ `79cc6328fc45510461dcb47a89ccf29e4d0ae38a` |
 | Feature branch | `claude/vl-001-dashboard-foundation` |
 | Implementation commit | `89d4c43fd4047805eda9a9dc0f4d76c2336c20f2` |
-| Handoff commit | the next commit on the same branch, which adds this file |
+| First handoff commit | `09fbcc5bea1972bf4cbf85844c1744378a681f1e` (the commit ChatGPT reviewed) |
+| Review-fix commit | `cf0107684b403896ddf1cd02c2e1c866a356db67` |
+| Handoff update | the next commit on the same branch, which updates this file |
 | PR | https://github.com/strace42-ai/Venture-lab/pull/1 |
+
+## Review round 1 — ChatGPT findings and fixes
+Review: https://github.com/strace42-ai/Venture-lab/pull/1#pullrequestreview-5867911877 (on `09fbcc5`).
+
+| # | Finding | Fix | Regression tests |
+|---|---|---|---|
+| 1 | The Overview headline hardcoded «ни одной подтверждённой оплаты», even though the paid KPI is derived | New `verifiedPaymentsPhrase(n)` in `src/lib/format.ts` builds the phrase from `kpis.verifiedPaidSignals`, with Russian plural forms. `OverviewPage` uses it. | `src/test/app.test.tsx`: the plural table (0/1/3/5/21); the demo data renders «ни одной»; a dataset with 2 verified payments renders «2 подтверждённые оплаты» in the headline, «ни одной» does not appear, and the KPI tile shows 2 |
+| 2 | Past rankings were recomputed with the *current* `idea.stage`, so an idea rejected today disappeared retroactively from yesterday's ranking | Added an append-only `Idea.stageHistory: StageChange[]` and `stageAsOf(idea, date)`. `rankIdeas(ideas, asOf)` now uses the stage **and** the assessment as of that date, and an idea with no recorded stage yet is not ranked. Demo fixtures gained histories, e.g. idea-13 scored → rejected on 30 Oct, idea-09 → paused on 1 Nov. The UI and comments now describe the previous snapshot as *reconstructed from immutable assessment and stage history*, not as a stored snapshot. The Radar no longer fakes `stage:'scored'` to score excluded ideas. | `src/domain/scoring.test.ts`: an idea rejected after the previous snapshot stays #1 in that snapshot, and the other ideas show "up" movement against it; no rank before the first recorded stage; a reject → reopen sequence ranks correctly at three dates; every demo stage history is chronological and ends at the current stage |
+| 3 | `strongestFind` fell back to `ranking[0]`, which could surface a critical-risk idea as the strongest find | The fallback is removed: the function returns `undefined` when no ranked idea is eligible (not critical, not paused). The Overview then shows an explicit «Нет находки без критических рисков / Требует ревью» panel with a link to the Radar and no «Открыть досье» CTA. | `scoring.test.ts`: all-critical → undefined; critical + paused → undefined; a higher-ranked critical idea is skipped for a lower eligible one. `app.test.tsx`: an all-critical dataset renders the review state and no dossier CTA |
+| polish | At 390px the headline and lede were too tall, so meaningful data fell below the first screen | At ≤720px: smaller verdict headline (22px), the lede is hidden on Overview, and the strongest-find card is reordered (title → score ring + confidence + rank → «Открыть досье» CTA → pitch → tags → facts) with a smaller ring. Measured at 390×844: the ring ends at y=410px and the CTA at y=483px, both above the tab bar at 780px. At 360×740 the CTA also sits above the tab bar at 676px. | Visual: `docs/screenshots/overview-390-first-screen.png` and `overview-390.png` |
+
+The demo ranking is unchanged by these fixes: same order, scores and movement as before.
+Also fixed: the KPI sub-label «+1 запланирован» now uses plural forms.
 
 ## What was built
 **Stack:** React 18.3, TypeScript 5.6 (strict, with `noUncheckedIndexedAccess`) and Vite 8. Also React Router 7, Lucide icons and Inter Variable (self-hosted through @fontsource, Cyrillic included). Styles are hand-written CSS built on design tokens (`src/styles/tokens.css`). There is no UI kit and no chart library: the chart is hand-built SVG. The app has 5 runtime dependencies.
@@ -85,13 +100,15 @@
 - **Modified:** `README.md` (state + developer section), `handoff/latest.md` (this file).
 
 ## Verification actually run (Node v22.23.4, npm 10.9.9, Linux container)
+Re-run in full after the review fixes (on `cf01076`), starting from `rm -rf node_modules dist && npm ci`. Every command exited 0. `npm audit --omit=dev`: found 0 vulnerabilities.
+
 | Command | Result |
 |---|---|
 | `rm -rf node_modules dist && npm ci` | ✅ installed (with an audit notice, see Known limitations) |
 | `npm run lint` (`eslint . --max-warnings=0`) | ✅ exit 0, 0 warnings |
 | `npm run typecheck` (`tsc -b`) | ✅ exit 0 |
-| `npm test` (`vitest run`) | ✅ **2 files, 30 tests passed** |
-| `npm run build` | ✅ exit 0. Main chunk 251 kB (81.5 kB gzip); pages are split into lazy chunks |
+| `npm test` (`vitest run`) | ✅ **2 files, 41 tests passed** (30 originally + 11 regression tests) |
+| `npm run build` | ✅ exit 0. Main chunk ≈251 kB (≈81.5 kB gzip); pages are split into lazy chunks |
 
 **Domain tests cover:**
 - Weights sum to 100.
@@ -121,7 +138,7 @@
 - Global search lands on Radar.
 
 ### Responsive and visual QA (Playwright + Chromium, production build via `vite preview`)
-- **Automated sweep: 11 routes × 5 widths (390, 768, 1024, 1280, 1440), 55 page loads.**
+- **Automated sweep: 11 routes × 5 widths (390, 768, 1024, 1280, 1440), 55 page loads.** Re-run after the review fixes, with the same results.
   - `documentElement.scrollWidth == clientWidth` on all 55: no horizontal overflow.
   - No page or console errors.
   - On mobile, buttons, inputs and tab items are at least 44px tall.
@@ -135,7 +152,8 @@
   - Empty space under the map (a pipeline panel was added there).
 - **Screenshots in `docs/screenshots/`:**
   - Desktop: `overview-1440-full`, `overview-1440-viewport`, `overview-1280-viewport`, `radar-1440-table`, `radar-1440-cards-filtered`, `dossier-1440`, `placeholder-portfolio-1440`.
-  - Mobile: `overview-390`, `overview-390-top10`, `radar-390`, `dossier-390`, `drawer-390`.
+  - Mobile: `overview-390-first-screen` (new), `overview-390`, `overview-390-top10`, `radar-390`, `dossier-390`, `drawer-390`.
+  - All screenshots were regenerated after the review fixes.
 
 **Not run / not verified:**
 - Real devices (iOS Safari, Android Chrome).
@@ -146,6 +164,8 @@
 - CI (the repository has no CI config).
 
 ## Known limitations and risks
+- Past snapshots are reconstructed from append-only histories rather than persisted as Top10Snapshot rows. For immutable fixtures the result is the same, but persisting snapshots is left to VL-002 together with storage.
+- The «no eligible find» state is covered by tests only. It does not appear with the demo data, so there is no screenshot of it.
 - `npm audit`: **runtime dependencies are clean.** One moderate advisory chain remains in dev-only lint tooling (`minimatch` via `@typescript-eslint/typescript-estree`). npm's only offered fix is a downgrade, so it was left as is.
 - React 18.3 was kept because it is stable with the current testing libraries. Upgrading to React 19 is a separate decision.
 - The data provider is a static fixture behind `DataProvider` / `useData()`. That is the seam for VL-002 persistence. There are no async loading or error states yet beyond route-level lazy loading.
