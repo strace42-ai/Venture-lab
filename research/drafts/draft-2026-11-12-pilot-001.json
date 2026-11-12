@@ -4,10 +4,10 @@
   "researchedAt": "2026-11-12",
   "source": "ai-draft",
   "synthetic": false,
-  "reviewedBy": "Claude Code (черновик ИИ, человеком не проверен)",
-  "title": "Пилотный черновик VL-003: 3 кандидата (фокус-коворкинг, личная CRM, сравнение КП)",
-  "coverage": "Открыты страницы 12.11.2026 через веб-инструменты: focusmate.com (главная, pricing), getdex.com/pricing.md, monicahq.com, sourceday.com, thecode.media, devby.io, bitrix24.ru (2 приложения), workspace.ru. Поиск RU: запросы на русском про онлайн-коворкинг с незнакомцами, личную CRM с напоминаниями, сравнение КП поставщиков.",
-  "limitations": "Черновик ИИ: человек ни одну ссылку не проверял. Страницы пересказаны инструментом, а не прочитаны целиком. App Store/RuStore, сайт StudyMates и доступность западных сервисов из РФ не проверялись. Цены в РФ — гипотезы. Оценки (assessment) не выставлялись намеренно. «Не найдено в РФ» означает только «не найдено в нескольких поисковых запросах».",
+  "reviewedBy": "ChatGPT (AI-дополнение 12.11.2026; подтверждение основателя отсутствует)",
+  "title": "Пилот VL-003: переоценка конкуренции РФ — 3 кандидата (не одобрен)",
+  "coverage": "Открыты страницы 12.11.2026 через веб-инструменты: focusmate.com (главная, pricing), getdex.com/pricing.md, monicahq.com, sourceday.com, thecode.media, devby.io, bitrix24.ru (2 приложения), workspace.ru. Поиск RU: запросы на русском про онлайн-коворкинг с незнакомцами, личную CRM с напоминаниями, сравнение КП поставщиков. Дополнительная проверка 12.11.2026: запросы по фокус-коворкингам/body doubling в РФ, персональным CRM в Telegram, SaaS-сравнению КП; найдены прямые и косвенные конкуренты. Первичная проверка ChatGPT основана на доступных страницах и поисковых фрагментах, не является ручным подтверждением владельца.",
+  "limitations": "Черновик ИИ: человек ни одну ссылку не проверял. Страницы пересказаны инструментом, а не прочитаны целиком. App Store/RuStore, сайт StudyMates и доступность западных сервисов из РФ не проверялись. Цены в РФ — гипотезы. Оценки (assessment) не выставлялись намеренно. «Не найдено в РФ» означает только «не найдено в нескольких поисковых запросах». Перепроверенные ссылки и заявленные функции не проверены пользователем вручную. Работающие платежи, реальные платящие пользователи, региональная доступность, себестоимость, удержание и востребованность в России не установлены. Никаких числовых оценок пока не присваивать; отсутствия конкурентов НЕ заявлять. Прямое открытие некоторых страниц завершалось ошибкой cache miss, поэтому их содержание требует особой ручной проверки.",
   "markets": [
     "Productivity",
     "Procurement"
@@ -15,7 +15,21 @@
   "sourceReferences": [
     "https://www.focusmate.com/pricing",
     "https://getdex.com/pricing.md",
-    "https://www.bitrix24.ru/apps/app/unitech.evolyutsiya_podbor_postavshchikov/"
+    "https://www.bitrix24.ru/apps/app/unitech.evolyutsiya_podbor_postavshchikov/",
+    "https://www.focusmate.com/",
+    "https://thecode.media/sozdan-onlajn-kovorking-gde-neznakomye-lyudi-rabotayut-vmeste/",
+    "https://cofocus.ru/club",
+    "https://studymates.live/ru",
+    "https://www.monicahq.com/",
+    "https://devby.io/news/kak-vystroit-lichnyi-netvorking-adviser-2026-04-29",
+    "https://www.bitrix24.ru/apps/app/aventra.dni_rozhdeniya_klientov/",
+    "https://beamai.ru/",
+    "https://mnesikles.com/ru/",
+    "https://sourceday.com/solutions/request-for-quote-collaboration/",
+    "https://workspace.ru/cases/ai-servis-dlya-analiza-kommercheskih-predlozheniy/",
+    "https://vnikli.ru/sravnenie-kommercheskih-predlozheniy/",
+    "https://vortholm.ru/solutions/procurement/supplier-quotes-comparison/",
+    "https://aether-lab.ru/guides/ii-dlya-zakupok-i-pochty/sravnenie-kp-i-prays-listov-postavshchikov-ii/"
   ],
   "ideas": [
     {
@@ -26,7 +40,7 @@
       "category": "Productivity",
       "targetPersona": "Фрилансеры, удалёнщики, студенты, люди с трудностями концентрации; русскоязычные",
       "problem": "Трудно начать и удержать фокус при одиночной удалённой работе.",
-      "ruUnmetJob": "ГИПОТЕЗА: русскоязычного сервиса с подбором напарника 1-на-1 и оплатой картой РФ в поиске не найдено; найден StudyMates (групповые комнаты, энтузиасты). Доступность и оплата Focusmate из РФ не проверены.",
+      "ruUnmetJob": "СУЖЕННАЯ ГИПОТЕЗА: мгновенный автоматический подбор русскоязычного напарника 1-на-1 со структурой 25/50/75 мин и оплатой в рублях. Российский Cofocus уже предлагает групповые фокус-комнаты по подписке, а StudyMates имеет русскую локализацию. Категория НЕ пуста; 1-на-1 подбор и платёжеспособность нужно тестировать.",
       "monetization": "Freemium: несколько бесплатных сессий в неделю, подписка за безлимит (по аналогии с Focusmate).",
       "priceHypothesis": "ГИПОТЕЗА, не измерено: 300–600 ₽/мес. Конверсия и готовность платить не проверены.",
       "riskFlags": [
@@ -89,6 +103,43 @@
           ],
           "supportNote": "Показывает, что формат в рунете есть, но в групповом виде; модель монетизации StudyMates в статье не указана. Дата первоначальной публикации не видна (страница «Обновлено 30.09.2026»).",
           "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r2",
+          "region": "ru",
+          "claim": "Cofocus предлагает групповые фокус-комнаты по расписанию с чек-ином/чек-аутом и подписку от 1990 ₽/месяц.",
+          "url": "https://cofocus.ru/club",
+          "title": "Фокус-клуб — совместные фокус-комнаты",
+          "publisher": "Cofocus",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness",
+            "ruUnmetJob",
+            "monetization"
+          ],
+          "supportNote": "Самоописание конкурента и цена оффера, а не подтверждение оплат и аудитории. Страница требует проверки человеком.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r3",
+          "region": "ru",
+          "claim": "StudyMates предлагает русскоязычную страницу, открытые 24/7 онлайн-комнаты для учёбы и бесплатный ограниченный тариф.",
+          "url": "https://studymates.live/ru",
+          "title": "Online Study Room — русская версия",
+          "publisher": "StudyMates",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness",
+            "ruUnmetJob"
+          ],
+          "supportNote": "Международный сервис с русской локализацией, не следует выдавать за российскую компанию.",
+          "verificationStatus": "unreviewed"
         }
       ],
       "westernProducts": [
@@ -117,9 +168,23 @@
           "evidenceIds": [
             "r1"
           ]
+        },
+        {
+          "id": "rc2",
+          "name": "Cofocus — фокус-клуб",
+          "url": "https://cofocus.ru/club",
+          "kind": "adjacent",
+          "coverage": "partial",
+          "gap": "Групповой формат с ведущим по расписанию; не подтверждён автоматический random 1-на-1 мэтчинг.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r2"
+          ]
         }
       ],
-      "assessment": null
+      "assessment": null,
+      "whyNow": "Focusmate заявляет 12 млн+ завершённых сессий и платные тарифы; наличие Cofocus подтверждает появление российской категории. Но спрос именно на русскоязычный случайный мэтчинг и возможность набрать критическую массу неизвестны.",
+      "nextAction": "Провести 10–15 интервью и вручную организовать 20 фокус-сессий 1-на-1 через готовую видеосвязь; спросить о повторном использовании и платёжном намерении. Не строить видеоплатформу до теста."
     },
     {
       "externalId": "personal-crm-ru",
@@ -129,14 +194,14 @@
       "category": "Productivity",
       "targetPersona": "Предприниматели, консультанты, специалисты с большим кругом контактов",
       "problem": "Связи теряются: человек забывает, кто есть кто, о чём говорили и когда пора написать.",
-      "ruUnmetJob": "ГИПОТЕЗА: в поиске на русском найдены только бизнес-CRM (приложения дней рождения клиентов в маркете Битрикс24); русскоязычной личной CRM не найдено. Нужна ручная проверка RuStore/App Store.",
+      "ruUnmetJob": "СУЖЕННАЯ ГИПОТЕЗА: личная система отношений, не продаж, с историей контекста контактов и ненавязчивыми напоминаниями. На российском рынке уже есть Beam — бесплатная CRM в Telegram с заметками/задачами, и Mnesikles — бот событий контактов с голосом и напоминаниями. Полное отсутствие конкурентов НЕ подтверждено.",
       "monetization": "Подписка за синхронизацию и напоминания; бесплатный базовый режим.",
       "priceHypothesis": "ГИПОТЕЗА, не измерено: 290–490 ₽/мес. Западные цены ($12–20/мес.) не переносятся на РФ напрямую.",
       "riskFlags": [
         "demandUnverified",
+        "competitionUnverified",
         "dataPrivacy",
-        "lowRetention",
-        "competitionUnverified"
+        "lowRetention"
       ],
       "sources": [
         {
@@ -209,6 +274,43 @@
           ],
           "supportNote": "Заменитель для B2B-части; цена на странице не указана.",
           "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r3",
+          "region": "ru",
+          "claim": "Beam от МТС Exolve позиционируется как бесплатная мини-CRM в Telegram: контакты, сделки, заметки, напоминания по задачам.",
+          "url": "https://beamai.ru/",
+          "title": "Beam — CRM в Telegram",
+          "publisher": "Beam / МТС Exolve",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness",
+            "ruUnmetJob",
+            "distribution"
+          ],
+          "supportNote": "Страница вендора. Бизнес-CRM в основном о продажах, но функционально близка личной записной книжке.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r4",
+          "region": "ru",
+          "claim": "Mnesikles — Telegram-бот для хранения событий контактов, регулярных напоминаний и голосового добавления информации.",
+          "url": "https://mnesikles.com/ru/",
+          "title": "Mnesikles — бот событий и контактов",
+          "publisher": "Mnesikles",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness",
+            "ruUnmetJob"
+          ],
+          "supportNote": "Данные сайта разработчика; не установлены пользовательская база и долгосрочная активность.",
+          "verificationStatus": "unreviewed"
         }
       ],
       "westernProducts": [
@@ -249,9 +351,34 @@
           "evidenceIds": [
             "r2"
           ]
+        },
+        {
+          "id": "rc2",
+          "name": "Beam (МТС Exolve)",
+          "url": "https://beamai.ru/",
+          "kind": "adjacent",
+          "coverage": "partial",
+          "gap": "Сделки и клиентская база вместо личной карты отношений, но заметки и напоминания перекрывают MVP.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r3"
+          ]
+        },
+        {
+          "id": "rc3",
+          "name": "Mnesikles",
+          "url": "https://mnesikles.com/ru/",
+          "kind": "adjacent",
+          "coverage": "partial",
+          "gap": "Календарь контактов и событий, не подтверждён полный контекст взаимоотношений.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r4"
+          ]
         }
       ],
-      "assessment": null
+      "assessment": null,
+      "nextAction": "Найти 15 частных специалистов/консультантов, собрать список реальных связей и узнать, за какую часть сценария они готовы платить; сравнить их текущий процесс с Beam и напоминаниями."
     },
     {
       "externalId": "supplier-quote-compare",
@@ -261,13 +388,14 @@
       "category": "Procurement",
       "targetPersona": "Снабженцы и закупщики в малом и среднем бизнесе",
       "problem": "КП приходят в разных форматах; сводная таблица собирается вручную.",
-      "ruUnmetJob": "ГИПОТЕЗА: в РФ есть модули запроса КП (Битрикс24 «Эволюция», 1С:Бизнес-сеть) и заказные AI-проекты, но тиражного продукта «загрузи файлы — получи таблицу» в поиске не найдено.",
+      "ruUnmetJob": "ГИПОТЕЗА НИЗКОЙ НЕЗАНЯТОСТИ: на рынке РФ уже найдены несколько прямых поставщиков услуги сравнения PDF/XLSX КП (ВНИКЛИ, Vortholm, Aether Lab). Нельзя утверждать, что ниша не развита. Возможное отличие — конкретная закупочная вертикаль, API/интеграции, стоимость и доверие к точности — требует отдельного теста.",
       "monetization": "Подписка за пользователя или пакет сравнений.",
       "priceHypothesis": "ГИПОТЕЗА, не измерено: 2–5 тыс. ₽/мес. Ориентир — «Эволюция»: 5 000 ₽/мес. за 5 сотрудников.",
       "riskFlags": [
         "demandUnverified",
         "competitionUnverified",
-        "dataPrivacy"
+        "dataPrivacy",
+        "highCogs"
       ],
       "sources": [
         {
@@ -322,6 +450,60 @@
           ],
           "supportNote": "Единичный заказной проект исполнителя; показывает осуществимость и наличие запроса, но не тиражный рынок.",
           "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r3",
+          "region": "ru",
+          "claim": "ВНИКЛИ предлагает загрузку 2–3 PDF/DOCX/XLSX коммерческих предложений, сопоставляет цену, состав, исключения, сроки, оплату и приёмку в доказательной матрице.",
+          "url": "https://vnikli.ru/sravnenie-kommercheskih-predlozheniy/",
+          "title": "Сравнение коммерческих предложений",
+          "publisher": "ВНИКЛИ",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness",
+            "ruUnmetJob"
+          ],
+          "supportNote": "Прямой российский онлайн-конкурент; функции указаны в его собственном описании, без независимого пользовательского теста.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r4",
+          "region": "ru",
+          "claim": "Vortholm предлагает сравнение КП от нескольких поставщиков с извлечением цен, сроков и условий, нормализацией и экспортом в Excel.",
+          "url": "https://vortholm.ru/solutions/procurement/supplier-quotes-comparison/",
+          "title": "Сравнение КП поставщиков",
+          "publisher": "Vortholm",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness",
+            "ruUnmetJob"
+          ],
+          "supportNote": "Прямой конкурент согласно маркетинговой странице; доступность конечного рабочего продукта и число клиентов не проверены.",
+          "verificationStatus": "unreviewed"
+        },
+        {
+          "id": "r5",
+          "region": "ru",
+          "claim": "Aether Lab предлагает ИИ-обработку КП и прайсов поставщиков с приведением данных к единой сравнительной карте закупки.",
+          "url": "https://aether-lab.ru/guides/ii-dlya-zakupok-i-pochty/sravnenie-kp-i-prays-listov-postavshchikov-ii/",
+          "title": "Сравнение КП и прайс-листов с ИИ",
+          "publisher": "Aether Lab",
+          "sourceType": "company_self_report",
+          "language": "ru",
+          "observedAt": "2026-11-12",
+          "retrievedAt": "2026-11-12",
+          "dimensions": [
+            "ruWeakness",
+            "ruUnmetJob"
+          ],
+          "supportNote": "Страница поставщика, не независимый тест.",
+          "verificationStatus": "unreviewed"
         }
       ],
       "westernProducts": [
@@ -350,9 +532,47 @@
           "evidenceIds": [
             "r1"
           ]
+        },
+        {
+          "id": "rc2",
+          "name": "ВНИКЛИ",
+          "url": "https://vnikli.ru/sravnenie-kommercheskih-predlozheniy/",
+          "kind": "direct",
+          "coverage": "high",
+          "gap": "Уже закрывает базовый сценарий сравнения 2–3 КП с цитатами; отличие можно искать только в узкой вертикали или экономике.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r3"
+          ]
+        },
+        {
+          "id": "rc3",
+          "name": "Vortholm",
+          "url": "https://vortholm.ru/solutions/procurement/supplier-quotes-comparison/",
+          "kind": "direct",
+          "coverage": "high",
+          "gap": "Заявлена комплексная обработка десятков КП и номенклатуры; продукт ориентирован на корпоративных заказчиков.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r4"
+          ]
+        },
+        {
+          "id": "rc4",
+          "name": "Aether Lab",
+          "url": "https://aether-lab.ru/guides/ii-dlya-zakupok-i-pochty/sravnenie-kp-i-prays-listov-postavshchikov-ii/",
+          "kind": "direct",
+          "coverage": "partial",
+          "gap": "Универсальный ИИ-агент для закупок, а не обязательно независимый SaaS для микро-бизнеса.",
+          "observedAt": "2026-11-12",
+          "evidenceIds": [
+            "r5"
+          ]
         }
       ],
-      "assessment": null
+      "assessment": null,
+      "whyNow": "Российская категория уже коммерчески предлагается. Признаки предложения установлены; фактические обороты, конверсия, удержание и эффект для закупщиков не подтверждены.",
+      "nextAction": "Понизить предварительную гипотезу незанятости РФ после ручной проверки трёх конкурентов; провести 10 интервью закупщиков об ограничениях существующих сервисов. Не начинать разработку универсального анализатора КП."
     }
   ]
 }
