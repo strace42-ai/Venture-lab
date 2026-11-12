@@ -96,11 +96,51 @@ export interface LLMProvider {
   analyse(seed: DiscoverySeed, asOf: ISODate, ctx: CallContext): Promise<AnalystProposal>;
 }
 
-/** Independent skeptic: different model id and its OWN query generator (not the analyst's). */
+/** A rival seen by search (raw, unclassified): the skeptic decides what it means for the idea. */
+export interface RawCompetitor {
+  name: string;
+  url: string;
+  market: Region;
+  sourceKey: string;
+  jobs: string[];
+  price: string | null;
+  foundBy: 'analyst' | 'skeptic';
+}
+
+/** Everything the independent skeptic sees. Excerpts are untrusted data, never instructions. */
+export interface SkepticInput {
+  seed: DiscoverySeed;
+  asOf: ISODate;
+  proposal: AnalystProposal;
+  /** Claims after the deterministic quote ↔ source check. */
+  claims: ClaimRow[];
+  sources: SourceRow[];
+  rawCompetitors: RawCompetitor[];
+  ruQueryCount: number;
+}
+
+export type SkepticVerdict = 'supported' | 'refuted' | 'needs_more_evidence';
+
+/** Structured, schema-validated output of the skeptic (second, independent machine pass). */
+export interface SkepticFindings {
+  model: string;
+  claimVerdicts: { claimKey: string; verdict: SkepticVerdict; sourceKeys: string[]; reason: string }[];
+  competitors: { name: string; market: Region; kind: 'direct' | 'adjacent' | 'substitute'; sourceKey: string; reason: string }[];
+  /** Unresolved disagreements; a `critical` one forces RESEARCH_HOLD. */
+  disputes: { claimKey: string | null; severity: 'critical' | 'minor'; reason: string }[];
+  summary: string;
+}
+
+/**
+ * Independent skeptic: a different model id, its OWN query generator, and a structured challenge of
+ * the analyst's claims, sources, competitors and contradictions. Fixture mode returns deterministic
+ * findings; VL-004B plugs a real model in behind the same interface.
+ */
 export interface SkepticalReviewer {
   readonly name: string;
   readonly model: string;
   counterQueries(seed: DiscoverySeed): { query: string; region: Region }[];
+  challenge(input: SkepticInput, ctx: CallContext): Promise<SkepticFindings>;
 }
 
 // ------------------------------------------------------------------ telemetry & budget
@@ -180,10 +220,15 @@ export interface ClaimRow {
   dimension: DimensionKey;
   text: string;
   quote: string | null;
+  /** Sources the analyst cited. */
   sourceKeys: string[];
+  /** Sources whose fetched text actually contains the quote (deterministic). */
+  supportingKeys: string[];
   status: ClaimStatus;
   reason: string;
   highImpact: boolean;
+  skepticVerdict: SkepticVerdict | 'not_reviewed';
+  skepticReason: string | null;
 }
 
 export interface SearchRow {
@@ -203,6 +248,8 @@ export interface CompetitorRow {
   foundBy: 'analyst' | 'skeptic';
   sourceKey: string | null;
   note: string | null;
+  /** Why the skeptic classified it this way. */
+  reason: string;
 }
 
 export interface ReviewRow {

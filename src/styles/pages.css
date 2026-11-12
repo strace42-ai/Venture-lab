@@ -3102,3 +3102,5 @@
   .mscore-meta { grid-template-columns: 1fr; }
 }
 .mdossier .scorecard__top { display: flex; align-items: center; gap: var(--s-5); }
+.mclaim__skeptic { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 var(--s-1); }
+.mcomp__reason { flex-basis: 100%; }

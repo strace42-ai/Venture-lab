@@ -32,6 +32,8 @@ const FETCH_LABEL: Record<string, string> = {
 
 const TYPE_LABEL: Record<string, string> = { independent: 'независимый', company_self_report: 'заявление компании', primary_data: 'первичные данные', unknown: 'тип не указан' };
 const REVIEWER_LABEL: Record<string, string> = { analyst: 'Аналитик (ИИ)', claim_checker: 'Проверка цитат (код)', skeptic: 'Скептик (ИИ, другая модель)', quality_gate: 'Фильтр качества (код)' };
+const SKEPTIC_LABEL: Record<string, string> = { supported: 'подтверждает', refuted: 'опровергает', needs_more_evidence: 'нужны доказательства', not_reviewed: 'не проверял' };
+const SKEPTIC_TONE: Record<string, 'success' | 'danger' | 'warn' | 'neutral'> = { supported: 'success', refuted: 'danger', needs_more_evidence: 'warn', not_reviewed: 'neutral' };
 const KIND_LABEL: Record<string, string> = { direct: 'прямой', adjacent: 'смежный', substitute: 'заменитель' };
 
 export default function MachineCandidatePage() {
@@ -146,6 +148,10 @@ function Dossier({ d, feed }: { d: MachineCandidateDetail; feed: MachineFeed }) 
                   </div>
                   <p className="mclaim__text">{c.text}</p>
                   {c.quote && <blockquote className="mclaim__quote">«{c.quote}»</blockquote>}
+                  <p className="mclaim__skeptic small">
+                    <Badge tone={SKEPTIC_TONE[c.skepticVerdict]}>Скептик: {SKEPTIC_LABEL[c.skepticVerdict]}</Badge>
+                    {c.skepticReason && <span className="muted"> {c.skepticReason}</span>}
+                  </p>
                   <p className="muted small">
                     {c.reason}
                     {c.sourceKeys.length > 0 && <> · источники: {c.sourceKeys.map((k) => srcByKey.get(k)?.publisher ?? k).join(', ')}</>}
@@ -172,6 +178,7 @@ function Dossier({ d, feed }: { d: MachineCandidateDetail; feed: MachineFeed }) 
                     )}
                     {c.foundBy === 'skeptic' && <span className="small tone-warn">найден скептиком</span>}
                     {c.note && <span className="muted small">{c.note}</span>}
+                    <span className="muted small mcomp__reason">{c.reason}</span>
                   </li>
                 ))}
               </ul>
@@ -233,7 +240,10 @@ function Dossier({ d, feed }: { d: MachineCandidateDetail; feed: MachineFeed }) 
               {d.reviews.map((r, i) => (
                 <li key={i} className="mreview">
                   <div className="mreview__head">
-                    <strong>{REVIEWER_LABEL[r.reviewer]}</strong>
+                    <strong>
+                      {REVIEWER_LABEL[r.reviewer]}
+                      {feed === 'fixture' && (r.reviewer === 'analyst' || r.reviewer === 'skeptic') ? ' — эмуляция' : ''}
+                    </strong>
                     <Badge tone={r.decision === 'pass' || r.decision === 'support' ? 'success' : r.decision === 'propose' ? 'neutral' : 'warn'}>{r.decision}</Badge>
                     <span className="muted small">{r.model}</span>
                   </div>

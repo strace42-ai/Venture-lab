@@ -62,9 +62,9 @@ const detail: MachineCandidateDetail = {
   },
   history: [],
   sources: [{ key: 's1', url: 'https://gcom.host/', publisher: 'GuestCom', region: 'ru', sourceType: 'company_self_report', fetchStatus: 'ok', httpStatus: 200, excerpt: 'Инструкции заселения', agent: 'skeptic' }],
-  claims: [{ key: 'ru-gap', dimension: 'ruUnmetJob', text: 'В РФ нет отдельного сервиса гида гостя.', quote: 'Гиды не упоминаются', sourceKeys: ['s1'], status: 'contradicted', reason: 'опровергнуто: прямые конкуренты (РФ) — GuestCom', highImpact: true }],
+  claims: [{ key: 'ru-gap', dimension: 'ruUnmetJob', text: 'В РФ нет отдельного сервиса гида гостя.', quote: 'Гиды не упоминаются', sourceKeys: ['s1'], status: 'contradicted', reason: 'опровергнуто: прямые конкуренты (РФ) — GuestCom', highImpact: true, supportingKeys: [], skepticVerdict: 'refuted', skepticReason: 'найдены прямые конкуренты: GuestCom' }],
   searches: [{ agent: 'skeptic', purpose: 'ru_competitors', region: 'ru', query: 'гостевой портал апартаменты', resultCount: 1, status: 'ok' }],
-  competitors: [{ name: 'GuestCom', url: 'https://gcom.host/', market: 'ru', kind: 'direct', foundBy: 'skeptic', note: 'цена: Free 0 ₽' }],
+  competitors: [{ name: 'GuestCom', url: 'https://gcom.host/', market: 'ru', kind: 'direct', foundBy: 'skeptic', note: 'цена: Free 0 ₽', reason: 'на странице заявлен тот же сценарий (guest-guide)' }],
   reviews: [{ reviewer: 'skeptic', model: 'fixture-skeptic-v1', decision: 'challenge', summary: 'Независимые контр-запросы', findings: ['ru-gap: опровергнуто'] }],
 };
 detail.history = [detail.current];

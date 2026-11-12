@@ -8,7 +8,9 @@
  * No human approval step exists anywhere. Nothing here writes to the database: the worker persists the
  * result atomically. Scores are computed ONLY by src/domain/scoring.ts (single source of truth).
  */
+import { z } from 'zod';
 import { DIMENSION_KEYS, evidenceConfidence, founderFit, marketScore } from '../../src/domain/scoring';
+import { analystProposalSchema, discoverySeedSchema, quoteProblem, skepticFindingsSchema } from './schemas';
 import type { ComponentScores, ConfidenceComponents, DimensionKey, ISODate, RawScore } from '../../src/domain/types';
 import {
   BudgetExhausted,
@@ -25,7 +27,9 @@ import {
   type MachineState,
   type PageRead,
   type PipelineResult,
+  type RawCompetitor,
   type ReviewRow,
+  type SkepticFindings,
   type SearchProvider,
   type SearchRow,
   type SkepticalReviewer,
@@ -33,7 +37,7 @@ import {
   type SourceRow,
 } from './types';
 
-export const PIPELINE_VERSION = 'vl-004a-pipeline-1';
+export const PIPELINE_VERSION = 'vl-004a-pipeline-2';
 
 /** Dimensions that MUST be backed by a supported claim; otherwise they are UNKNOWN (null), never guessed. */
 export const EVIDENCE_DIMENSIONS: ReadonlySet<DimensionKey> = new Set(['westernNeed', 'westernPay', 'ruWeakness', 'ruUnmetJob', 'monetization', 'distribution']);
@@ -87,22 +91,30 @@ async function runSearch(sp: SearchProvider, ctx: CallContext, out: SearchRow[],
   }
 }
 
-function checkClaim(c: AnalystProposal['claims'][number], reads: Reads): Omit<ClaimRow, 'key' | 'dimension' | 'text' | 'highImpact'> & { supporting: SourceRow['sourceType'][] } {
+function checkClaim(c: AnalystProposal['claims'][number], reads: Reads): Pick<ClaimRow, 'quote' | 'sourceKeys' | 'supportingKeys' | 'status' | 'reason'> {
   const keys: string[] = [];
-  const supporting: SourceRow['sourceType'][] = [];
+  const supporting: string[] = [];
+  const types: SourceRow['sourceType'][] = [];
   let failed = 0;
   let quarantined = 0;
+  const problem = quoteProblem(c.quote);
   for (const url of c.sourceUrls) {
     const r = reads.rows.get(url);
     if (!r) continue;
     keys.push(r.key);
     if (r.read.status === 'injection_suspected') quarantined++;
     else if (r.read.status !== 'ok') failed++;
-    else if (r.read.text && norm(r.read.text).includes(norm(c.quote))) supporting.push(r.read.sourceType);
+    else if (!problem && r.read.text && norm(r.read.text).includes(norm(c.quote))) {
+      supporting.push(r.key);
+      types.push(r.read.sourceType);
+    }
   }
   let status: ClaimStatus;
   let reason: string;
-  if (supporting.length === 0) {
+  if (problem) {
+    status = 'unknown';
+    reason = `цитата отклонена: ${problem}`;
+  } else if (supporting.length === 0) {
     if (failed || quarantined) {
       status = 'unretrievable';
       reason = quarantined ? 'источник помещён в карантин (попытка инъекции инструкций) — содержимое не используется' : 'источник недоступен при чтении';
@@ -110,67 +122,98 @@ function checkClaim(c: AnalystProposal['claims'][number], reads: Reads): Omit<Cl
       status = 'unknown';
       reason = 'цитата не найдена в тексте источника';
     }
-  } else if (supporting.length >= 2 && supporting.includes('independent')) {
+  } else if (supporting.length >= 2 && types.includes('independent')) {
     status = 'corroborated';
-    reason = `цитата подтверждена ${supporting.length} источниками, есть независимый`;
-  } else if (supporting.every((t) => t === 'company_self_report')) {
+    reason = `цитата найдена в ${supporting.length} источниках, есть независимый`;
+  } else if (types.every((t) => t === 'company_self_report')) {
     status = 'vendor_claim';
     reason = 'подтверждено только заявлением самой компании';
   } else {
     status = 'single_source';
     reason = 'подтверждено одним источником';
   }
-  return { quote: c.quote, sourceKeys: keys, status, reason, supporting };
+  return { quote: c.quote, sourceKeys: keys, supportingKeys: supporting, status, reason };
 }
 
-function grade(claims: ClaimRow[], sources: SourceRow[]): EvidenceGrade {
-  const high = claims.filter((c) => c.highImpact && c.status !== 'contradicted');
-  const bad = high.some((c) => c.status === 'unretrievable' || c.status === 'unknown');
-  if (bad || high.length === 0) return 'D';
-  const independentOk = sources.some((s) => s.fetchStatus === 'ok' && s.sourceType === 'independent');
-  const corroborated = claims.filter((c) => c.status === 'corroborated').length;
-  if (corroborated >= 2 && independentOk) return 'A';
-  if (independentOk) return 'B';
-  return 'C';
+const DETERMINISTIC_OK: ReadonlySet<ClaimStatus> = new Set(['corroborated', 'single_source', 'vendor_claim']);
+
+/** A claim counts as evidence only if the code check found the quote AND the skeptic did not dispute it. */
+export function claimSupports(c: ClaimRow): boolean {
+  return DETERMINISTIC_OK.has(c.status) && c.skepticVerdict === 'supported';
 }
+
+/**
+ * Evidence grade from the sources that ACTUALLY support the claims used in non-null scores — an unrelated
+ * page (even an independent one) that was merely fetched does not raise the grade.
+ */
+export function evidenceGrade(claims: ClaimRow[], sources: SourceRow[], scoreClaimKeys: Set<string>): EvidenceGrade {
+  const used = claims.filter((c) => scoreClaimKeys.has(c.key) && claimSupports(c));
+  const westNeed = claims.some((c) => c.dimension === 'westernNeed' && claimSupports(c));
+  if (!westNeed || used.length === 0) return 'D';
+  const type = new Map(sources.map((s) => [s.key, s.sourceType]));
+  const independentBacked = used.some((c) => c.supportingKeys.some((k) => type.get(k) === 'independent'));
+  const corroborated = used.filter((c) => c.status === 'corroborated').length;
+  let g: EvidenceGrade = corroborated >= 2 && independentBacked ? 'A' : independentBacked ? 'B' : 'C';
+  const unresolved = claims.some((c) => c.highImpact && c.skepticVerdict === 'needs_more_evidence');
+  if (unresolved) g = g === 'A' ? 'B' : 'C';
+  return g;
+}
+
+function invalidResult(seed: DiscoverySeed, isNew: boolean, reviews: ReviewRow[], reason: string, models: string[]): CandidateResult {
+  const scores = Object.fromEntries(DIMENSION_KEYS.map((d) => [d, null])) as ComponentScores;
+  const conf: ConfidenceComponents = { completeness: 0, corroboration: 0, recency: 0, reliability: 0, russiaValidation: 0 };
+  reviews.push({ reviewer: 'quality_gate', model: PIPELINE_VERSION, decision: 'hold', summary: `Ответ модели отклонён проверкой схемы — кандидат не оценивается: ${reason}`, findings: [reason], citedClaims: [] });
+  return {
+    externalId: seed.externalId,
+    seed,
+    isNew,
+    sources: [],
+    claims: [],
+    searches: [],
+    competitors: [],
+    reviews,
+    assessment: {
+      title: seed.title, pitch: seed.pitch, segment: seed.segment, category: seed.category, scores, confidence: conf, founderFit: null,
+      marketScore: marketScore(scores), confidenceScore: evidenceConfidence(conf), founderFitScore: null, evidenceGrade: 'D', state: 'DISCOVERED',
+      holdReasons: [], rationale: `Некорректный ответ модели: ${reason}`, dimensionNotes: [], models,
+    },
+  };
+}
+
+const issues = (e: z.ZodError) => e.issues.slice(0, 3).map((i) => `${i.path.join('.') || 'ответ'}: ${i.message}`).join('; ');
 
 export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asOf: ISODate, p: Providers, ctx: CallContext): Promise<CandidateResult> {
   const reviews: ReviewRow[] = [];
   const searches: SearchRow[] = [];
-  const competitors: CompetitorRow[] = [];
   const reads = new Reads(p.reader, ctx);
 
-  // 1. Analyst (LLM pass #1)
-  const proposal = await p.llm.analyse(seed, asOf, ctx);
+  // 1. Analyst (LLM pass #1) — runtime-validated
+  const parsed = analystProposalSchema.safeParse(await p.llm.analyse(seed, asOf, ctx));
+  if (!parsed.success) return invalidResult(seed, isNew, reviews, `аналитик: ${issues(parsed.error)}`, [p.llm.model, p.skeptic.model]);
+  const proposal = parsed.data as AnalystProposal;
   reviews.push({ reviewer: 'analyst', model: proposal.model, decision: 'propose', summary: proposal.rationale, findings: [], citedClaims: proposal.claims.map((c) => c.key) });
 
   for (const c of proposal.claims) for (const url of c.sourceUrls) await reads.get(url, 'analyst');
 
   // 2. Competitor search — analyst queries, then the skeptic's INDEPENDENT counter-queries
-  const seenCompetitor = new Set<string>();
-  const addCompetitorFrom = async (url: string, by: 'analyst' | 'skeptic') => {
+  const raw: RawCompetitor[] = [];
+  const collect = async (url: string, by: 'analyst' | 'skeptic') => {
     const r = await reads.get(url, by);
     const offer = r.read.status === 'ok' ? r.read.offer : null;
-    if (!offer || seenCompetitor.has(`${offer.market}:${offer.name}`)) return;
     // The western analogue the idea is modelled on is evidence of demand, not a rival.
-    if (offer.name === seed.westernProduct) return;
-    const kind = offer.jobs.includes(seed.primaryJob) ? 'direct' : offer.jobs.some((j) => seed.jobs.includes(j)) ? 'adjacent' : 'substitute';
-    seenCompetitor.add(`${offer.market}:${offer.name}`);
-    competitors.push({ name: offer.name, url, market: offer.market, kind, foundBy: by, sourceKey: r.key, note: offer.price ? `цена: ${offer.price}` : null });
+    if (!offer || offer.name === seed.westernProduct || raw.some((x) => x.market === offer.market && x.name === offer.name)) return;
+    raw.push({ name: offer.name, url, market: offer.market, sourceKey: r.key, jobs: offer.jobs, price: offer.price ?? null, foundBy: by });
   };
   for (const q of proposal.ruQueries) {
-    for (const h of await runSearch(p.search, ctx, searches, { agent: 'analyst', purpose: 'ru_competitors', region: 'ru', query: q })) await addCompetitorFrom(h.url, 'analyst');
+    for (const h of await runSearch(p.search, ctx, searches, { agent: 'analyst', purpose: 'ru_competitors', region: 'ru', query: q })) await collect(h.url, 'analyst');
   }
   for (const q of p.skeptic.counterQueries(seed)) {
     const purpose = q.region === 'ru' ? 'ru_competitors' : 'counterevidence';
-    for (const h of await runSearch(p.search, ctx, searches, { agent: 'skeptic', purpose, region: q.region, query: q.query })) await addCompetitorFrom(h.url, 'skeptic');
+    for (const h of await runSearch(p.search, ctx, searches, { agent: 'skeptic', purpose, region: q.region, query: q.query })) await collect(h.url, 'skeptic');
   }
 
-  // 3. Deterministic claim checker (code, not an LLM)
-  const claims: ClaimRow[] = proposal.claims.map((c) => {
-    const r = checkClaim(c, reads);
-    return { key: c.key, dimension: c.dimension, text: c.text, quote: r.quote, sourceKeys: r.sourceKeys, status: r.status, reason: r.reason, highImpact: !!c.highImpact };
-  });
+  // 3. Deterministic claim checker (code): specific quote ↔ fetched text, availability, source type
+  const claims: ClaimRow[] = proposal.claims.map((c) => ({ key: c.key, dimension: c.dimension as DimensionKey, text: c.text, highImpact: !!c.highImpact, skepticVerdict: 'not_reviewed', skepticReason: null, ...checkClaim(c, reads) }));
   const sources: SourceRow[] = [...reads.rows.values()].map(({ read, key, agent }) => ({
     key,
     url: read.url,
@@ -190,46 +233,67 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
     reviewer: 'claim_checker',
     model: 'deterministic-code',
     decision: checkerFindings.length ? 'challenge' : 'support',
-    summary: `Проверено ${claims.length} утверждений: точное совпадение цитаты с текстом источника, доступность, тип источника.`,
+    summary: `Проверено ${claims.length} утверждений: конкретная цитата ↔ текст источника, доступность, тип источника.`,
     findings: checkerFindings,
     citedClaims: claims.map((c) => c.key),
   });
 
-  // 4. Skeptic (LLM pass #2, different model) — refute absence claims with found competitors
-  const skepticFindings: string[] = [];
-  const refutations: { claim: string; market: string; job: string; rivals: CompetitorRow[] }[] = [];
-  for (const pc of proposal.claims) {
-    if (!pc.absence) continue;
-    const rivals = competitors.filter((c) => c.market === pc.absence!.market && c.kind === 'direct');
-    if (rivals.length === 0) continue;
-    const claim = claims.find((c) => c.key === pc.key)!;
-    claim.status = 'contradicted';
-    claim.reason = `опровергнуто: прямые конкуренты (${pc.absence.market === 'ru' ? 'РФ' : 'Запад'}) — ${rivals.map((r) => r.name).join(', ')}`;
-    refutations.push({ claim: pc.key, market: pc.absence.market, job: pc.absence.job, rivals });
-    skepticFindings.push(`${pc.key}: ${claim.reason}`);
-  }
+  // 4. Skeptic (LLM pass #2, different model): structured challenge, schema-validated, references checked
   const ruQueries = new Set(searches.filter((s) => s.region === 'ru' && s.status === 'ok').map((s) => norm(s.query)));
-  if (ruQueries.size < MIN_RU_QUERIES) skepticFindings.push(`покрытие поиска конкурентов в РФ: ${ruQueries.size} запрос(а) < ${MIN_RU_QUERIES}`);
+  const fParsed = skepticFindingsSchema.safeParse(await p.skeptic.challenge({ seed, asOf, proposal, claims, sources, rawCompetitors: raw, ruQueryCount: ruQueries.size }, ctx));
+  if (!fParsed.success) return invalidResult(seed, isNew, reviews, `скептик: ${issues(fParsed.error)}`, [proposal.model, p.skeptic.model]);
+  const findings = fParsed.data as SkepticFindings;
+  const srcKeys = new Set(sources.map((s) => s.key));
+  const badRefs = [
+    ...findings.claimVerdicts.filter((v) => !claims.some((c) => c.key === v.claimKey) || v.sourceKeys.some((k) => !srcKeys.has(k))).map((v) => v.claimKey),
+    ...findings.competitors.filter((c) => !srcKeys.has(c.sourceKey)).map((c) => c.name),
+  ];
+  if (badRefs.length) return invalidResult(seed, isNew, reviews, `скептик сослался на несуществующие утверждения или источники: ${badRefs.join(', ')}`, [proposal.model, p.skeptic.model]);
+
+  const competitors: CompetitorRow[] = findings.competitors.map((c) => {
+    const r = raw.find((x) => x.sourceKey === c.sourceKey && x.name === c.name);
+    return { name: c.name, url: r?.url ?? sources.find((s) => s.key === c.sourceKey)?.url ?? null, market: c.market, kind: c.kind, foundBy: r?.foundBy ?? 'skeptic', sourceKey: c.sourceKey, note: r?.price ? `цена: ${r.price}` : null, reason: c.reason };
+  });
+  for (const c of claims) {
+    const v = findings.claimVerdicts.find((x) => x.claimKey === c.key);
+    if (!v) {
+      c.skepticVerdict = 'needs_more_evidence';
+      c.skepticReason = 'скептик не вынес вердикт — утверждение не засчитывается';
+      continue;
+    }
+    c.skepticVerdict = v.verdict;
+    c.skepticReason = v.reason;
+    if (v.verdict === 'refuted') {
+      c.status = 'contradicted';
+      c.reason = `опровергнуто скептиком: ${v.reason}`;
+    }
+  }
+  const skepticFindingsText = [
+    ...findings.claimVerdicts.filter((v) => v.verdict !== 'supported').map((v) => `${v.claimKey}: ${v.verdict === 'refuted' ? 'опровергнуто' : 'нужны доказательства'} — ${v.reason}`),
+    ...findings.disputes.map((d) => `${d.severity === 'critical' ? 'КРИТИЧЕСКИЙ спор' : 'спор'}${d.claimKey ? ` (${d.claimKey})` : ''}: ${d.reason}`),
+  ];
+  if (ruQueries.size < MIN_RU_QUERIES) skepticFindingsText.push(`покрытие поиска конкурентов в РФ: ${ruQueries.size} запрос(а) < ${MIN_RU_QUERIES}`);
   reviews.push({
     reviewer: 'skeptic',
-    model: p.skeptic.model,
-    decision: skepticFindings.length ? 'challenge' : 'support',
-    summary: `Независимые контр-запросы: ${searches.filter((s) => s.agent === 'skeptic').length}; найдено конкурентов: ${competitors.length} (прямых в РФ: ${competitors.filter((c) => c.market === 'ru' && c.kind === 'direct').length}).`,
-    findings: skepticFindings,
-    citedClaims: refutations.map((r) => r.claim),
+    model: findings.model,
+    decision: findings.claimVerdicts.some((v) => v.verdict !== 'supported') || findings.disputes.length ? 'challenge' : 'support',
+    summary: `${findings.summary} Контр-запросов: ${searches.filter((s) => s.agent === 'skeptic').length}; конкурентов: ${competitors.length} (прямых в РФ: ${competitors.filter((c) => c.market === 'ru' && c.kind === 'direct').length}).`,
+    findings: skepticFindingsText,
+    citedClaims: findings.claimVerdicts.map((v) => v.claimKey),
   });
 
-  // 5. Scoring: evidence-backed dimensions only; competition-aware caps for the RU dimensions
+  // 5. Scoring: only claims supported by BOTH the code check and the skeptic; RU dims capped by competition
   const notes: string[] = [];
-  const status = new Map(claims.map((c) => [c.key, c.status]));
-  const supported = (k: string) => {
-    const s = status.get(k);
-    return s === 'corroborated' || s === 'single_source' || s === 'vendor_claim';
-  };
+  const byKey = new Map(claims.map((c) => [c.key, c]));
+  const srcType = new Map(sources.map((s) => [s.key, s]));
   const directRu = competitors.filter((c) => c.market === 'ru' && c.kind === 'direct');
   const adjacentRu = competitors.filter((c) => c.market === 'ru' && c.kind !== 'direct');
-  const ruCap = directRu.length >= 2 ? 1 : directRu.length === 1 ? 2 : adjacentRu.length ? 3 : ruQueries.size >= MIN_RU_QUERIES ? 5 : 2;
+  // Zero rivals found is NOT proof of a gap: without rivals the cap is 3, or 4 only when an independent
+  // Russian source supports an RU claim. Never 5/5 from searches alone.
+  const ruIndependent = claims.some((c) => (c.dimension === 'ruWeakness' || c.dimension === 'ruUnmetJob') && claimSupports(c) && c.supportingKeys.some((k) => srcType.get(k)?.sourceType === 'independent' && srcType.get(k)?.region === 'ru'));
+  const ruCap = ruQueries.size < MIN_RU_QUERIES ? 2 : directRu.length >= 2 ? 1 : directRu.length === 1 ? 2 : adjacentRu.length ? 3 : ruIndependent ? 4 : 3;
   const scores = {} as Record<DimensionKey, RawScore>;
+  const scoreClaimKeys = new Set<string>();
   for (const d of DIMENSION_KEYS) {
     const prop = proposal.scores[d];
     if (!prop) {
@@ -238,59 +302,64 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
       continue;
     }
     let v: number | null = prop.value;
+    const ok = prop.claims.filter((k) => byKey.get(k) && claimSupports(byKey.get(k)!));
+    const refuted = prop.claims.filter((k) => byKey.get(k)?.status === 'contradicted');
     if (EVIDENCE_DIMENSIONS.has(d)) {
-      const ok = prop.claims.filter(supported);
-      const refuted = prop.claims.filter((k) => status.get(k) === 'contradicted');
       if (d === 'ruWeakness' || d === 'ruUnmetJob') {
-        if (ok.length === 0 && refuted.length === 0) v = null;
-        else if (v !== null && v > ruCap) {
-          notes.push(`${d}: ${v} → ${ruCap} (конкуренты в РФ: прямых ${directRu.length}, смежных ${adjacentRu.length})`);
+        if (ok.length === 0 && refuted.length === 0) {
+          v = null;
+          notes.push(`${d}: ${prop.value} не засчитано — нет утверждения, подтверждённого кодом и скептиком`);
+        } else if (ok.length === 0) {
+          // The only basis was refuted (a rival does this job): evidence of failing the criterion, never a new score.
+          v = 0;
+          notes.push(`${d}: ${prop.value} → 0 (утверждение о пробеле опровергнуто, подтверждённой опоры нет)`);
+        } else if (v > ruCap) {
+          notes.push(`${d}: ${v} → ${ruCap} (прямых конкурентов в РФ: ${directRu.length}, смежных: ${adjacentRu.length}${directRu.length + adjacentRu.length === 0 ? '; отсутствие найденных ≠ отсутствие конкурентов' : ''})`);
           v = ruCap;
         }
-        if (v === null) notes.push(`${d}: нет подтверждённых утверждений — неизвестно`);
       } else if (ok.length === 0) {
-        notes.push(`${d}: ${prop.value} не засчитано — нет подтверждённого утверждения`);
+        notes.push(`${d}: ${prop.value} не засчитано — нет утверждения, подтверждённого кодом и скептиком`);
         v = null;
       }
     } else if (prop.claims.length === 0 && v > UNSOURCED_CAP) {
       notes.push(`${d}: ${v} → ${UNSOURCED_CAP} (суждение без источника ограничено)`);
       v = UNSOURCED_CAP;
     }
-    // A refuted absence claim on a non-RU dimension (e.g. «на Западе нет аналога») drops the value.
-    if (v !== null && !d.startsWith('ru') && prop.claims.some((k) => status.get(k) === 'contradicted')) {
+    if (v !== null && !d.startsWith('ru') && refuted.length) {
       notes.push(`${d}: ${v} → 1 (утверждение опровергнуто скептиком)`);
       v = 1;
     }
+    if (v !== null) ok.forEach((k) => scoreClaimKeys.add(k));
     scores[d] = v as RawScore;
   }
   const componentScores = scores as ComponentScores;
 
-  const okSources = sources.filter((s) => s.fetchStatus === 'ok');
+  const supportingSources = sources.filter((s) => claims.some((c) => scoreClaimKeys.has(c.key) && c.supportingKeys.includes(s.key)));
   const evidenceClaims = claims.filter((c) => c.status !== 'contradicted');
   const conf: ConfidenceComponents = {
     completeness: Math.round((100 * DIMENSION_KEYS.filter((d) => componentScores[d] !== null).length) / DIMENSION_KEYS.length),
     corroboration: evidenceClaims.length
-      ? Math.round((100 * evidenceClaims.reduce((a, c) => a + (c.status === 'corroborated' ? 1 : c.status === 'single_source' ? 0.5 : c.status === 'vendor_claim' ? 0.3 : 0), 0)) / evidenceClaims.length)
+      ? Math.round((100 * evidenceClaims.reduce((a, c) => a + (!claimSupports(c) ? 0 : c.status === 'corroborated' ? 1 : c.status === 'single_source' ? 0.5 : 0.3), 0)) / evidenceClaims.length)
       : 0,
-    recency: okSources.length ? 90 : 0,
-    reliability: okSources.length ? Math.round((100 * okSources.filter((s) => s.sourceType === 'independent').length) / okSources.length) : 0,
+    recency: supportingSources.length ? 90 : 0,
+    reliability: supportingSources.length ? Math.round((100 * supportingSources.filter((s) => s.sourceType === 'independent').length) / supportingSources.length) : 0,
     russiaValidation: Math.min(100, ruQueries.size * 15 + competitors.filter((c) => c.market === 'ru').length * 10),
   };
 
-  // 6. Quality gate (deterministic)
-  const evidenceGrade = grade(claims, sources);
+  // 6. Quality gate (code) — combines deterministic checks with the skeptic's structured findings
+  const grade = evidenceGrade(claims, sources, scoreClaimKeys);
   const hold: string[] = [];
-  const westNeed = claims.find((c) => c.dimension === 'westernNeed');
-  const westOk = okSources.some((s) => s.region === 'west');
-  if (!westOk || !westNeed || !supported(westNeed.key)) hold.push('Нет доступного западного первоисточника, подтверждающего спрос');
+  const westNeedOk = claims.some((c) => c.dimension === 'westernNeed' && claimSupports(c) && c.supportingKeys.some((k) => srcType.get(k)?.region === 'west'));
+  if (!westNeedOk) hold.push('Нет доступного западного первоисточника, подтверждающего спрос');
   if (ruQueries.size < MIN_RU_QUERIES) hold.push(`Слабое покрытие поиска конкурентов в РФ (${ruQueries.size} из ${MIN_RU_QUERIES} запросов)`);
-  for (const r of refutations) {
-    const free = r.rivals.some((x) => FREE_OFFER.test(x.note ?? ''));
-    if (r.rivals.length >= 2 || free) {
-      hold.push(`Пробел опровергнут: ${r.market === 'ru' ? 'в РФ' : 'на Западе'} уже есть ${r.rivals.map((x) => x.name).join(', ')}${free ? ' (есть бесплатный тариф)' : ''}`);
-    }
+  for (const c of claims.filter((x) => x.status === 'contradicted' && proposal.claims.find((pc) => pc.key === x.key)?.absence)) {
+    const market = proposal.claims.find((pc) => pc.key === c.key)!.absence!.market;
+    const rivals = competitors.filter((x) => x.market === market && x.kind === 'direct');
+    const free = rivals.some((x) => FREE_OFFER.test(x.note ?? ''));
+    if (rivals.length >= 2 || free) hold.push(`Пробел опровергнут: ${market === 'ru' ? 'в РФ' : 'на Западе'} уже есть ${rivals.map((x) => x.name).join(', ')}${free ? ' (есть бесплатный тариф)' : ''}`);
   }
-  if (evidenceGrade === 'D') hold.push('Недостаточно подтверждённых доказательств для ключевых утверждений');
+  for (const d of findings.disputes.filter((x) => x.severity === 'critical')) hold.push(`Неразрешённый критический спор скептика${d.claimKey ? ` (${d.claimKey})` : ''}: ${d.reason}`);
+  if (grade === 'D') hold.push('Недостаточно подтверждённых доказательств для ключевых утверждений');
   const uniqueHold = [...new Set(hold)];
   const rateLimited = sources.some((s) => s.fetchStatus === 'rate_limited') || searches.some((s) => s.status === 'rate_limited');
   const state: MachineState = rateLimited ? 'DISCOVERED' : uniqueHold.length ? 'RESEARCH_HOLD' : 'AUTOMATED_EVIDENCE_PASSED';
@@ -300,7 +369,7 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
     decision: state === 'AUTOMATED_EVIDENCE_PASSED' ? 'pass' : 'hold',
     summary:
       state === 'AUTOMATED_EVIDENCE_PASSED'
-        ? `Проверено системой: класс доказательств ${evidenceGrade}; ключевые утверждения подтверждены источниками.`
+        ? `Проверено системой: класс доказательств ${grade}; ключевые утверждения подтверждены кодом и скептиком.`
         : state === 'DISCOVERED'
           ? 'Исследование неполное (лимит запросов) — кандидат не ранжируется до следующего прогона.'
           : `Отложено автоматически: ${uniqueHold.join('; ')}.`,
@@ -329,12 +398,12 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
       marketScore: marketScore(componentScores),
       confidenceScore: evidenceConfidence(conf),
       founderFitScore: ffScore,
-      evidenceGrade,
+      evidenceGrade: grade,
       state,
       holdReasons: state === 'RESEARCH_HOLD' ? uniqueHold : [],
       rationale: proposal.rationale,
       dimensionNotes: notes,
-      models: [proposal.model, p.skeptic.model, 'deterministic-code', PIPELINE_VERSION],
+      models: [proposal.model, findings.model, 'deterministic-code', PIPELINE_VERSION],
     },
   };
 }
@@ -346,7 +415,8 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
 export async function runPipeline(asOf: ISODate, known: DiscoverySeed[], p: Providers, ctx: CallContext): Promise<PipelineResult> {
   const discoverySearches: SearchRow[] = [];
   await runSearch(p.search, ctx, discoverySearches, { agent: 'discovery', purpose: 'discovery', region: 'world', query: `discovery:${asOf}` });
-  const fresh = await p.llm.discover(asOf, known.map((k) => k.externalId), ctx);
+  // Discovery output is validated; an invalid seed is dropped (never scored), the rest proceed.
+  const fresh = (await p.llm.discover(asOf, known.map((k) => k.externalId), ctx)).filter((s) => discoverySeedSchema.safeParse(s).success);
   const candidates: CandidateResult[] = [];
   for (const seed of [...known, ...fresh]) {
     candidates.push(await researchCandidate(seed, !known.some((k) => k.externalId === seed.externalId), asOf, p, ctx));

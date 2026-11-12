@@ -128,6 +128,11 @@ export interface MachineClaim {
   status: ClaimStatus;
   reason: string;
   highImpact: boolean;
+  /** Sources whose text actually contains the quote. */
+  supportingKeys: string[];
+  /** Independent skeptic pass (machine, not human). */
+  skepticVerdict: 'supported' | 'refuted' | 'needs_more_evidence' | 'not_reviewed';
+  skepticReason: string | null;
 }
 
 export interface MachineSearch {
@@ -146,6 +151,8 @@ export interface MachineCompetitor {
   kind: 'direct' | 'adjacent' | 'substitute';
   foundBy: 'analyst' | 'skeptic';
   note: string | null;
+  /** The skeptic's classification reason. */
+  reason: string;
 }
 
 export interface MachineReview {

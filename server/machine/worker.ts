@@ -17,7 +17,7 @@ import { FIXTURE_PRICES, FixtureLLMProvider, FixtureSearchProvider, FixtureSkept
 import { BudgetExhausted, CallContext, type CandidateResult, type DiscoverySeed, type Feed, type UsageRecord } from './types';
 
 export const WORKER_TIMEZONE = 'Asia/Novokuznetsk';
-export const DEFAULT_JOB_BUDGET = 2_000; // units (kopecks) per daily job, all attempts together
+export const DEFAULT_JOB_BUDGET = 3_000; // units (kopecks) per daily job, all attempts together (≤ 1/3 per attempt)
 export const DEFAULT_MONTHLY_BUDGET = 40_000;
 
 export const DIM_COLUMN: Record<DimensionKey, string> = {
@@ -75,22 +75,35 @@ interface JobRow {
   attempts: number;
   max_attempts: number;
   lease_until: Date | null;
-  spent: number;
   budget_limit: number;
 }
 
-async function acquire(pool: Pool, o: Required<Pick<RunOptions, 'feed' | 'asOf' | 'budget' | 'monthlyBudget' | 'maxAttempts' | 'leaseMs'>>, now: Date): Promise<{ job: JobRow; attempt: number } | RunResult> {
+export const monthOf = (asOf: ISODate) => `${asOf.slice(0, 7)}-01`;
+
+/** Σ committed spend: actual usage where recorded, otherwise the full reservation (conservative). */
+const COMMITTED = 'COALESCE(SUM(COALESCE(used, reserved)), 0)::int';
+
+type Acquired = { job: JobRow; attempt: number; reserved: number; limitedBy: 'job' | 'month' };
+
+/**
+ * Take ownership of the day's job and RESERVE its spend. Serialised per feed+month (advisory lock), so
+ * concurrent jobs of different dates in the same month can never jointly exceed the monthly cap:
+ * reservation = min(job budget − job committed, month cap − month committed).
+ */
+async function acquire(pool: Pool, o: Required<Pick<RunOptions, 'feed' | 'asOf' | 'budget' | 'monthlyBudget' | 'maxAttempts' | 'leaseMs'>>, now: Date): Promise<Acquired | RunResult> {
   const key = jobKeyFor(o.feed, o.asOf);
+  const month = monthOf(o.asOf);
   const c = await pool.connect();
   try {
     await c.query('BEGIN');
+    await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`vl-mr-month:${o.feed}:${month}`]);
     await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [key]);
     await c.query(
-      `INSERT INTO mr_jobs (job_key, feed, as_of, timezone, status, max_attempts, budget_limit, pipeline_version)
-       VALUES ($1, $2, $3, $4, 'queued', $5, $6, $7) ON CONFLICT (job_key) DO NOTHING`,
-      [key, o.feed, o.asOf, WORKER_TIMEZONE, o.maxAttempts, o.budget, PIPELINE_VERSION],
+      `INSERT INTO mr_jobs (job_key, feed, as_of, timezone, status, max_attempts, budget_limit, monthly_cap, pipeline_version)
+       VALUES ($1, $2, $3, $4, 'queued', $5, $6, $7, $8) ON CONFLICT (job_key) DO NOTHING`,
+      [key, o.feed, o.asOf, WORKER_TIMEZONE, o.maxAttempts, o.budget, o.monthlyBudget, PIPELINE_VERSION],
     );
-    const job = (await c.query<JobRow>('SELECT id, status, attempts, max_attempts, lease_until, spent, budget_limit FROM mr_jobs WHERE job_key = $1 FOR UPDATE', [key])).rows[0]!;
+    const job = (await c.query<JobRow>('SELECT id, status, attempts, max_attempts, lease_until, budget_limit FROM mr_jobs WHERE job_key = $1 FOR UPDATE', [key])).rows[0]!;
     const done = (status: RunStatus, message: string): RunResult => ({ status, jobKey: key, jobId: job.id, attempt: job.attempts, message });
     if (job.status === 'succeeded') {
       await c.query('COMMIT');
@@ -109,24 +122,31 @@ async function acquire(pool: Pool, o: Required<Pick<RunOptions, 'feed' | 'asOf' 
       await c.query('COMMIT');
       return done('exhausted', `Задание ${key}: попытки исчерпаны (${job.attempts}/${job.max_attempts}).`);
     }
-    const month = (
-      await c.query<{ s: number }>(
-        `SELECT COALESCE(SUM(spent), 0)::int AS s FROM mr_jobs WHERE feed = $1 AND date_trunc('month', as_of) = date_trunc('month', $2::date)`,
-        [o.feed, o.asOf],
-      )
-    ).rows[0]!.s;
-    if (month >= o.monthlyBudget) {
-      await c.query("UPDATE mr_jobs SET status = 'partial', partial_reason = $2, finished_at = $3 WHERE id = $1", [job.id, `месячный лимит расходов исчерпан (${month} из ${o.monthlyBudget})`, now]);
+    // A crashed/expired attempt is superseded; its reservation stays committed until it reports usage.
+    if (job.status === 'running') await c.query("UPDATE mr_attempts SET status = 'superseded' WHERE job_id = $1 AND attempt = $2 AND status = 'running'", [job.id, job.attempts]);
+    const jobCommitted = (await c.query<{ s: number }>(`SELECT ${COMMITTED} AS s FROM mr_attempts WHERE job_id = $1`, [job.id])).rows[0]!.s;
+    const monthCommitted = (await c.query<{ s: number }>(`SELECT ${COMMITTED} AS s FROM mr_attempts WHERE feed = $1 AND month = $2`, [o.feed, month])).rows[0]!.s;
+    const jobLeft = Math.max(0, job.budget_limit - jobCommitted);
+    const monthLeft = Math.max(0, o.monthlyBudget - monthCommitted);
+    if (monthLeft === 0 || jobLeft === 0) {
+      const reason = monthLeft === 0 ? `месячный лимит расходов исчерпан (${monthCommitted} из ${o.monthlyBudget})` : `бюджет задания исчерпан (${jobCommitted} из ${job.budget_limit})`;
+      await c.query("UPDATE mr_jobs SET status = 'partial', partial_reason = $2, lease_until = NULL, finished_at = $3, monthly_cap = $4 WHERE id = $1", [job.id, reason, now, o.monthlyBudget]);
       await c.query('COMMIT');
-      return done('monthly-cap', `Месячный лимит расходов исчерпан (${month} из ${o.monthlyBudget}) — прогон не выполнен, опубликован прежний TOP-10.`);
+      return done(monthLeft === 0 ? 'monthly-cap' : 'partial', `${reason[0]!.toUpperCase()}${reason.slice(1)} — прогон не выполнен, опубликован прежний TOP-10.`);
     }
+    // One attempt may reserve at most an equal share of the job budget, so a crashed attempt (whose full
+    // reservation stays committed) cannot starve the retries.
+    const perAttempt = Math.ceil(job.budget_limit / job.max_attempts);
+    const reserved = Math.min(jobLeft, monthLeft, perAttempt);
     const attempt = job.attempts + 1;
+    await c.query("INSERT INTO mr_attempts (job_id, feed, attempt, month, reserved, status, started_at) VALUES ($1, $2, $3, $4, $5, 'running', $6)", [job.id, o.feed, attempt, month, reserved, now]);
     await c.query(
-      "UPDATE mr_jobs SET status = 'running', attempts = $2, lease_until = $3, started_at = $4, error = NULL WHERE id = $1",
-      [job.id, attempt, new Date(now.getTime() + o.leaseMs), now],
+      `UPDATE mr_jobs SET status = 'running', attempts = $2, lease_until = $3, started_at = $4, error = NULL, monthly_cap = $5,
+              spent = (SELECT ${COMMITTED} FROM mr_attempts WHERE job_id = $1) WHERE id = $1`,
+      [job.id, attempt, new Date(now.getTime() + o.leaseMs), now, o.monthlyBudget],
     );
     await c.query('COMMIT');
-    return { job: { ...job, attempts: attempt }, attempt };
+    return { job: { ...job, attempts: attempt }, attempt, reserved, limitedBy: monthLeft < Math.min(jobLeft, perAttempt) ? 'month' : 'job' };
   } catch (e) {
     await c.query('ROLLBACK').catch(() => undefined);
     throw e;
@@ -135,28 +155,43 @@ async function acquire(pool: Pool, o: Required<Pick<RunOptions, 'feed' | 'asOf' 
   }
 }
 
-async function insertUsage(c: PoolClient, jobId: number, attempt: number, usage: UsageRecord[]) {
+async function insertUsage(c: PoolClient, feed: Feed, jobId: number, attempt: number, usage: UsageRecord[]) {
   for (const u of usage) {
     await c.query(
-      `INSERT INTO mr_usage (job_id, attempt, provider, operation, model, request_id, tokens_in, tokens_out, cost, price_version)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-      [jobId, attempt, u.provider, u.operation, u.model, u.requestId, u.tokensIn, u.tokensOut, u.cost, u.priceVersion],
+      `INSERT INTO mr_usage (job_id, feed, attempt, provider, operation, model, request_id, tokens_in, tokens_out, cost, price_version)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      [jobId, feed, attempt, u.provider, u.operation, u.model, u.requestId, u.tokensIn, u.tokensOut, u.cost, u.priceVersion],
     );
   }
 }
 
-/** Record a non-successful attempt (usage is always kept: real money would have been spent). */
-async function finishUnsuccessful(pool: Pool, jobId: number, attempt: number, ctx: CallContext, status: 'failed' | 'partial', message: string, now: Date) {
+/** Settle an attempt in the ledger (actual usage replaces the reservation) and recompute the job's spend. */
+async function settleAttempt(c: PoolClient, feed: Feed, jobId: number, attempt: number, ctx: CallContext, status: 'succeeded' | 'failed' | 'partial', now: Date) {
+  await insertUsage(c, feed, jobId, attempt, ctx.usage);
+  // A superseded attempt keeps its status; only its actual usage is recorded.
+  await c.query(
+    "UPDATE mr_attempts SET used = $3, finished_at = $4, status = CASE WHEN status = 'superseded' THEN status ELSE $5 END WHERE job_id = $1 AND attempt = $2",
+    [jobId, attempt, ctx.spent, now, status],
+  );
+  await c.query(`UPDATE mr_jobs SET spent = (SELECT ${COMMITTED} FROM mr_attempts WHERE job_id = $1) WHERE id = $1`, [jobId]);
+}
+
+/**
+ * Record a non-successful attempt. Its usage is ALWAYS settled in the ledger (real money would have been
+ * spent), even when another attempt has taken the job over meanwhile; the job status is only changed by
+ * the attempt that still owns it.
+ */
+async function finishUnsuccessful(pool: Pool, feed: Feed, jobId: number, attempt: number, ctx: CallContext, status: 'failed' | 'partial', message: string, now: Date) {
   const c = await pool.connect();
   try {
     await c.query('BEGIN');
-    await insertUsage(c, jobId, attempt, ctx.usage);
+    await settleAttempt(c, feed, jobId, attempt, ctx, status, now);
     await c.query(
-      `UPDATE mr_jobs SET status = $2, spent = spent + $3, lease_until = NULL, finished_at = $4,
-              error = CASE WHEN $2 = 'failed' THEN $5 ELSE error END,
-              partial_reason = CASE WHEN $2 = 'partial' THEN $5 ELSE partial_reason END
-        WHERE id = $1 AND attempts = $6`,
-      [jobId, status, ctx.spent, now, message.slice(0, 1000), attempt],
+      `UPDATE mr_jobs SET status = $2, lease_until = NULL, finished_at = $3,
+              error = CASE WHEN $2 = 'failed' THEN $4 ELSE error END,
+              partial_reason = CASE WHEN $2 = 'partial' THEN $4 ELSE partial_reason END
+        WHERE id = $1 AND attempts = $5 AND status = 'running'`,
+      [jobId, status, now, message.slice(0, 1000), attempt],
     );
     await c.query('COMMIT');
   } catch (e) {
@@ -188,7 +223,7 @@ async function persist(pool: Pool, feed: Feed, asOf: ISODate, jobId: number, att
     if (own.rows[0]?.attempts !== attempt || own.rows[0]?.status !== 'running') throw new Error('задание перехвачено другой попыткой — результат не записан');
 
     for (const s of result.discoverySearches) {
-      await c.query('INSERT INTO mr_searches (job_id, candidate_id, agent, purpose, region, query, result_count, status) VALUES ($1, NULL, $2, $3, $4, $5, $6, $7)', [jobId, s.agent, s.purpose, s.region, s.query, s.resultCount, s.status]);
+      await c.query('INSERT INTO mr_searches (job_id, candidate_id, feed, agent, purpose, region, query, result_count, status) VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8)', [jobId, feed, s.agent, s.purpose, s.region, s.query, s.resultCount, s.status]);
     }
 
     const ids = new Map<string, number>();
@@ -208,41 +243,41 @@ async function persist(pool: Pool, feed: Feed, asOf: ISODate, jobId: number, att
       ids.set(cand.externalId, id);
       for (const s of cand.sources) {
         await c.query(
-          `INSERT INTO mr_sources (job_id, candidate_id, source_key, url, publisher, region, source_type, fetch_status, http_status, content_hash, excerpt, observed_at, agent)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-          [jobId, id, s.key, s.url, s.publisher, s.region, s.sourceType, s.fetchStatus, s.httpStatus, s.contentHash, s.excerpt, asOf, s.agent],
+          `INSERT INTO mr_sources (job_id, candidate_id, feed, source_key, url, publisher, region, source_type, fetch_status, http_status, content_hash, excerpt, observed_at, agent)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+          [jobId, id, feed, s.key, s.url, s.publisher, s.region, s.sourceType, s.fetchStatus, s.httpStatus, s.contentHash, s.excerpt, asOf, s.agent],
         );
       }
       for (const cl of cand.claims) {
         await c.query(
-          `INSERT INTO mr_claims (job_id, candidate_id, claim_key, dimension, text, quote, source_keys, status, status_reason, high_impact)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-          [jobId, id, cl.key, cl.dimension, cl.text, cl.quote, cl.sourceKeys, cl.status, cl.reason, cl.highImpact],
+          `INSERT INTO mr_claims (job_id, candidate_id, feed, claim_key, dimension, text, quote, source_keys, supporting_source_keys, status, status_reason, skeptic_verdict, skeptic_reason, high_impact)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+          [jobId, id, feed, cl.key, cl.dimension, cl.text, cl.quote, cl.sourceKeys, cl.supportingKeys, cl.status, cl.reason, cl.skepticVerdict, cl.skepticReason, cl.highImpact],
         );
       }
       for (const s of cand.searches) {
-        await c.query('INSERT INTO mr_searches (job_id, candidate_id, agent, purpose, region, query, result_count, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [jobId, id, s.agent, s.purpose, s.region, s.query, s.resultCount, s.status]);
+        await c.query('INSERT INTO mr_searches (job_id, candidate_id, feed, agent, purpose, region, query, result_count, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [jobId, id, feed, s.agent, s.purpose, s.region, s.query, s.resultCount, s.status]);
       }
       for (const co of cand.competitors) {
         await c.query(
-          'INSERT INTO mr_competitors (job_id, candidate_id, name, url, market, kind, found_by, source_key, note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
-          [jobId, id, co.name, co.url, co.market, co.kind, co.foundBy, co.sourceKey, co.note],
+          'INSERT INTO mr_competitors (job_id, candidate_id, feed, name, url, market, kind, found_by, source_key, note, classification_reason) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
+          [jobId, id, feed, co.name, co.url, co.market, co.kind, co.foundBy, co.sourceKey, co.note, co.reason],
         );
       }
       for (const r of cand.reviews) {
-        await c.query('INSERT INTO mr_reviews (job_id, candidate_id, reviewer, model, decision, summary, findings, cited_claims) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [jobId, id, r.reviewer, r.model, r.decision, r.summary, r.findings, r.citedClaims]);
+        await c.query('INSERT INTO mr_reviews (job_id, candidate_id, feed, reviewer, model, decision, summary, findings, cited_claims) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [jobId, id, feed, r.reviewer, r.model, r.decision, r.summary, r.findings, r.citedClaims]);
       }
       const a = cand.assessment;
       const scoreCols = DIMENSION_KEYS.map((d) => DIM_COLUMN[d]);
       const values: unknown[] = [
-        jobId, id, asOf, a.title, a.pitch, a.segment, a.category, 'v1.0',
+        jobId, id, feed, asOf, a.title, a.pitch, a.segment, a.category, 'v1.0',
         ...DIMENSION_KEYS.map((d) => a.scores[d]),
         a.confidence.completeness, a.confidence.corroboration, a.confidence.recency, a.confidence.reliability, a.confidence.russiaValidation,
         a.founderFit?.skills ?? null, a.founderFit?.access ?? null, a.founderFit?.timeToSale ?? null, a.founderFit?.motivation ?? null, a.founderFit?.synergy ?? null,
         a.marketScore, a.confidenceScore, a.founderFitScore, a.evidenceGrade, a.state, a.holdReasons, a.rationale, a.dimensionNotes, PIPELINE_VERSION, a.models,
       ];
       const cols = [
-        'job_id', 'candidate_id', 'as_of', 'title', 'pitch', 'segment', 'category', 'rubric_version', ...scoreCols,
+        'job_id', 'candidate_id', 'feed', 'as_of', 'title', 'pitch', 'segment', 'category', 'rubric_version', ...scoreCols,
         'conf_completeness', 'conf_corroboration', 'conf_recency', 'conf_reliability', 'conf_russia_validation',
         'fit_skills', 'fit_access', 'fit_time_to_sale', 'fit_motivation', 'fit_synergy',
         'market_score', 'confidence', 'founder_fit', 'evidence_grade', 'state', 'hold_reasons', 'rationale', 'dimension_notes', 'pipeline_version', 'models',
@@ -268,13 +303,13 @@ async function persist(pool: Pool, feed: Feed, asOf: ISODate, jobId: number, att
       const cid = ids.get(cand.externalId)!;
       const p = prevBy.get(cid);
       await c.query(
-        `INSERT INTO mr_snapshot_entries (snapshot_id, rank, candidate_id, assessment_id, title, market_score, confidence, evidence_grade, prev_rank, score_delta)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-        [snap, i + 1, cid, assessmentIds.get(cand.externalId), cand.assessment.title, cand.assessment.marketScore, cand.assessment.confidenceScore, cand.assessment.evidenceGrade, p?.rank ?? null, p ? cand.assessment.marketScore - p.market_score : null],
+        `INSERT INTO mr_snapshot_entries (snapshot_id, job_id, feed, rank, candidate_id, assessment_id, title, market_score, confidence, evidence_grade, prev_rank, score_delta)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        [snap, jobId, feed, i + 1, cid, assessmentIds.get(cand.externalId), cand.assessment.title, cand.assessment.marketScore, cand.assessment.confidenceScore, cand.assessment.evidenceGrade, p?.rank ?? null, p ? cand.assessment.marketScore - p.market_score : null],
       );
     }
-    await insertUsage(c, jobId, attempt, ctx.usage);
-    await c.query("UPDATE mr_jobs SET status = 'succeeded', spent = spent + $2, lease_until = NULL, finished_at = $3, error = NULL WHERE id = $1", [jobId, ctx.spent, now]);
+    await settleAttempt(c, feed, jobId, attempt, ctx, 'succeeded', now);
+    await c.query("UPDATE mr_jobs SET status = 'succeeded', lease_until = NULL, finished_at = $2, error = NULL WHERE id = $1", [jobId, now]);
     await c.query('COMMIT');
     return { asOf, entries: top.map((t, i) => ({ rank: i + 1, externalId: t.externalId, score: t.assessment.marketScore })), eligible: ranked.length, held };
   } catch (e) {
@@ -309,9 +344,10 @@ export async function runWorkerJob(pool: Pool, opts: RunOptions): Promise<RunRes
   };
   const got = await acquire(pool, o, now());
   if (!('job' in got)) return got;
-  const { job, attempt } = got;
+  const { job, attempt, reserved, limitedBy } = got;
   const key = jobKeyFor(o.feed, o.asOf);
-  const ctx = new CallContext(key, attempt, Math.max(0, job.budget_limit - job.spent), opts.rateLimits ?? {});
+  // The attempt can never spend more than it reserved — the hard cap holds even if it outlives its lease.
+  const ctx = new CallContext(key, attempt, reserved, opts.rateLimits ?? {});
   const providers = (opts.providers ?? fixtureProviders)(o.asOf);
   const known = await knownSeeds(pool, o.feed, o.asOf);
   try {
@@ -322,10 +358,11 @@ export async function runWorkerJob(pool: Pool, opts: RunOptions): Promise<RunRes
   } catch (e) {
     const msg = (e as Error).message;
     if (e instanceof BudgetExhausted) {
-      await finishUnsuccessful(pool, job.id, attempt, ctx, 'partial', msg, now());
-      return { status: 'partial', jobKey: key, jobId: job.id, attempt, spent: ctx.spent, message: `Прогон остановлен лимитом расходов: ${msg}. Опубликованный TOP-10 не изменён.` };
+      const why = limitedBy === 'month' ? `месячный лимит: зарезервировано ${reserved} из остатка месяца` : `бюджет задания: зарезервировано ${reserved}`;
+      await finishUnsuccessful(pool, o.feed, job.id, attempt, ctx, 'partial', `${msg} (${why})`, now());
+      return { status: 'partial', jobKey: key, jobId: job.id, attempt, spent: ctx.spent, message: `Прогон остановлен лимитом расходов: ${msg} (${why}). Опубликованный TOP-10 не изменён.` };
     }
-    await finishUnsuccessful(pool, job.id, attempt, ctx, 'failed', msg, now()).catch(() => undefined);
+    await finishUnsuccessful(pool, o.feed, job.id, attempt, ctx, 'failed', msg, now()).catch(() => undefined);
     return { status: 'failed', jobKey: key, jobId: job.id, attempt, spent: ctx.spent, message: `Попытка ${attempt}/${job.max_attempts} завершилась ошибкой: ${msg}. Опубликованный TOP-10 не изменён.` };
   }
 }

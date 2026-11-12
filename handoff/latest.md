@@ -1,7 +1,7 @@
 # Venture Lab — Latest handoff
 
 **Task:** VL-004A / Zero-human Autonomous Research Worker (fixture-first) — `tasks/current-task.md`, architecture `docs/no-vpn-automation-architecture.md` v2.0
-**Status:** IMPLEMENTED (vertical slice). Awaiting independent ChatGPT audit. **Not merged.**
+**Status:** IMPLEMENTED + REVIEW ROUND 1 FIXES (ChatGPT, PR #5 review 5875231122). Awaiting re-audit. **Not merged.**
 **As of:** 2026-11-12 · **Implementer:** Claude Code
 
 ## Git
@@ -10,6 +10,27 @@
 | Base | `main` @ `56ef07b` (VL-003P merged, VL-004A activated) |
 | Branch | `claude/vl-004a-autonomous-research-worker` |
 | PR | see the PR list (opened to `main`, not merged) |
+
+## Review round 1 — fixes (audit of `f1abce4`)
+| # | Finding | Root cause | Fix | Regression tests (`server/test/machine-review.test.ts`, 21) |
+|---|---|---|---|---|
+| **P1** | The monthly budget was not a hard cap. Spend from a lease takeover could be lost. | `acquire` only checked `month ≥ cap` and then handed the attempt the whole job budget. Different dates were not serialised. A superseded attempt's usage was written but `mr_jobs.spent` did not include it. | New **spend ledger `mr_attempts`**. Each attempt **reserves** min(job left, month left, job budget ÷ max_attempts) under a per feed+month advisory lock, and the `CallContext` cannot spend more than that reservation. Committed spend is actual usage, or the full reservation until the actual is known. An attempt's usage is always settled, even after it lost ownership; only the owner publishes or changes job status. Reservations and recorded usage are immutable (DB triggers). `monthly_cap` is stored per job and shown in the UI. | (a) 39 950 of 40 000 already spent → the run reserves 50, ends «partial», the month total stays ≤ 40 000, nothing is published; (b) two dates in one month run in parallel → total ≤ cap, at most one succeeds; (c) A blocked mid-run, its lease expires, B takes over and publishes, then A returns: ledger `superseded`+`succeeded`, both usages counted, `job.spent` = A + B, exactly one snapshot; recorded usage and reservations cannot be rewritten or deleted. |
+| **P1** | The «skeptic» only generated extra search queries | `SkepticalReviewer` had just `counterQueries`; all judgements were made by pipeline code | New `SkepticalReviewer.challenge(input) → SkepticFindings`. Input: seed, analyst proposal, checked claims, source excerpts, raw rivals. Output: a verdict per claim (supported / refuted / needs_more_evidence, with source ids and reason), a classification of every rival with a reason, and critical/minor disputes. It is Zod-validated, and references to missing claims or sources are rejected. Its output drives scoring and the gate: a critical dispute means hold, and a claim counts only if both the code and the skeptic support it. The skeptic has its own model id and usage, and its verdicts are stored in `mr_claims.skeptic_verdict/reason` and `mr_competitors.classification_reason`. The fixture skeptic emulates semantic review via the fixture pages' `relevantTo` annotation; VL-004B plugs a real model in behind the same interface. | A refutation that is a content judgement, not a job-tag match («a price list is not proof of paying users») → contradicted, critical dispute, hold; a missing verdict means the claim is not counted; invalid skeptic schema or dangling references → never scored; skeptic usage is metered. |
+| **P1** | Quote verification gave false positives, and the evidence grade was inflated | `includes('')` is always true; there was no runtime validation of model output; the grade looked at any fetched independent page; 0 rivals plus 3 queries gave 5/5 | `quoteProblem`: at least 12 characters, at least 2 words, no boilerplate. Analyst and discovery output are validated with Zod (`server/machine/schemas.ts`). Each claim stores `supporting_source_keys`. The **grade is computed only from sources that support scored claims**, and an unresolved high-impact `needs_more_evidence` lowers it. **Zero rivals found gives a cap of 3**, or 4 with an independent Russian source, never 5. An «absence» claim without independent support is `needs_more_evidence`. A refuted RU basis gives 0, never a new score. | Empty and boilerplate quotes; a true quote from an unrelated page; an unrelated independent page leaves the grade at C; three zero-hit RU searches give 3 (4 with an independent RU source); an absence claim with no rivals is not supported; invalid analyst output (missing field, ghost claim reference, out-of-range value) is rejected; vendor-only support stays C. |
+| **P2** | Feed and provenance integrity in the DB | Single-column FKs; snapshot entries were not tied to the snapshot's job or to the assessment's values | Every event table has `feed` plus composite FKs `(job_id, feed)` and `(candidate_id, feed)`. Assessments, sources and snapshots reference `(job_id, feed, as_of)`, so no backdating. Entries reference `(snapshot_id, job_id, feed)` and `(assessment_id, job_id, candidate_id, title, market_score, confidence, evidence_grade, state)`, so an entry can only be an exact copy of a passed assessment from the same job. A passed assessment cannot have grade D. Job identity is immutable and jobs cannot be deleted. Migration 004 was edited in place because it is not yet on `main`. | Direct SQL: a cross-feed review, claim or usage row is refused; a held idea or another candidate's assessment in the TOP is refused; an inflated frozen score is refused while an exact copy is accepted; another job's entry is refused; a backdated assessment is refused; changing a job's feed or date and deleting jobs are refused; passed + grade D is refused. |
+
+Non-blocking items addressed:
+- the overview shows the configured monthly cap;
+- in the fixture feed, the analyst and skeptic passes are labelled «— эмуляция» and each claim shows the skeptic verdict;
+- the docs no longer imply that a mocked model verified real sources.
+
+Effect on the fixture scenario (stricter evidence lowers some scores; the regressions still hold):
+- **Day 1** TOP: invoice 64 / focus 63 / appliance 53.
+- **Day 2:** contract 69 / invoice 64 / focus **56** (a new direct RU rival refutes both RU claims → 0) / appliance withdrawn (404).
+- **Day 3:** appliance is requalified; 4/10.
+- Guest guide, VAG and quote compare remain on hold for the reasons found by the skeptic.
+
+Checks: `lint` ✔ · `typecheck` ✔ · `build` ✔ · `CI=true npm test` ✔ **15 files, 218 tests** · fresh-database CLI smoke (3 days, idempotent re-run, live refusal) ✔ · responsive QA on 8 routes × 5 widths ✔ (no overflow or errors) · screenshots refreshed in `docs/screenshots/vl-004a/` (new: `skeptic-verdicts-focus-1440.png`).
 
 ## What was built (end-to-end: worker → PostgreSQL → automatic TOP-10 → read API → premium UI)
 - **Migration `004_machine_research.sql`** adds a separate, typed machine dataset, with every table except `mr_jobs` append-only:
@@ -60,7 +81,7 @@ Fixture items with real URLs paraphrase the VL-003P corpus. Fictional items use 
 |---|---|
 | `npm run lint` | ✔ 0 problems |
 | `npm run typecheck` / `npm run build` | ✔ / ✔ |
-| `CI=true TEST_DATABASE_URL=… npm test` | ✔ **14 files, 197 tests** (new: `server/test/machine.test.ts` 23, `src/test/machine.test.tsx` 8; all VL-001–VL-003 regressions pass) |
+| `CI=true TEST_DATABASE_URL=… npm test` | ✔ (round 1) **15 files, 218 tests** (`machine.test.ts` 23, `machine-review.test.ts` 21, `src/test/machine.test.tsx` 8; all VL-001–VL-003 regressions pass) |
 | CLI three days + idempotent re-run + status (dev DB) | ✔ 3/10 → 3/10 → 4/10; re-run «already-succeeded» |
 | Responsive QA, Playwright at 390/768/1024/1280/1440 on 10 routes (machine top, live empty, 4 dossiers, legacy demo/test pages) | ✔ no horizontal overflow, no console or page errors |
 | CI | a new «VL-004A autonomous worker» smoke step in `.github/workflows/ci.yml`; result in the PR |

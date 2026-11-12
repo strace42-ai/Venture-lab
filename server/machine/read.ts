@@ -195,9 +195,10 @@ export async function machineOverview(db: Queryable, feed: MachineFeed, now = ne
       }
     }
   }
+  // Committed month spend from the attempt ledger (actual usage, or the full reservation while unknown).
   const month = (
     await db.query<{ s: number }>(
-      `SELECT COALESCE(SUM(spent), 0)::int AS s FROM mr_jobs WHERE feed = $1 AND date_trunc('month', as_of) = date_trunc('month', $2::date)`,
+      `SELECT COALESCE(SUM(COALESCE(used, reserved)), 0)::int AS s FROM mr_attempts WHERE feed = $1 AND month = date_trunc('month', $2::date)::date`,
       [feed, (latest?.as_of as string | undefined) ?? today],
     )
   ).rows[0]!.s;
@@ -214,7 +215,7 @@ export async function machineOverview(db: Queryable, feed: MachineFeed, now = ne
     newToday,
     watchlist,
     changes,
-    costs: { lastRun: (latest?.spent as number | undefined) ?? 0, month, budgetPerRun: (latest?.budget_limit as number | undefined) ?? DEFAULT_JOB_BUDGET, monthlyBudget: DEFAULT_MONTHLY_BUDGET, priceVersion },
+    costs: { lastRun: (latest?.spent as number | undefined) ?? 0, month, budgetPerRun: (latest?.budget_limit as number | undefined) ?? DEFAULT_JOB_BUDGET, monthlyBudget: (latest?.monthly_cap as number | undefined) ?? DEFAULT_MONTHLY_BUDGET, priceVersion },
     totals,
   };
 }
@@ -262,6 +263,9 @@ export async function machineCandidate(db: Queryable, feed: MachineFeed, externa
       status: x.status as MachineCandidateDetail['claims'][number]['status'],
       reason: x.status_reason as string,
       highImpact: x.high_impact as boolean,
+      supportingKeys: x.supporting_source_keys as string[],
+      skepticVerdict: x.skeptic_verdict as MachineCandidateDetail['claims'][number]['skepticVerdict'],
+      skepticReason: (x.skeptic_reason as string | null) ?? null,
     })),
     searches: (await q('SELECT * FROM mr_searches WHERE job_id = $1 AND candidate_id = $2 ORDER BY id')).map((x) => ({
       agent: x.agent as 'analyst' | 'skeptic',
@@ -278,6 +282,7 @@ export async function machineCandidate(db: Queryable, feed: MachineFeed, externa
       kind: x.kind as 'direct' | 'adjacent' | 'substitute',
       foundBy: x.found_by as 'analyst' | 'skeptic',
       note: (x.note as string | null) ?? null,
+      reason: x.classification_reason as string,
     })),
     reviews: (await q('SELECT * FROM mr_reviews WHERE job_id = $1 AND candidate_id = $2 ORDER BY id')).map((x) => ({
       reviewer: x.reviewer as MachineCandidateDetail['reviews'][number]['reviewer'],

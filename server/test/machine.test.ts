@@ -71,7 +71,8 @@ describeDb('autonomous worker: three fixture days, no human approval', () => {
     expect(ru.map((c) => c.name).sort()).toEqual(['GuestCom', 'RYNTO Guest Portal', 'RealtyCalendar «Автопилот»']);
     expect(ru.every((c) => c.foundBy === 'skeptic')).toBe(true); // the analyst's narrow query missed them
     expect(d.claims.find((c) => c.key === 'ru-gap')!.status).toBe('contradicted');
-    expect(d.current.scores.ruWeakness).toBeLessThanOrEqual(1);
+    expect(d.current.scores.ruWeakness).toBe(0); // refuted, nothing supports the gap → evidence of failing
+    expect(d.claims.find((c) => c.key === 'ru-gap')!.skepticVerdict).toBe('refuted');
     expect(d.current.holdReasons.join(' ')).toMatch(/Пробел опровергнут/);
     // a vendor page is a vendor claim, not independent proof
     expect(d.claims.find((c) => c.key === 'w-need')!.status).toBe('vendor_claim');
@@ -114,10 +115,10 @@ describeDb('autonomous worker: three fixture days, no human approval', () => {
   it('day 2: a new direct RU rival lowers an incumbent; a broken key source withdraws a recommendation', async () => {
     r.d2 = await run(db, D2);
     expect(r.d2.status).toBe('succeeded');
-    expect(ids(r.d2)).toEqual(['invoice-reminders-smb', 'contract-risk-checker', 'focus-coworking-1on1']);
+    expect(ids(r.d2)).toEqual(['contract-risk-checker', 'invoice-reminders-smb', 'focus-coworking-1on1']);
     const focus = (await machineCandidate(db.pool, 'fixture', 'focus-coworking-1on1'))!;
-    expect(focus.history.map((h) => h.marketScore)).toEqual([64, 68]); // newest first: lowered
-    expect(focus.current.dimensionNotes.join(' ')).toMatch(/ruWeakness: 3 → 2/);
+    expect(focus.history.map((h) => h.marketScore)).toEqual([56, 63]); // newest first: lowered
+    expect(focus.current.dimensionNotes.join(' ')).toMatch(/ruWeakness: \d → 0 \(утверждение о пробеле опровергнуто/);
     expect(focus.competitors.find((c) => c.name === 'Пример: ФокусПара')).toMatchObject({ market: 'ru', kind: 'direct' });
 
     const appl = (await machineCandidate(db.pool, 'fixture', 'appliance-fix-assistant'))!;
@@ -133,7 +134,7 @@ describeDb('autonomous worker: three fixture days, no human approval', () => {
 
   it('day 3: automatic re-research requalifies the withdrawn idea; a third regression (quote compare) is held', async () => {
     r.d3 = await run(db, D3);
-    expect(ids(r.d3)).toEqual(['invoice-reminders-smb', 'contract-risk-checker', 'focus-coworking-1on1', 'appliance-fix-assistant']);
+    expect(ids(r.d3)).toEqual(['contract-risk-checker', 'invoice-reminders-smb', 'focus-coworking-1on1', 'appliance-fix-assistant']);
     const appl = (await machineCandidate(db.pool, 'fixture', 'appliance-fix-assistant'))!;
     expect(appl.history.map((h) => h.state)).toEqual(['AUTOMATED_EVIDENCE_PASSED', 'RESEARCH_HOLD', 'AUTOMATED_EVIDENCE_PASSED']);
     const q = (await machineCandidate(db.pool, 'fixture', 'supplier-quote-compare'))!;
@@ -144,7 +145,7 @@ describeDb('autonomous worker: three fixture days, no human approval', () => {
   it('history is immutable: day-1 snapshot unchanged, UPDATE/DELETE forbidden', async () => {
     const d1 = (await get(`/api/machine/snapshots/${D1}?feed=fixture`)).json();
     expect(d1.entries.map((e: { externalId: string }) => e.externalId)).toEqual(['invoice-reminders-smb', 'focus-coworking-1on1', 'appliance-fix-assistant']);
-    expect(d1.entries[1].marketScore).toBe(68);
+    expect(d1.entries[1].marketScore).toBe(63);
     for (const t of ['mr_assessments', 'mr_snapshot_entries', 'mr_claims', 'mr_sources', 'mr_reviews']) {
       await expect(db.pool.query(`UPDATE ${t} SET created_at = now()`)).rejects.toThrow();
       await expect(db.pool.query(`DELETE FROM ${t}`)).rejects.toThrow();
@@ -230,7 +231,7 @@ describeDb('worker reliability: retries, concurrency, caps, rate limits', () => 
   });
 
   it('a live lease blocks a second worker («already running»)', async () => {
-    await db.pool.query("INSERT INTO mr_jobs (job_key, feed, as_of, timezone, status, attempts, max_attempts, lease_until, budget_limit, pipeline_version) VALUES ('daily:fixture:2026-11-14', 'fixture', '2026-11-14', 'Asia/Novokuznetsk', 'running', 1, 3, now() + interval '5 minutes', 2000, 'x')");
+    await db.pool.query("INSERT INTO mr_jobs (job_key, feed, as_of, timezone, status, attempts, max_attempts, lease_until, budget_limit, monthly_cap, pipeline_version) VALUES ('daily:fixture:2026-11-14', 'fixture', '2026-11-14', 'Asia/Novokuznetsk', 'running', 1, 3, now() + interval '5 minutes', 3000, 40000, 'x')");
     const r = await run(db, '2026-11-14', { now: () => new Date() });
     expect(r.status).toBe('already-running');
   });
