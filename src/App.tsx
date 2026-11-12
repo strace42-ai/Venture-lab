@@ -9,6 +9,8 @@ const RadarPage = lazy(() => import('./pages/RadarPage'));
 const IdeaPage = lazy(() => import('./pages/IdeaPage'));
 const PlaceholderPage = lazy(() => import('./pages/PlaceholderPage'));
 const JournalPage = lazy(() => import('./pages/JournalPage'));
+const MachinePage = lazy(() => import('./pages/MachinePage'));
+const MachineCandidatePage = lazy(() => import('./pages/MachineCandidatePage'));
 
 function NotFound() {
   return (
@@ -35,6 +37,8 @@ export function AppRoutes() {
     <Routes>
       <Route element={<AppShell />}>
         <Route index element={<OverviewPage />} />
+        <Route path="machine" element={<MachinePage />} />
+        <Route path="machine/:id" element={<MachineCandidatePage />} />
         <Route path="radar" element={<RadarPage />} />
         <Route path="ideas/:slug" element={<IdeaPage />} />
         <Route path="validation" element={<PlaceholderPage which="validation" />} />

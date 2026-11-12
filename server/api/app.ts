@@ -15,6 +15,7 @@ import { STAGE_ORDER } from '../../src/domain/labels';
 import type { Pool } from '../db/pool';
 import { listSnapshots, loadDataset, loadResearchRuns, loadSnapshot, todayUtc } from '../research/repository';
 import { fullRanking } from '../../src/domain/selectors';
+import { listMachineRuns, listMachineSnapshots, machineCandidate, machineOverview, machineSnapshot } from '../machine/read';
 
 export interface AppOptions {
   pool: Pool;
@@ -22,6 +23,8 @@ export interface AppOptions {
   logger?: boolean;
   /** Override «today» (tests). */
   today?: () => string;
+  /** Override «now» for machine read models (tests). */
+  now?: () => Date;
 }
 
 /** Every endpoint reads exactly one isolated dataset. Default: human-reviewed REAL research. */
@@ -56,6 +59,10 @@ const snapshotId = z.string().regex(/^[a-z0-9][a-z0-9._-]{2,79}$/);
 const compareQuery = z.strictObject({ dataset: datasetParam, a: snapshotId, b: snapshotId });
 
 const idParam = z.strictObject({ id: z.string().regex(/^[a-z0-9][a-z0-9-]{1,79}$/) });
+
+/** VL-004A machine dataset: one feed per request; 'live' stays empty until VL-004B. */
+const feedQuery = z.strictObject({ feed: z.enum(['fixture', 'live']).default('live') });
+const asOfParam = z.strictObject({ asOf: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) });
 
 class HttpError extends Error {
   constructor(
@@ -212,6 +219,38 @@ export async function buildApp(opts: AppOptions): Promise<FastifyInstance> {
         : null,
       snapshots,
     };
+  });
+
+  // ---------------------------------------------------------------- VL-004A machine research (read-only)
+  app.get('/api/machine/overview', async (req) => {
+    const { feed } = feedQuery.parse(req.query);
+    return machineOverview(opts.pool, feed, opts.now?.() ?? new Date());
+  });
+
+  app.get('/api/machine/runs', async (req) => {
+    const { feed } = feedQuery.parse(req.query);
+    return { feed, runs: await listMachineRuns(opts.pool, feed) };
+  });
+
+  app.get('/api/machine/snapshots', async (req) => {
+    const { feed } = feedQuery.parse(req.query);
+    return { feed, snapshots: await listMachineSnapshots(opts.pool, feed) };
+  });
+
+  app.get('/api/machine/snapshots/:asOf', async (req) => {
+    const { feed } = feedQuery.parse(req.query);
+    const { asOf } = asOfParam.parse(req.params);
+    const snap = await machineSnapshot(opts.pool, feed, asOf);
+    if (!snap) throw new HttpError(404, 'not_found', 'Машинный срез на эту дату не найден');
+    return { feed, ...snap };
+  });
+
+  app.get('/api/machine/candidates/:id', async (req) => {
+    const { feed } = feedQuery.parse(req.query);
+    const { id } = idParam.parse(req.params);
+    const detail = await machineCandidate(opts.pool, feed, id);
+    if (!detail) throw new HttpError(404, 'not_found', 'Кандидат не найден в этой ленте');
+    return detail;
   });
 
   return app;

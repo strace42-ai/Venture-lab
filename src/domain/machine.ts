@@ -1,0 +1,196 @@
+/**
+ * VL-004A — read models of the autonomous machine-research dataset (shared by API and UI).
+ * Machine states never claim human verification: the strongest one is «Проверено системой».
+ */
+import type { ComponentScores, ConfidenceComponents, DimensionKey, FounderFitComponents, ISODate } from './types';
+
+export type MachineFeed = 'fixture' | 'live';
+export type MachineState = 'DISCOVERED' | 'AUTOMATED_EVIDENCE_PASSED' | 'RESEARCH_HOLD';
+export type EvidenceGrade = 'A' | 'B' | 'C' | 'D';
+export type JobStatus = 'queued' | 'running' | 'succeeded' | 'partial' | 'failed';
+export type ClaimStatus = 'corroborated' | 'vendor_claim' | 'single_source' | 'contradicted' | 'unretrievable' | 'unknown';
+
+export const MACHINE_STATE_LABEL: Record<MachineState, string> = {
+  AUTOMATED_EVIDENCE_PASSED: 'Проверено системой',
+  RESEARCH_HOLD: 'Отложено системой',
+  DISCOVERED: 'Найдено, не исследовано',
+};
+
+export const CLAIM_STATUS_LABEL: Record<ClaimStatus, string> = {
+  corroborated: 'Подтверждено несколькими источниками',
+  vendor_claim: 'Заявление компании',
+  single_source: 'Один источник',
+  contradicted: 'Опровергнуто',
+  unretrievable: 'Источник недоступен',
+  unknown: 'Цитата не найдена',
+};
+
+export const JOB_STATUS_LABEL: Record<JobStatus, string> = {
+  queued: 'В очереди',
+  running: 'Выполняется',
+  succeeded: 'Успешно',
+  partial: 'Прервано (лимит)',
+  failed: 'Ошибка',
+};
+
+export interface MachineRun {
+  id: number;
+  jobKey: string;
+  feed: MachineFeed;
+  asOf: ISODate;
+  status: JobStatus;
+  attempts: number;
+  maxAttempts: number;
+  spent: number;
+  budgetLimit: number;
+  error: string | null;
+  partialReason: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  pipelineVersion: string;
+}
+
+export interface MachineTopEntry {
+  rank: number;
+  externalId: string;
+  title: string;
+  category: string;
+  segment: 'B2B' | 'B2C';
+  marketScore: number;
+  confidence: number;
+  founderFit: number | null;
+  evidenceGrade: EvidenceGrade;
+  prevRank: number | null;
+  scoreDelta: number | null;
+  isNew: boolean;
+}
+
+export interface MachineWatchItem {
+  externalId: string;
+  title: string;
+  state: MachineState;
+  marketScore: number;
+  confidence: number;
+  evidenceGrade: EvidenceGrade;
+  holdReasons: string[];
+  isNew: boolean;
+}
+
+export type MachineChange =
+  | { kind: 'entered' | 'exited' | 'up' | 'down'; externalId: string; title: string; from: number | null; to: number | null; scoreDelta: number | null }
+  | { kind: 'state'; externalId: string; title: string; fromState: MachineState | null; toState: MachineState; reasons: string[] }
+  | { kind: 'competitor'; externalId: string; title: string; competitor: string; market: 'west' | 'ru'; competitorKind: 'direct' | 'adjacent' | 'substitute'; url: string | null };
+
+export interface MachineSnapshotMeta {
+  asOf: ISODate;
+  jobId: number;
+  eligibleCount: number;
+  holdCount: number;
+  publishedAt: string;
+}
+
+export interface MachineOverview {
+  feed: MachineFeed;
+  timezone: string;
+  /** «today» in the worker timezone. */
+  today: ISODate;
+  latestRun: MachineRun | null;
+  lastSuccess: MachineRun | null;
+  /** The last successful run is older than yesterday (in the worker timezone). */
+  stale: boolean;
+  snapshot: (MachineSnapshotMeta & { entries: MachineTopEntry[] }) | null;
+  previousSnapshot: MachineSnapshotMeta | null;
+  newToday: MachineWatchItem[];
+  watchlist: MachineWatchItem[];
+  changes: MachineChange[];
+  costs: { lastRun: number; month: number; budgetPerRun: number; monthlyBudget: number; priceVersion: string | null };
+  totals: { candidates: number; passed: number; held: number; discovered: number };
+}
+
+export interface MachineSource {
+  key: string;
+  url: string;
+  publisher: string | null;
+  region: 'west' | 'ru';
+  sourceType: 'independent' | 'company_self_report' | 'primary_data' | 'unknown';
+  fetchStatus: 'ok' | 'http_error' | 'blocked' | 'injection_suspected' | 'rate_limited' | 'budget_exhausted';
+  httpStatus: number | null;
+  excerpt: string | null;
+  agent: 'analyst' | 'skeptic';
+}
+
+export interface MachineClaim {
+  key: string;
+  dimension: DimensionKey;
+  text: string;
+  quote: string | null;
+  sourceKeys: string[];
+  status: ClaimStatus;
+  reason: string;
+  highImpact: boolean;
+}
+
+export interface MachineSearch {
+  agent: 'discovery' | 'analyst' | 'skeptic';
+  purpose: string;
+  region: 'west' | 'ru' | 'world';
+  query: string;
+  resultCount: number;
+  status: string;
+}
+
+export interface MachineCompetitor {
+  name: string;
+  url: string | null;
+  market: 'west' | 'ru';
+  kind: 'direct' | 'adjacent' | 'substitute';
+  foundBy: 'analyst' | 'skeptic';
+  note: string | null;
+}
+
+export interface MachineReview {
+  reviewer: 'analyst' | 'skeptic' | 'claim_checker' | 'quality_gate';
+  model: string;
+  decision: string;
+  summary: string;
+  findings: string[];
+}
+
+export interface MachineAssessment {
+  id: number;
+  jobId: number;
+  asOf: ISODate;
+  title: string;
+  pitch: string;
+  segment: 'B2B' | 'B2C';
+  category: string;
+  scores: ComponentScores;
+  confidenceComponents: ConfidenceComponents;
+  founderFitComponents: FounderFitComponents | null;
+  marketScore: number;
+  confidence: number;
+  founderFit: number | null;
+  evidenceGrade: EvidenceGrade;
+  state: MachineState;
+  holdReasons: string[];
+  rationale: string;
+  dimensionNotes: string[];
+  models: string[];
+  pipelineVersion: string;
+}
+
+export interface MachineCandidateDetail {
+  feed: MachineFeed;
+  externalId: string;
+  firstSeen: ISODate;
+  primaryJob: string;
+  westernProduct: string;
+  current: MachineAssessment;
+  rank: number | null;
+  history: MachineAssessment[];
+  sources: MachineSource[];
+  claims: MachineClaim[];
+  searches: MachineSearch[];
+  competitors: MachineCompetitor[];
+  reviews: MachineReview[];
+}

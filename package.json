@@ -25,7 +25,10 @@
     "research:import": "tsx server/cli/research.ts import",
     "research:snapshot": "tsx server/cli/research.ts snapshot",
     "research:draft-check": "tsx server/cli/research.ts draft-check",
-    "research:review": "tsx server/cli/research.ts review"
+    "research:review": "tsx server/cli/research.ts review",
+    "research:worker:run": "tsx server/cli/worker.ts run",
+    "research:worker:tick": "tsx server/cli/worker.ts tick",
+    "research:worker:status": "tsx server/cli/worker.ts status"
   },
   "dependencies": {
     "@fastify/cors": "^11.4.1",

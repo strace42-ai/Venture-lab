@@ -1,4 +1,4 @@
-import { BookOpenText, Briefcase, FlaskConical, Hammer, LayoutDashboard, Radar, Settings2, type LucideIcon } from 'lucide-react';
+import { Bot, BookOpenText, Briefcase, FlaskConical, Hammer, LayoutDashboard, Radar, Settings2, type LucideIcon } from 'lucide-react';
 
 export interface NavItem {
   to: string;
@@ -13,6 +13,7 @@ export interface NavItem {
 }
 
 export const NAV_MAIN: NavItem[] = [
+  { to: '/machine', label: 'Автоматический TOP-10', short: 'Авто-TOP', icon: Bot, primary: true },
   { to: '/', label: 'Обзор', icon: LayoutDashboard, primary: true },
   { to: '/radar', label: 'Радар', icon: Radar, primary: true },
   { to: '/validation', label: 'Валидация', icon: FlaskConical, soon: true },
