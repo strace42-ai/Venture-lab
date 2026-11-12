@@ -1,0 +1,288 @@
+import { AlertTriangle, ArrowUpRight, LayoutGrid, List, SearchX, X } from 'lucide-react';
+import { useMemo } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Segmented } from '../components/ui/Segmented';
+import { Badge, ConfidenceMeter, DemoBadge, EmptyState, MovementIndicator, ScoreBar, StageBadge } from '../components/ui/primitives';
+import { useData } from '../data/context';
+import { RISK_LABEL, STAGE_LABEL, STAGE_ORDER } from '../domain/labels';
+import { categories, hasCriticalRisk, radarRows, stagesPresent, type RadarQuery, type RadarRow, type RadarSort } from '../domain/selectors';
+import type { Category, Stage } from '../domain/types';
+import { cx } from '../lib/cx';
+import { formatDateShort, plural } from '../lib/format';
+
+type View = 'table' | 'cards';
+
+const SORTS: RadarSort[] = ['score', 'confidence', 'recent'];
+
+export default function RadarPage() {
+  const data = useData();
+  const [params, setParams] = useSearchParams();
+
+  const cats = useMemo(() => categories(data), [data]);
+  const stages = useMemo(() => {
+    const present = new Set(stagesPresent(data));
+    return STAGE_ORDER.filter((s) => present.has(s));
+  }, [data]);
+
+  const rawCat = params.get('cat');
+  const rawStage = params.get('stage');
+  const rawSort = params.get('sort');
+  const query: RadarQuery = {
+    q: params.get('q') ?? '',
+    category: rawCat && (cats as string[]).includes(rawCat) ? (rawCat as Category) : 'all',
+    stage: rawStage && (stages as string[]).includes(rawStage) ? (rawStage as Stage) : 'all',
+    sort: rawSort && (SORTS as string[]).includes(rawSort) ? (rawSort as RadarSort) : 'score',
+  };
+  const view: View = params.get('view') === 'cards' ? 'cards' : 'table';
+
+  const rows = useMemo(() => radarRows(data, query), [data, query.q, query.category, query.stage, query.sort]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function update(key: string, value: string, defaultValue: string) {
+    const next = new URLSearchParams(params);
+    if (value === defaultValue || value === '') next.delete(key);
+    else next.set(key, value);
+    setParams(next, { replace: true });
+  }
+
+  const filtersActive = query.q !== '' || query.category !== 'all' || query.stage !== 'all';
+
+  function reset() {
+    const next = new URLSearchParams();
+    if (query.sort !== 'score') next.set('sort', query.sort);
+    if (view !== 'table') next.set('view', view);
+    setParams(next, { replace: true });
+  }
+
+  return (
+    <div className="page page--radar">
+      <header className="page-head">
+        <div className="eyebrow">
+          Радар возможностей
+          <DemoBadge compact />
+        </div>
+        <h1 className="display display--sm">Все идеи, оценки и уверенность</h1>
+        <p className="page-head__lede">
+          Поиск, фильтры и сортировка работают по локальному демо-набору. Ранг — позиция в общем рейтинге на {formatDateShort(data.asOf)}; отклонённые идеи видны, но не ранжируются.
+        </p>
+      </header>
+
+      <div className="panel filters" role="region" aria-label="Фильтры радара">
+        <div className="filters__search">
+          <label htmlFor="radar-q" className="field-label">
+            Поиск
+          </label>
+          <div className="input-wrap">
+            <input
+              id="radar-q"
+              type="search"
+              className="input"
+              placeholder="Название, аудитория, категория…"
+              value={query.q}
+              onChange={(e) => update('q', e.target.value, '')}
+              autoComplete="off"
+            />
+          </div>
+        </div>
+        <div className="filters__field">
+          <label htmlFor="radar-cat" className="field-label">
+            Категория
+          </label>
+          <select id="radar-cat" className="select" value={query.category} onChange={(e) => update('cat', e.target.value, 'all')}>
+            <option value="all">Все</option>
+            {cats.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="filters__field">
+          <label htmlFor="radar-stage" className="field-label">
+            Стадия
+          </label>
+          <select id="radar-stage" className="select" value={query.stage} onChange={(e) => update('stage', e.target.value, 'all')}>
+            <option value="all">Все</option>
+            {stages.map((s) => (
+              <option key={s} value={s}>
+                {STAGE_LABEL[s]}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="filters__field filters__sort">
+          <span className="field-label" id="radar-sort-label">
+            Сортировка
+          </span>
+          <Segmented<RadarSort>
+            label="Сортировка"
+            value={query.sort}
+            onChange={(v) => update('sort', v, 'score')}
+            options={[
+              { value: 'score', label: 'Балл' },
+              { value: 'confidence', label: 'Уверенность' },
+              { value: 'recent', label: 'Свежие' },
+            ]}
+          />
+        </div>
+      </div>
+
+      <div className="results-bar">
+        <p className="results-bar__count" aria-live="polite">
+          <span className="num">{rows.length}</span> {plural(rows.length, 'идея', 'идеи', 'идей')} из {data.ideas.length}
+          {filtersActive && (
+            <button type="button" className="chip-btn" onClick={reset}>
+              <X size={12} aria-hidden /> Сбросить фильтры
+            </button>
+          )}
+        </p>
+        <Segmented<View>
+          label="Вид списка"
+          size="sm"
+          className="view-toggle"
+          value={view}
+          onChange={(v) => update('view', v, 'table')}
+          options={[
+            { value: 'table', label: 'Таблица', icon: <List size={14} aria-hidden /> },
+            { value: 'cards', label: 'Карточки', icon: <LayoutGrid size={14} aria-hidden /> },
+          ]}
+        />
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="panel">
+          <EmptyState
+            icon={<SearchX size={22} />}
+            title="Ничего не найдено"
+            action={
+              <button type="button" className="btn btn--ghost" onClick={reset}>
+                Сбросить фильтры
+              </button>
+            }
+          >
+            Под эти условия не подходит ни одна идея из демо-набора. Отсутствие результата не означает отсутствия рынка.
+          </EmptyState>
+        </div>
+      ) : (
+        <div className={cx('radar', `radar--${view}`)}>
+          {view === 'table' && <RadarTable rows={rows} />}
+          <ul className="radar-cards" aria-label="Идеи">
+            {rows.map((r) => (
+              <RadarCard key={r.idea.id} row={r} />
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RadarTable({ rows }: { rows: RadarRow[] }) {
+  return (
+    <div className="panel table-wrap">
+      <table className="table">
+        <caption className="sr-only">Идеи на радаре (демо-данные)</caption>
+        <thead>
+          <tr>
+            <th scope="col" className="t-rank">Ранг</th>
+            <th scope="col">Идея</th>
+            <th scope="col">Стадия</th>
+            <th scope="col" className="t-score">Балл</th>
+            <th scope="col" className="t-conf">Уверенность</th>
+            <th scope="col" className="t-fit" title="Соответствие основателю, 0–40 — не входит в балл">Fit</th>
+            <th scope="col" className="t-risk">Риски</th>
+            <th scope="col" className="t-upd">Обновлено</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const crit = hasCriticalRisk(r.idea);
+            return (
+              <tr key={r.idea.id} className={cx(r.idea.stage === 'rejected' && 'is-dim')}>
+                <td className="t-rank">
+                  {r.rank ? (
+                    <span className="t-rank__inner">
+                      <span className="num">#{r.rank}</span>
+                      {r.entry && <MovementIndicator movement={r.entry.movement} scoreDelta={r.entry.scoreDelta} />}
+                    </span>
+                  ) : (
+                    <span className="muted" title="Не ранжируется">—</span>
+                  )}
+                </td>
+                <td>
+                  <Link to={`/ideas/${r.idea.slug}`} className="t-idea">
+                    <span className="t-idea__title">{r.idea.title}</span>
+                    <span className="t-idea__meta">
+                      {r.idea.category} · {r.idea.segment}
+                    </span>
+                  </Link>
+                </td>
+                <td>
+                  <StageBadge stage={r.idea.stage} />
+                </td>
+                <td className="t-score">
+                  <ScoreBar value={r.score} label={`Балл ${r.score}`} />
+                </td>
+                <td className="t-conf">
+                  <ConfidenceMeter value={r.confidence} />
+                </td>
+                <td className="t-fit num">{r.founderFit}</td>
+                <td className="t-risk">
+                  {r.idea.riskFlags.length ? (
+                    <span className={cx('risk-count', crit && 'risk-count--crit')} title={r.idea.riskFlags.map((f) => RISK_LABEL[f]).join(', ')}>
+                      {crit && <AlertTriangle size={12} aria-hidden />}
+                      <span className="num">{r.idea.riskFlags.length}</span>
+                      <span className="sr-only"> риск(а): {r.idea.riskFlags.map((f) => RISK_LABEL[f]).join(', ')}</span>
+                    </span>
+                  ) : (
+                    <span className="muted">—</span>
+                  )}
+                </td>
+                <td className="t-upd num muted">{formatDateShort(r.idea.updatedAt)}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function RadarCard({ row }: { row: RadarRow }) {
+  const { idea } = row;
+  const crit = hasCriticalRisk(idea);
+  return (
+    <li className={cx('panel rcard', idea.stage === 'rejected' && 'is-dim')}>
+      <div className="rcard__top">
+        <span className="rcard__rank num">{row.rank ? `#${row.rank}` : '—'}</span>
+        {row.entry && <MovementIndicator movement={row.entry.movement} scoreDelta={row.entry.scoreDelta} />}
+        <span className="rcard__spacer" />
+        <StageBadge stage={idea.stage} />
+      </div>
+      <Link to={`/ideas/${idea.slug}`} className="rcard__title">
+        {idea.title}
+        <ArrowUpRight size={14} aria-hidden />
+      </Link>
+      <p className="rcard__pitch">{idea.shortPitch}</p>
+      <div className="rcard__metrics">
+        <div>
+          <span className="rcard__mlabel">Балл</span>
+          <ScoreBar value={row.score} label={`Балл ${row.score}`} />
+        </div>
+        <div>
+          <span className="rcard__mlabel">Уверенность</span>
+          <ConfidenceMeter value={row.confidence} />
+        </div>
+      </div>
+      <div className="rcard__foot">
+        <Badge>{idea.category}</Badge>
+        <Badge>{idea.segment}</Badge>
+        {crit && (
+          <Badge tone="danger" icon={<AlertTriangle size={12} aria-hidden />}>
+            Требует ревью
+          </Badge>
+        )}
+        <span className="rcard__upd muted num">{formatDateShort(idea.updatedAt)}</span>
+      </div>
+    </li>
+  );
+}
