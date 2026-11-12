@@ -164,30 +164,53 @@ export interface UsageRecord {
   priceVersion: string;
 }
 
-/** Per-attempt meter shared by all providers: enforces the hard spend cap and per-run rate limits. */
+/**
+ * Ask the ledger for more budget for THIS attempt. Returns the amount granted (0 = refused: the attempt
+ * lost ownership, its lease expired, or the job / month budget is exhausted).
+ */
+export type BudgetTopUp = (want: number) => Promise<number>;
+
+/**
+ * Per-attempt meter shared by all providers: enforces the hard spend cap and per-run rate limits.
+ * The attempt starts with a reserved CHUNK and tops it up from the ledger on demand, so a normal run can
+ * use the whole job budget while a crashed/superseded attempt only ever holds what it already reserved.
+ */
 export class CallContext {
   readonly usage: UsageRecord[] = [];
   private seq = 0;
   private counts: Record<string, number> = {};
+  private chain: Promise<unknown> = Promise.resolve();
 
   constructor(
     readonly jobKey: string,
     readonly attempt: number,
-    /** Remaining budget for this job (cost units). */
+    /** Budget currently reserved for this attempt and not yet spent (cost units). */
     private remaining: number,
     readonly rateLimits: Partial<Record<UsageRecord['operation'], number>> = {},
+    private readonly topUp?: BudgetTopUp,
+    /** Minimum size of one top-up request. */
+    private readonly chunk = 0,
   ) {}
 
   get spent(): number {
     return this.usage.reduce((a, u) => a + u.cost, 0);
   }
 
-  /** Reserve a call; throws BudgetExhausted / RateLimited BEFORE the provider is called. */
-  charge(rec: Omit<UsageRecord, 'requestId'>): string {
+  /** Reserve a call; throws BudgetExhausted / RateLimited BEFORE the provider is called. Serialised. */
+  charge(rec: Omit<UsageRecord, 'requestId'>): Promise<string> {
+    const next = this.chain.then(() => this.chargeNow(rec));
+    this.chain = next.catch(() => undefined);
+    return next;
+  }
+
+  private async chargeNow(rec: Omit<UsageRecord, 'requestId'>): Promise<string> {
     const n = (this.counts[rec.operation] ?? 0) + 1;
     const limit = this.rateLimits[rec.operation];
     if (limit !== undefined && n > limit) throw new RateLimited(`rate limit for ${rec.operation}: ${limit} per run`);
-    if (rec.cost > this.remaining) throw new BudgetExhausted('job', `бюджет задания исчерпан: нужно ${rec.cost}, осталось ${this.remaining}`);
+    if (rec.cost > this.remaining && this.topUp) {
+      this.remaining += await this.topUp(Math.max(this.chunk, rec.cost - this.remaining));
+    }
+    if (rec.cost > this.remaining) throw new BudgetExhausted('job', `бюджет исчерпан: нужно ${rec.cost}, доступно ${this.remaining}`);
     this.counts[rec.operation] = n;
     this.remaining -= rec.cost;
     const requestId = `${this.jobKey}#${this.attempt}#${++this.seq}`;

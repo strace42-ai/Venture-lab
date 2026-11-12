@@ -14,6 +14,13 @@ The architecture source of truth is `docs/no-vpn-automation-architecture.md` v2.
    - a classification of every rival (direct / adjacent / substitute) with a reason;
    - the unresolved disputes (`critical` / `minor`).
 
+   **Code cross-checks the skeptic as well** (it is a model output too):
+   - a rival is accepted only when search actually surfaced it — same source, name and **market**, on a page fetched `ok`. An invented rival («RealtyCalendar» on the Focusmate page) or a re-marketed one is dropped with «отклонено: …» in the review and cannot create a competitor, move a cap, a score or the TOP-10;
+   - `supported` must cite only sources that really contain the quote (`supporting_source_keys`);
+   - `refuted` must cite a validated direct rival in the claimed market (absence claims) or a fetched page (other claims).
+
+   A verdict that fails these checks becomes `needs_more_evidence` (fail-closed: no support, no refutation), and a critical dispute resting on it is downgraded to minor.
+
    The fixture skeptic emulates the semantic review through the fixture pages' `relevantTo` annotation: a literal quote taken from an unrelated page does not support the claim. «Absence» claims ("nobody in Russia does X") are `needs_more_evidence` unless an independent source supports them; zero search hits prove nothing.
 7. **Scoring.** Only `src/domain/scoring.ts` computes scores.
    - A claim counts only when **both** the code check and the skeptic support it (`claimSupports`).
@@ -41,7 +48,7 @@ The architecture source of truth is `docs/no-vpn-automation-architecture.md` v2.
 
 ## Worker and hard spend caps (`server/machine/worker.ts`)
 - **Idempotency and ownership.** Each job key is `daily:<feed>:<as_of>`, with a lease. A duplicate attempt gets «already-running»; an expired lease can be taken over; attempts are bounded.
-- **Spend ledger `mr_attempts`.** Every attempt reserves budget **under a per feed+month advisory lock**. The reservation is min(job budget left, month cap left, job budget ÷ max_attempts). The `CallContext` can never spend beyond the reservation, so the cap holds even for an attempt that outlives its lease.
+- **Spend ledger `mr_attempts`.** Every attempt reserves budget **under a per feed+month advisory lock**. It starts with a **chunk** = min(job budget left, month cap left, job budget ÷ max_attempts) and **tops up** chunk by chunk (`topUpAttempt`) under the same lock — only while it still owns the job with a live lease, and never beyond the job budget or the month cap. A top-up also renews the lease (heartbeat). So a normal run can use the whole job budget (e.g. 3000 with 3 attempts), while a stuck or superseded attempt is refused further budget and holds only what it already reserved. The `CallContext` can never spend beyond its reservation.
 - **Committed spend.** Committed spend is the actual usage where it is recorded and **the full reservation** otherwise. A crashed or superseded attempt therefore never makes the ledger under-count. When an attempt finishes, its actual usage is settled even if another attempt took the job over, and only the owner may publish or change the job status.
 - **Result.** Concurrent dates in one month cannot exceed the monthly cap together. Exhausting a budget gives an honest `partial`: no new TOP is published and all usage stays in the ledger.
 - **One transaction.** All research rows and the snapshot are written in one transaction, so any failure keeps the previous TOP-10 published.
@@ -52,7 +59,7 @@ The architecture source of truth is `docs/no-vpn-automation-architecture.md` v2.
 - **Assessment date.** Assessments, sources and snapshots reference `(job_id, feed, as_of)`, so they cannot be backdated.
 - **Snapshot entries** reference `(snapshot_id, job_id, feed)` and `(assessment_id, job_id, candidate_id, title, market_score, confidence, evidence_grade, state)`. A frozen entry is therefore an exact copy of an `AUTOMATED_EVIDENCE_PASSED` assessment from the same job and candidate.
 - **Grade rule.** A passed assessment can never have grade D.
-- **Immutability.** Event tables are append-only. Jobs and attempts cannot be deleted, a job's identity is immutable, a reservation is immutable, and recorded usage cannot be rewritten.
+- **Immutability.** Event tables are append-only. Jobs and attempts cannot be deleted, a job's identity is immutable, a reservation can only grow (top-up) and only while its attempt is running and unsettled, and recorded usage cannot be rewritten.
 
 ## Providers
 `SearchProvider`, `SourceReader`, `LLMProvider` and `SkepticalReviewer` live in `server/machine/types.ts`. This sprint has only the fixture implementations (`server/machine/providers/fixture.ts`, `server/machine/fixtures/world.ts`).

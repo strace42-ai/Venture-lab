@@ -37,8 +37,9 @@ CREATE TABLE mr_jobs (
 CREATE INDEX mr_jobs_feed_as_of_idx ON mr_jobs (feed, as_of DESC);
 
 -- Spend ledger: one row per attempt. The attempt may only spend its reservation (enforced by the
--- CallContext); until its actual usage is recorded, the FULL reservation counts against job and month
--- budgets — so a crashed or superseded attempt can never make the ledger under-count.
+-- CallContext). It starts with a chunk and tops up while it owns a live lease; until its actual usage is
+-- recorded, the FULL reservation counts against job and month budgets — so a crashed or superseded
+-- attempt can never make the ledger under-count, and it only ever holds what it already reserved.
 CREATE TABLE mr_attempts (
   job_id           bigint NOT NULL,
   feed             text NOT NULL CHECK (feed IN ('fixture', 'live')),
@@ -306,9 +307,13 @@ END $$;
 CREATE FUNCTION mr_attempts_guard() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
   IF TG_OP = 'DELETE' THEN RAISE EXCEPTION 'mr_attempts: DELETE forbidden'; END IF;
-  IF NEW.reserved <> OLD.reserved OR NEW.month <> OLD.month OR NEW.feed <> OLD.feed OR NEW.job_id <> OLD.job_id OR NEW.attempt <> OLD.attempt
+  IF NEW.month <> OLD.month OR NEW.feed <> OLD.feed OR NEW.job_id <> OLD.job_id OR NEW.attempt <> OLD.attempt
      OR (OLD.used IS NOT NULL AND NEW.used IS DISTINCT FROM OLD.used) THEN
-    RAISE EXCEPTION 'mr_attempts: reservation is immutable and recorded usage cannot be rewritten';
+    RAISE EXCEPTION 'mr_attempts: identity is immutable and recorded usage cannot be rewritten';
+  END IF;
+  -- A reservation can only GROW (top-up), and only while the attempt is running and unsettled.
+  IF NEW.reserved <> OLD.reserved AND (NEW.reserved < OLD.reserved OR OLD.status <> 'running' OR OLD.used IS NOT NULL) THEN
+    RAISE EXCEPTION 'mr_attempts: a reservation may only grow while its attempt is running';
   END IF;
   RETURN NEW;
 END $$;

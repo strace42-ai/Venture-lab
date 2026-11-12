@@ -37,7 +37,7 @@ import {
   type SourceRow,
 } from './types';
 
-export const PIPELINE_VERSION = 'vl-004a-pipeline-2';
+export const PIPELINE_VERSION = 'vl-004a-pipeline-3';
 
 /** Dimensions that MUST be backed by a supported claim; otherwise they are UNKNOWN (null), never guessed. */
 export const EVIDENCE_DIMENSIONS: ReadonlySet<DimensionKey> = new Set(['westernNeed', 'westernPay', 'ruWeakness', 'ruUnmetJob', 'monetization', 'distribution']);
@@ -250,15 +250,42 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
   ];
   if (badRefs.length) return invalidResult(seed, isNew, reviews, `скептик сослался на несуществующие утверждения или источники: ${badRefs.join(', ')}`, [proposal.model, p.skeptic.model]);
 
-  const competitors: CompetitorRow[] = findings.competitors.map((c) => {
-    const r = raw.find((x) => x.sourceKey === c.sourceKey && x.name === c.name);
-    return { name: c.name, url: r?.url ?? sources.find((s) => s.key === c.sourceKey)?.url ?? null, market: c.market, kind: c.kind, foundBy: r?.foundBy ?? 'skeptic', sourceKey: c.sourceKey, note: r?.price ? `цена: ${r.price}` : null, reason: c.reason };
-  });
+  // Skeptic output is a model output: every rival must be one that search actually surfaced — same
+  // source, same name, same market, on a page that was fetched OK. Anything else is dropped (it can
+  // neither create a competitor nor move a score or the ranking).
+  const rejected: string[] = [];
+  const competitors: CompetitorRow[] = [];
+  for (const c of findings.competitors) {
+    const s = sources.find((x) => x.key === c.sourceKey);
+    const r = raw.find((x) => x.sourceKey === c.sourceKey && x.name === c.name && x.market === c.market && x.url === s?.url);
+    if (!r || s?.fetchStatus !== 'ok') {
+      rejected.push(`отклонено: конкурент «${c.name}» (${c.market === 'ru' ? 'РФ' : 'Запад'}) не найден на загруженной странице ${c.sourceKey}`);
+      continue;
+    }
+    if (competitors.some((x) => x.name === c.name && x.market === c.market)) continue;
+    competitors.push({ name: c.name, url: r.url, market: c.market, kind: c.kind, foundBy: r.foundBy, sourceKey: c.sourceKey, note: r.price ? `цена: ${r.price}` : null, reason: c.reason });
+  }
+  const okSrc = new Set(sources.filter((s) => s.fetchStatus === 'ok').map((s) => s.key));
+  const downgraded = new Set<string>();
   for (const c of claims) {
     const v = findings.claimVerdicts.find((x) => x.claimKey === c.key);
     if (!v) {
       c.skepticVerdict = 'needs_more_evidence';
       c.skepticReason = 'скептик не вынес вердикт — утверждение не засчитывается';
+      continue;
+    }
+    // Cross-check the verdict's own citations: «supported» must cite sources that really contain the
+    // quote; «refuted» must cite a validated rival (absence claims) or a fetched page (other claims).
+    const absence = proposal.claims.find((pc) => pc.key === c.key)?.absence;
+    let problem: string | null = null;
+    if (v.verdict === 'supported' && (v.sourceKeys.length === 0 || v.sourceKeys.some((k) => !c.supportingKeys.includes(k)))) problem = 'подтверждение ссылается на источники, где нет цитаты';
+    if (v.verdict === 'refuted' && absence && !v.sourceKeys.some((k) => competitors.some((x) => x.sourceKey === k && x.market === absence.market && x.kind === 'direct'))) problem = 'опровержение не опирается на подтверждённого прямого конкурента';
+    if (v.verdict === 'refuted' && !absence && (v.sourceKeys.length === 0 || v.sourceKeys.some((k) => !okSrc.has(k)))) problem = 'опровержение не опирается на загруженный источник';
+    if (problem) {
+      downgraded.add(c.key);
+      rejected.push(`отклонено: вердикт «${v.verdict === 'supported' ? 'подтверждено' : 'опровергнуто'}» по ${c.key} — ${problem}`);
+      c.skepticVerdict = 'needs_more_evidence';
+      c.skepticReason = `вердикт скептика отклонён кодом: ${problem}`;
       continue;
     }
     c.skepticVerdict = v.verdict;
@@ -268,15 +295,18 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
       c.reason = `опровергнуто скептиком: ${v.reason}`;
     }
   }
+  // A dispute that rests on a rejected verdict cannot be critical.
+  const disputes = findings.disputes.map((d) => (d.claimKey && downgraded.has(d.claimKey) && d.severity === 'critical' ? { ...d, severity: 'minor' as const, reason: `${d.reason} (понижено: вердикт отклонён кодом)` } : d));
   const skepticFindingsText = [
-    ...findings.claimVerdicts.filter((v) => v.verdict !== 'supported').map((v) => `${v.claimKey}: ${v.verdict === 'refuted' ? 'опровергнуто' : 'нужны доказательства'} — ${v.reason}`),
-    ...findings.disputes.map((d) => `${d.severity === 'critical' ? 'КРИТИЧЕСКИЙ спор' : 'спор'}${d.claimKey ? ` (${d.claimKey})` : ''}: ${d.reason}`),
+    ...claims.filter((c) => c.skepticVerdict === 'refuted' || c.skepticVerdict === 'needs_more_evidence').map((c) => `${c.key}: ${c.skepticVerdict === 'refuted' ? 'опровергнуто' : 'нужны доказательства'} — ${c.skepticReason}`),
+    ...disputes.map((d) => `${d.severity === 'critical' ? 'КРИТИЧЕСКИЙ спор' : 'спор'}${d.claimKey ? ` (${d.claimKey})` : ''}: ${d.reason}`),
+    ...rejected,
   ];
   if (ruQueries.size < MIN_RU_QUERIES) skepticFindingsText.push(`покрытие поиска конкурентов в РФ: ${ruQueries.size} запрос(а) < ${MIN_RU_QUERIES}`);
   reviews.push({
     reviewer: 'skeptic',
     model: findings.model,
-    decision: findings.claimVerdicts.some((v) => v.verdict !== 'supported') || findings.disputes.length ? 'challenge' : 'support',
+    decision: claims.some((c) => c.skepticVerdict !== 'supported') || disputes.length || rejected.length ? 'challenge' : 'support',
     summary: `${findings.summary} Контр-запросов: ${searches.filter((s) => s.agent === 'skeptic').length}; конкурентов: ${competitors.length} (прямых в РФ: ${competitors.filter((c) => c.market === 'ru' && c.kind === 'direct').length}).`,
     findings: skepticFindingsText,
     citedClaims: findings.claimVerdicts.map((v) => v.claimKey),
@@ -358,7 +388,7 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
     const free = rivals.some((x) => FREE_OFFER.test(x.note ?? ''));
     if (rivals.length >= 2 || free) hold.push(`Пробел опровергнут: ${market === 'ru' ? 'в РФ' : 'на Западе'} уже есть ${rivals.map((x) => x.name).join(', ')}${free ? ' (есть бесплатный тариф)' : ''}`);
   }
-  for (const d of findings.disputes.filter((x) => x.severity === 'critical')) hold.push(`Неразрешённый критический спор скептика${d.claimKey ? ` (${d.claimKey})` : ''}: ${d.reason}`);
+  for (const d of disputes.filter((x) => x.severity === 'critical')) hold.push(`Неразрешённый критический спор скептика${d.claimKey ? ` (${d.claimKey})` : ''}: ${d.reason}`);
   if (grade === 'D') hold.push('Недостаточно подтверждённых доказательств для ключевых утверждений');
   const uniqueHold = [...new Set(hold)];
   const rateLimited = sources.some((s) => s.fetchStatus === 'rate_limited') || searches.some((s) => s.status === 'rate_limited');

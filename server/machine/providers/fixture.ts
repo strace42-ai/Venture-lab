@@ -30,7 +30,7 @@ export class FixtureSearchProvider implements SearchProvider {
   readonly name = 'fixture-search';
   constructor(private readonly asOf: ISODate) {}
   async search(query: string, region: Region | 'world', ctx: CallContext): Promise<SearchHit[]> {
-    ctx.charge({ provider: this.name, operation: 'search', model: null, tokensIn: 0, tokensOut: 0, cost: FIXTURE_PRICES.search, priceVersion: FIXTURE_PRICES.version });
+    await ctx.charge({ provider: this.name, operation: 'search', model: null, tokensIn: 0, tokensOut: 0, cost: FIXTURE_PRICES.search, priceVersion: FIXTURE_PRICES.version });
     const q = query.trim().toLowerCase();
     const hit = SEARCHES.find((s) => s.query.toLowerCase() === q && s.region === region && visible(s.from, undefined, this.asOf));
     return (hit?.urls ?? []).map((url) => ({ url, title: PAGES.find((p) => p.url === url)?.publisher ?? url }));
@@ -41,7 +41,7 @@ export class FixtureSourceReader implements SourceReader {
   readonly name = 'fixture-reader';
   constructor(private readonly asOf: ISODate) {}
   async read(url: string, ctx: CallContext): Promise<PageRead> {
-    ctx.charge({ provider: this.name, operation: 'read', model: null, tokensIn: 0, tokensOut: 0, cost: FIXTURE_PRICES.read, priceVersion: FIXTURE_PRICES.version });
+    await ctx.charge({ provider: this.name, operation: 'read', model: null, tokensIn: 0, tokensOut: 0, cost: FIXTURE_PRICES.read, priceVersion: FIXTURE_PRICES.version });
     const page = PAGES.find((p) => p.url === url && visible(p.from, p.until, this.asOf));
     if (!page) return { url, status: 'http_error', httpStatus: 404, publisher: null, sourceType: 'unknown', region: 'west', text: null, offer: null, contentHash: null };
     if (page.status !== 200 || !page.text) {
@@ -66,11 +66,11 @@ export class FixtureLLMProvider implements LLMProvider {
   readonly name = 'fixture-llm';
   readonly model = 'fixture-analyst-v1';
   async discover(asOf: ISODate, known: string[], ctx: CallContext): Promise<DiscoverySeed[]> {
-    ctx.charge({ provider: this.name, operation: 'llm', model: this.model, tokensIn: 800, tokensOut: 300, cost: FIXTURE_PRICES.llm, priceVersion: FIXTURE_PRICES.version });
+    await ctx.charge({ provider: this.name, operation: 'llm', model: this.model, tokensIn: 800, tokensOut: 300, cost: FIXTURE_PRICES.llm, priceVersion: FIXTURE_PRICES.version });
     return CANDIDATES.filter((c) => c.discoveredOn === asOf && !known.includes(c.seed.externalId)).map((c) => c.seed);
   }
   async analyse(seed: DiscoverySeed, asOf: ISODate, ctx: CallContext): Promise<AnalystProposal> {
-    ctx.charge({ provider: this.name, operation: 'llm', model: this.model, tokensIn: 2400, tokensOut: 900, cost: FIXTURE_PRICES.llm, priceVersion: FIXTURE_PRICES.version });
+    await ctx.charge({ provider: this.name, operation: 'llm', model: this.model, tokensIn: 2400, tokensOut: 900, cost: FIXTURE_PRICES.llm, priceVersion: FIXTURE_PRICES.version });
     const c = CANDIDATES.find((x) => x.seed.externalId === seed.externalId);
     if (!c) throw new Error(`fixture: no analyst proposal for ${seed.externalId}`);
     return applyOverrides(c, asOf);
@@ -98,7 +98,7 @@ export class FixtureSkeptic implements SkepticalReviewer {
   }
 
   async challenge(input: SkepticInput, ctx: CallContext): Promise<SkepticFindings> {
-    ctx.charge({ provider: this.name, operation: 'llm', model: this.model, tokensIn: 3000, tokensOut: 700, cost: FIXTURE_PRICES.llm, priceVersion: FIXTURE_PRICES.version });
+    await ctx.charge({ provider: this.name, operation: 'llm', model: this.model, tokensIn: 3000, tokensOut: 700, cost: FIXTURE_PRICES.llm, priceVersion: FIXTURE_PRICES.version });
     const { seed } = input;
     const seen = new Set<string>();
     const competitors: SkepticFindings['competitors'] = [];

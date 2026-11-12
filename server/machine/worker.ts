@@ -134,8 +134,9 @@ async function acquire(pool: Pool, o: Required<Pick<RunOptions, 'feed' | 'asOf' 
       await c.query('COMMIT');
       return done(monthLeft === 0 ? 'monthly-cap' : 'partial', `${reason[0]!.toUpperCase()}${reason.slice(1)} — прогон не выполнен, опубликован прежний TOP-10.`);
     }
-    // One attempt may reserve at most an equal share of the job budget, so a crashed attempt (whose full
-    // reservation stays committed) cannot starve the retries.
+    // The attempt starts with a CHUNK (budget ÷ max_attempts) and tops up on demand while it owns a live
+    // lease (see topUpAttempt): a normal run can use the whole job budget, a crashed attempt only holds
+    // the chunks it already reserved, so retries are never starved.
     const perAttempt = Math.ceil(job.budget_limit / job.max_attempts);
     const reserved = Math.min(jobLeft, monthLeft, perAttempt);
     const attempt = job.attempts + 1;
@@ -147,6 +148,39 @@ async function acquire(pool: Pool, o: Required<Pick<RunOptions, 'feed' | 'asOf' 
     );
     await c.query('COMMIT');
     return { job: { ...job, attempts: attempt }, attempt, reserved, limitedBy: monthLeft < Math.min(jobLeft, perAttempt) ? 'month' : 'job' };
+  } catch (e) {
+    await c.query('ROLLBACK').catch(() => undefined);
+    throw e;
+  } finally {
+    c.release();
+  }
+}
+
+/**
+ * Grant more budget to a running attempt — only while it still owns the job with a live lease, never
+ * beyond the job budget or the month cap (serialised with every other reservation by the month lock).
+ * A top-up also renews the lease (heartbeat). Returns the amount granted (0 = refused).
+ */
+export async function topUpAttempt(pool: Pool, feed: Feed, asOf: ISODate, jobId: number, attempt: number, want: number, leaseMs: number, monthlyCap: number, now: Date): Promise<number> {
+  const month = monthOf(asOf);
+  const c = await pool.connect();
+  try {
+    await c.query('BEGIN');
+    await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`vl-mr-month:${feed}:${month}`]);
+    const job = (await c.query<{ status: string; attempts: number; lease_until: Date | null; budget_limit: number }>('SELECT status, attempts, lease_until, budget_limit FROM mr_jobs WHERE id = $1 FOR UPDATE', [jobId])).rows[0];
+    if (!job || job.status !== 'running' || job.attempts !== attempt || !job.lease_until || job.lease_until <= now) {
+      await c.query('ROLLBACK');
+      return 0; // lost ownership or lease expired: a zombie attempt gets nothing more
+    }
+    const jobCommitted = (await c.query<{ s: number }>(`SELECT ${COMMITTED} AS s FROM mr_attempts WHERE job_id = $1`, [jobId])).rows[0]!.s;
+    const monthCommitted = (await c.query<{ s: number }>(`SELECT ${COMMITTED} AS s FROM mr_attempts WHERE feed = $1 AND month = $2`, [feed, month])).rows[0]!.s;
+    const grant = Math.max(0, Math.min(want, job.budget_limit - jobCommitted, monthlyCap - monthCommitted));
+    if (grant > 0) {
+      await c.query("UPDATE mr_attempts SET reserved = reserved + $3 WHERE job_id = $1 AND attempt = $2 AND status = 'running' AND used IS NULL", [jobId, attempt, grant]);
+      await c.query(`UPDATE mr_jobs SET lease_until = $2, spent = (SELECT ${COMMITTED} FROM mr_attempts WHERE job_id = $1) WHERE id = $1`, [jobId, new Date(now.getTime() + leaseMs)]);
+    }
+    await c.query('COMMIT');
+    return grant;
   } catch (e) {
     await c.query('ROLLBACK').catch(() => undefined);
     throw e;
@@ -346,8 +380,10 @@ export async function runWorkerJob(pool: Pool, opts: RunOptions): Promise<RunRes
   if (!('job' in got)) return got;
   const { job, attempt, reserved, limitedBy } = got;
   const key = jobKeyFor(o.feed, o.asOf);
-  // The attempt can never spend more than it reserved — the hard cap holds even if it outlives its lease.
-  const ctx = new CallContext(key, attempt, reserved, opts.rateLimits ?? {});
+  // The attempt can never spend more than it reserved; it tops up chunk by chunk while it owns a live
+  // lease — the hard caps hold even if it outlives its lease (top-ups are then refused).
+  const chunk = Math.ceil(job.budget_limit / job.max_attempts);
+  const ctx = new CallContext(key, attempt, reserved, opts.rateLimits ?? {}, (want) => topUpAttempt(pool, o.feed, o.asOf, job.id, attempt, want, o.leaseMs, o.monthlyBudget, now()), chunk);
   const providers = (opts.providers ?? fixtureProviders)(o.asOf);
   const known = await knownSeeds(pool, o.feed, o.asOf);
   try {

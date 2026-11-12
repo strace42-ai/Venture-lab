@@ -1,7 +1,7 @@
 # Venture Lab — Latest handoff
 
 **Task:** VL-004A / Zero-human Autonomous Research Worker (fixture-first) — `tasks/current-task.md`, architecture `docs/no-vpn-automation-architecture.md` v2.0
-**Status:** IMPLEMENTED + REVIEW ROUND 1 FIXES (ChatGPT, PR #5 review 5875231122). Awaiting re-audit. **Not merged.**
+**Status:** IMPLEMENTED + REVIEW ROUND 1 + ROUND 2 FIXES (ChatGPT, PR #5 reviews 5875231122, 5876011621). Awaiting final audit. **Not merged.**
 **As of:** 2026-11-12 · **Implementer:** Claude Code
 
 ## Git
@@ -10,6 +10,18 @@
 | Base | `main` @ `56ef07b` (VL-003P merged, VL-004A activated) |
 | Branch | `claude/vl-004a-autonomous-research-worker` |
 | PR | see the PR list (opened to `main`, not merged) |
+
+## Review round 2 — fixes (audit of `89d7736`)
+| # | Finding | Root cause | Fix | Tests (`server/test/machine-review2.test.ts`, 13) |
+|---|---|---|---|---|
+| **P1** | The skeptic could invent rivals | `findings.competitors` was accepted whenever its `sourceKey` existed; name, market and kind were taken as given | Code accepts a skeptic rival only when search actually surfaced it: same `sourceKey`, name, **market** and URL, on a page fetched `ok`. Anything else is dropped and recorded in the review as «отклонено: конкурент … не найден на загруженной странице». Skeptic verdicts are cross-checked too: `supported` must cite only sources that contain the quote; `refuted` must cite a validated direct rival in the claimed market (absence claims) or a fetched page (other claims). A failed verdict becomes `needs_more_evidence` (fail-closed), and a critical dispute resting on it becomes minor. `PIPELINE_VERSION` is now `vl-004a-pipeline-3`. | Unit: «RealtyCalendar» invented as a direct RU rival on the Focusmate page → dropped, same competitors, scores, score and state as the baseline; the Focusmate (western) offer relabelled as a RU rival → dropped; a rival on a page not fetched OK → dropped; a refutation citing only the phantom → not contradicted, the critical dispute does not hold the idea; `supported` citing a page without the quote → downgraded. Integration (worker + PostgreSQL): a run with invented and re-marketed rivals publishes **exactly the baseline TOP** (rank, score, confidence, grade), stores no phantom competitors, and leaves the focus assessment unchanged; a phantom refutation leaves the TOP order unchanged. |
+| **P1** | With a 3000 budget and 3 attempts a normal run got only 1000 and then stopped for good | The reservation was capped at `budget ÷ max_attempts` with no way to extend it | **Chunked reservation with top-up.** An attempt starts with a chunk (`budget ÷ max_attempts`). When it needs more, `CallContext` calls `topUpAttempt`, which takes the same feed+month lock, checks that the attempt still owns the job with a live lease, grants min(want ≥ one chunk, job left, month left), grows `mr_attempts.reserved` and renews the lease (heartbeat). A superseded or expired attempt gets 0 → `BudgetExhausted`, so it never holds more than it already reserved. DB trigger: a reservation may only grow, and only while its attempt is `running` with no recorded usage. `CallContext.charge` is now async and serialised. | Budget 3000 / 3 attempts with a run costing >1000: completes in **one** attempt, `used` ≤ `reserved` ≤ 3000, the ledger equals the usage rows. A run that needs more than the budget stops «partial» at the cap; top-ups respect the monthly cap. Stuck attempt: A is blocked with its first chunk (500 of 1500), its lease expires, B takes over, tops up and publishes; A is released, its top-up is refused → «partial»; ledger: A `superseded` with reserved 500 and used ≤ 500, B `succeeded`, A + B ≤ 1500, `job.spent` = A.used + B.used, one snapshot. `topUpAttempt` refuses a non-owner or a finished job. Trigger: growth is refused on a settled attempt and shrinking is always refused. |
+
+Non-blocking item addressed: `claimVerdicts[].sourceKeys` are checked against the claim's supporting keys (above). The registry recheck cost and the SSRF/injection guards remain for VL-004B.
+
+Fixture scenario unchanged: day 1 64/63/53, day 2 69/64/56, day 3 4/10; per-day cost 657 / 763 / 859 units.
+
+Checks (round 2): `lint` ✔ · `typecheck` ✔ · `build` ✔ · `CI=true npm test` ✔ **16 files, 231 tests** · fresh-database CLI smoke for the 3 days ✔. The UI was not changed in this round (rejected-rival notes appear as existing skeptic findings), so no new QA screenshots.
 
 ## Review round 1 — fixes (audit of `f1abce4`)
 | # | Finding | Root cause | Fix | Regression tests (`server/test/machine-review.test.ts`, 21) |
@@ -81,7 +93,7 @@ Fixture items with real URLs paraphrase the VL-003P corpus. Fictional items use 
 |---|---|
 | `npm run lint` | ✔ 0 problems |
 | `npm run typecheck` / `npm run build` | ✔ / ✔ |
-| `CI=true TEST_DATABASE_URL=… npm test` | ✔ (round 1) **15 files, 218 tests** (`machine.test.ts` 23, `machine-review.test.ts` 21, `src/test/machine.test.tsx` 8; all VL-001–VL-003 regressions pass) |
+| `CI=true TEST_DATABASE_URL=… npm test` | ✔ (round 2) **16 files, 231 tests** (+`machine-review2.test.ts` 13); round 1: 15 files, 218 tests (`machine.test.ts` 23, `machine-review.test.ts` 21, `src/test/machine.test.tsx` 8; all VL-001–VL-003 regressions pass) |
 | CLI three days + idempotent re-run + status (dev DB) | ✔ 3/10 → 3/10 → 4/10; re-run «already-succeeded» |
 | Responsive QA, Playwright at 390/768/1024/1280/1440 on 10 routes (machine top, live empty, 4 dossiers, legacy demo/test pages) | ✔ no horizontal overflow, no console or page errors |
 | CI | a new «VL-004A autonomous worker» smoke step in `.github/workflows/ci.yml`; result in the PR |
@@ -116,4 +128,4 @@ Screenshots: `docs/screenshots/vl-004a/` (TOP-10 at 1440 and 390, guest-guide re
 - Docker was not used (no daemon); a native PostgreSQL 16 was used instead. Testing on real devices was not done; responsive checks used Playwright emulation.
 
 ## Next
-ChatGPT independent audit of this PR. Then VL-004B: a bounded paid trial of real providers after the founder sets credentials and a spend cap.
+ChatGPT final audit of this PR (round 2 fixes). Then VL-004B: a bounded paid trial of real providers after the founder sets credentials and a spend cap.
