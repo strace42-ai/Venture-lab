@@ -460,6 +460,34 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
       c.reason = `опровергнуто скептиком: ${v.reason}`;
     }
   }
+  // «Nobody does the primary job in <market>» is decided by CODE against the rivals actually found, whatever the
+  // skeptic wrote (a missing, «supported» or badly-cited verdict). Three cases (audit of PR #13, P1):
+  //  1. a PROVEN direct rival in that market (market verified, primary job proven on its page) → the absence claim
+  //     is CONTRADICTED, citing the rival's real source key and URL;
+  //  2. only POSSIBLE rivals there (market or primary job not established) → not refuted, not supported
+  //     (needs_more_evidence — handled above);
+  //  3. a proven rival of ANOTHER market only → no effect on this market.
+  // Only absence claims are touched: «existing rivals serve the need poorly» (no `absence`) is a different claim
+  // that the presence of a rival does not refute.
+  for (const c of claims) {
+    const absence = proposal.claims.find((pc) => pc.key === c.key)?.absence;
+    if (!absence || c.status === 'contradicted') continue;
+    const rivals = proven.filter((x) => x.market === absence.market && x.kind === 'direct' && x.primaryJobStatus !== 'unknown' && x.primaryJobStatus !== 'absent');
+    if (!rivals.length) continue;
+    const where = absence.market === 'ru' ? 'в РФ' : 'на Западе';
+    const cite = rivals.map((x) => `${x.name} [${x.sourceKey ?? '—'}] ${x.url ?? ''}`.trim()).join('; ');
+    if (c.skepticVerdict === 'supported' || c.skepticVerdict === 'needs_more_evidence' || c.skepticVerdict === 'not_reviewed') {
+      const was = c.skepticVerdict === 'supported' ? 'подтверждено' : c.skepticVerdict === 'needs_more_evidence' ? 'нужны доказательства' : 'нет вердикта';
+      rejected.push(`опровергнуто кодом: ${c.key} («${was}» у скептика) — ${where} есть подтверждённый прямой конкурент: ${cite}`);
+      downgraded.add(c.key);
+      if (c.skepticVerdict === 'supported') {
+        c.skepticVerdict = 'needs_more_evidence';
+        c.skepticReason = `вердикт скептика «подтверждено» отклонён кодом: ${where} есть подтверждённый прямой конкурент — ${cite}`;
+      }
+    }
+    c.status = 'contradicted';
+    c.reason = `опровергнуто кодом: ${where} есть подтверждённый прямой конкурент (рынок подтверждён, основная функция доказана на странице) — ${cite}`;
+  }
   // A dispute that rests on a rejected verdict cannot be critical.
   const disputes = findings.disputes.map((d) => (d.claimKey && downgraded.has(d.claimKey) && d.severity === 'critical' ? { ...d, severity: 'minor' as const, reason: `${d.reason} (понижено: вердикт отклонён кодом)` } : d));
   const skepticFindingsText = [

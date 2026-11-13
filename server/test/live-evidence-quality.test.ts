@@ -131,7 +131,15 @@ const SURVEY = 'https://example.org/ru-freelance-survey';
 const RIVAL = 'https://rival.example.com/reminders';
 type Rival = { market: 'ru' | 'west'; primary: 'proven' | 'unknown' } | null;
 
-function rivalProviders(rival: Rival): Providers {
+interface RivalOpts {
+  /** ruWeakness says «existing services serve the need poorly» (no absence) instead of «no analogues». */
+  weaknessNotAbsence?: boolean;
+  /** The skeptic model drops every rival from its competitor list. */
+  hideRivals?: boolean;
+  /** The skeptic model gives no verdict on the absence claims at all. */
+  noVerdicts?: boolean;
+}
+function rivalProviders(rival: Rival, o: RivalOpts = {}): Providers {
   const search = new FixtureSearchProvider(DAY);
   const reader = new FixtureSourceReader(DAY);
   const fs = new FixtureSkeptic();
@@ -141,7 +149,9 @@ function rivalProviders(rival: Rival): Providers {
     claims: [
       { key: 'w-need', dimension: 'westernNeed', text: 'Есть спрос.', quote: 'send polite automatic payment reminders', sourceUrls: [REVIEW], highImpact: true },
       { key: 'ru-gap', dimension: 'ruUnmetJob', text: 'В РФ нет сервиса напоминаний.', quote: 'напоминания отправляют вручную', sourceUrls: [SURVEY], highImpact: true, absence: { market: 'ru', job: 'invoice-reminders' } },
-      { key: 'ru-weak', dimension: 'ruWeakness', text: 'Российских аналогов нет.', quote: 'напоминания отправляют вручную', sourceUrls: [SURVEY], highImpact: true, absence: { market: 'ru', job: 'invoice-reminders' } },
+      o.weaknessNotAbsence
+        ? { key: 'ru-weak', dimension: 'ruWeakness', text: 'Существующие способы неудобны: напоминания отправляют вручную.', quote: 'напоминания отправляют вручную', sourceUrls: [SURVEY], highImpact: true }
+        : { key: 'ru-weak', dimension: 'ruWeakness', text: 'Российских аналогов нет.', quote: 'напоминания отправляют вручную', sourceUrls: [SURVEY], highImpact: true, absence: { market: 'ru', job: 'invoice-reminders' } },
     ],
     scores: { westernNeed: { value: 4, claims: ['w-need'] }, ruUnmetJob: { value: 5, claims: ['ru-gap'] }, ruWeakness: { value: 5, claims: ['ru-weak'] } },
     founderFit: null,
@@ -151,7 +161,10 @@ function rivalProviders(rival: Rival): Providers {
   // the skeptic model wrongly SUPPORTS both absence claims, citing exactly the source that contains the quote
   const supportGaps = (f: SkepticFindings, input: SkepticInput): SkepticFindings => ({
     ...f,
-    claimVerdicts: f.claimVerdicts.map((v) => (v.claimKey === 'ru-gap' || v.claimKey === 'ru-weak' ? { ...v, verdict: 'supported', sourceKeys: input.claims.find((x) => x.key === v.claimKey)!.supportingKeys, reason: 'аналогов нет' } : v)),
+    claimVerdicts: o.noVerdicts
+      ? f.claimVerdicts.filter((v) => v.claimKey !== 'ru-gap' && v.claimKey !== 'ru-weak')
+      : f.claimVerdicts.map((v) => (v.claimKey === 'ru-gap' || v.claimKey === 'ru-weak' ? { ...v, verdict: 'supported', sourceKeys: input.claims.find((x) => x.key === v.claimKey)!.supportingKeys, reason: 'аналогов нет' } : v)),
+    competitors: o.hideRivals ? [] : f.competitors,
     disputes: [],
   });
   return {
@@ -174,7 +187,7 @@ function rivalProviders(rival: Rival): Providers {
     skeptic: { name: fs.name, model: fs.model, counterQueries: (s: DiscoverySeed) => fs.counterQueries(s), challenge: async (i, c) => supportGaps(await fs.challenge(i, c), i) } as Providers['skeptic'],
   };
 }
-const runRival = (rival: Rival) => researchCandidate(iSeed, true, DAY, rivalProviders(rival), new CallContext('t', 1, 1_000_000));
+const runRival = (rival: Rival, o: RivalOpts = {}) => researchCandidate(iSeed, true, DAY, rivalProviders(rival, o), new CallContext('t', 1, 1_000_000));
 
 describe('P1: a possibly relevant rival in the market forbids SUPPORTING «no rivals there»; a proven rival of ANOTHER market does not', () => {
   it('baseline (no rival): the absence claims are supported; RU scores 4 (independent source, cap 4 — rule unchanged)', async () => {
@@ -245,5 +258,69 @@ describeDb('migration 010 on a database that already holds historical «direct»
       await c.query(`DROP SCHEMA ${schema} CASCADE`);
       await c.end();
     }
+  });
+});
+
+describe('P1 (audit of c965198): a PROVEN direct rival in the market REFUTES «no analogues», by code, whatever the skeptic says', () => {
+  const RIVAL_CITE = /Rival Reminders \[s\d+\] https:\/\/rival\.example\.com\/reminders/;
+
+  it('RU direct/proven/verified + skeptic wrongly SUPPORTS absence → both absence claims contradicted (citing the real source); RU scores 0, not raised', async () => {
+    const base = await runRival(null);
+    const r = await runRival({ market: 'ru', primary: 'proven' });
+    const rival = r.competitors.find((c) => c.name === 'Rival Reminders')!;
+    expect(rival).toMatchObject({ market: 'ru', kind: 'direct', marketVerified: true, primaryJobStatus: 'proven' });
+    for (const k of ['ru-gap', 'ru-weak']) {
+      const c = r.claims.find((x) => x.key === k)!;
+      expect(c.status, k).toBe('contradicted');
+      expect(c.reason).toMatch(/опровергнуто кодом: в РФ есть подтверждённый прямой конкурент/);
+      expect(c.reason).toMatch(RIVAL_CITE);
+      expect(c.reason).toContain(rival.sourceKey!); // the rival's REAL source key
+      expect(c.skepticVerdict).toBe('needs_more_evidence');
+      expect(c.skepticReason).toMatch(/вердикт скептика «подтверждено» отклонён кодом/);
+    }
+    expect(r.assessment.scores.ruUnmetJob).toBe(0);
+    expect(r.assessment.scores.ruWeakness).toBe(0);
+    for (const d of ['ruUnmetJob', 'ruWeakness'] as const) expect(r.assessment.scores[d]!).toBeLessThan(base.assessment.scores[d]!);
+    // the reason reaches the dossier: the skeptic review findings
+    expect(r.reviews.find((x) => x.reviewer === 'skeptic')!.findings.join(' ')).toMatch(/опровергнуто кодом: ru-gap \(«подтверждено» у скептика\) — в РФ есть подтверждённый прямой конкурент: Rival Reminders/);
+    // the refuted absence claims do not raise the overall score (selection rules unchanged: one rival alone is not a hold)
+    expect(r.assessment.marketScore).toBeLessThan(base.assessment.marketScore);
+  });
+
+  it('…also when the skeptic gives NO verdict, and when it hides the rival: the proven rival stays «direct» and the claim is refuted', async () => {
+    for (const o of [{ noVerdicts: true }, { hideRivals: true }, { hideRivals: true, noVerdicts: true }]) {
+      const r = await runRival({ market: 'ru', primary: 'proven' }, o);
+      expect(r.competitors.find((c) => c.name === 'Rival Reminders'), JSON.stringify(o)).toMatchObject({ kind: 'direct', primaryJobStatus: 'proven' });
+      expect(r.claims.find((c) => c.key === 'ru-gap')!.status, JSON.stringify(o)).toBe('contradicted');
+      expect(r.assessment.scores.ruUnmetJob, JSON.stringify(o)).toBe(0);
+    }
+  });
+
+  it('RU UNKNOWN + the same wrong support → not refuted, not supported: needs_more_evidence (null scores)', async () => {
+    const r = await runRival({ market: 'ru', primary: 'unknown' });
+    const c = r.claims.find((x) => x.key === 'ru-gap')!;
+    expect(c.status).not.toBe('contradicted');
+    expect(c.skepticVerdict).toBe('needs_more_evidence');
+    expect(r.assessment.scores.ruUnmetJob).toBeNull();
+    expect(r.assessment.scores.ruWeakness).toBeNull();
+  });
+
+  it('WEST direct/proven/verified + absence claimed ONLY for Russia → not refuted; RU conclusion kept (4)', async () => {
+    const r = await runRival({ market: 'west', primary: 'proven' });
+    expect(r.competitors.find((c) => c.name === 'Rival Reminders')).toMatchObject({ market: 'west', kind: 'direct', primaryJobStatus: 'proven' });
+    for (const k of ['ru-gap', 'ru-weak']) {
+      expect(r.claims.find((x) => x.key === k)!.status, k).not.toBe('contradicted');
+      expect(r.claims.find((x) => x.key === k)!.skepticVerdict, k).toBe('supported');
+    }
+    expect(r.assessment.scores.ruUnmetJob).toBe(4);
+  });
+
+  it('«existing services serve the need poorly» (NOT an absence claim) is not refuted by the rival\'s existence — only capped as before', async () => {
+    const r = await runRival({ market: 'ru', primary: 'proven' }, { weaknessNotAbsence: true });
+    const weak = r.claims.find((x) => x.key === 'ru-weak')!;
+    expect(weak.status).not.toBe('contradicted');
+    expect(weak.skepticVerdict).toBe('supported');
+    expect(r.assessment.scores.ruWeakness).toBe(2); // one proven direct RU rival → cap 2 (rule unchanged), not 0
+    expect(r.claims.find((x) => x.key === 'ru-gap')!.status).toBe('contradicted'); // the absence claim still is
   });
 });

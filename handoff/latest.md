@@ -1,5 +1,29 @@
 # Venture Lab — Latest handoff
 
+## PR #13 audit fix 2 (on `c965198`) — a PROVEN direct rival refutes «no analogues», by code
+- **Defect:** `blockAbsence()` looked only at POSSIBLE rivals. A skeptic wrongly «supporting» an absence claim was accepted although a proven direct rival in that market had been found.
+- **Fix (`pipeline.ts`):** after the verdicts, code decides every **absence** claim against the rivals found, whatever the skeptic wrote (supported, no verdict, a bad refutation, or a hidden rival):
+  1. **A proven direct rival in that market** (market verified, primary job proven) → the claim is `contradicted`. The reason cites the rival's real source key and URL. A «supported» verdict becomes `needs_more_evidence` («отклонён кодом»), and the finding appears in the skeptic review (dossier).
+  2. **Only possible rivals there** (market or primary job not established) → `needs_more_evidence` (unchanged).
+  3. **A proven rival of another market only** → no effect.
+  - Claims WITHOUT `absence` («existing services serve the need poorly») are not refuted by a rival's existence; the RU cap applies as before.
+- **Code-level guarantees:** a proven rival never disappears: rivals the skeptic omits are added by code, and the kind is decided by code. A refuted claim scores 0 for RU dimensions and never raises the score. The selection rules are unchanged: one rival alone is not a hold.
+- **Tests:** `live-evidence-quality.test.ts` +5:
+  - RU direct + wrong «supported» → contradicted, real source cited, `ruUnmetJob` / `ruWeakness` = 0, reason in the dossier;
+  - no verdict / rival hidden by the skeptic → the rival stays direct, the claim is refuted;
+  - RU UNKNOWN → `needs_more_evidence`, null;
+  - a western direct with an RU-only absence → supported, 4;
+  - a non-absence weakness claim → not refuted, cap 2.
+
+  3 of these fail on the previous `pipeline.ts`.
+- **Full recorded corpus:** identical to `c965198` (claims, verdicts, rivals, scores); the benchmark is identical. The recorded skeptic already refuted where it should; the new rule only acts when the skeptic is wrong.
+- **Unchanged:** formula, other migrations, trial history, ledger. `vl_phase_b_probe` is still at 009.
+- **Checks:**
+  - `lint` ✔, `typecheck` ✔, `build` ✔;
+  - `CI=true npm test` with PostgreSQL ✔: **510 tests in 28 files**.
+
+---
+
 ## PR #13 audit fixes (on `6a30684`) — UNKNOWN rivals block «no rivals», head-word semantic check, strict 010 CHECK
 - **P1 — an UNKNOWN rival did not block an absence claim.** The «supported absence» check looked only for `possible.some(kind === 'direct')`, but an UNKNOWN rival never gets kind `direct`.
   - **Now `blockAbsence(market)`:** a rival possibly relevant in THAT market (market unproven + direct, or primary job UNKNOWN in that market / with an unproven market) turns a «supported» absence into `needs_more_evidence`. This works for absence claims about any market.
