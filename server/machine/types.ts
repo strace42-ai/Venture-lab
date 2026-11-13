@@ -469,6 +469,12 @@ export interface CandidateResult {
   competitors: CompetitorRow[];
   reviews: ReviewRow[];
   assessment: AssessmentRow;
+  /**
+   * Set when the research stopped for a TECHNICAL reason before the evidence chain finished (analyst or
+   * skeptic unavailable, model output rejected). The candidate is not assessed: state DISCOVERED, never
+   * ranked. What was already collected (sources, searches, code-checked claims) is kept.
+   */
+  incomplete?: { stage: 'analyst' | 'skeptic'; kind: 'invalid' | 'unavailable'; reason: string };
 }
 
 export interface PipelineResult {

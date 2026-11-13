@@ -218,18 +218,51 @@ export function evidenceGrade(claims: ClaimRow[], sources: SourceRow[], scoreCla
   return g;
 }
 
-function invalidResult(seed: DiscoverySeed, isNew: boolean, reviews: ReviewRow[], reason: string, models: string[], kind: 'invalid' | 'unavailable' = 'invalid'): CandidateResult {
+/** Every page read so far (ok or not), with provenance and the grounded offer — the evidence trail. */
+function sourceRows(reads: Reads): SourceRow[] {
+  return [...reads.rows.values()].map(({ read, key, agent }) => ({
+    key,
+    url: read.url,
+    publisher: read.publisher,
+    region: read.region,
+    sourceType: read.sourceType,
+    fetchStatus: read.status,
+    httpStatus: read.httpStatus,
+    contentHash: read.contentHash,
+    excerpt: read.status === 'ok' ? (read.text ?? '').slice(0, 2000) : null,
+    agent,
+    canonicalUrl: read.canonicalUrl ?? null,
+    fetchedAt: read.fetchedAt ?? null,
+    title: read.title ?? null,
+    contentType: read.contentType ?? null,
+    failure: read.failure ?? null,
+    offer: read.offer ?? null,
+    provenance: read.provenance ?? null,
+  }));
+}
+
+/** Collected so far when the research stops early: kept (bound to the attempt and URL), never scored. */
+interface Collected {
+  sources: SourceRow[];
+  searches: SearchRow[];
+  claims?: ClaimRow[];
+}
+
+function invalidResult(seed: DiscoverySeed, isNew: boolean, reviews: ReviewRow[], reason: string, models: string[], kind: 'invalid' | 'unavailable' = 'invalid', partial: Collected = { sources: [], searches: [] }, stage: 'analyst' | 'skeptic' = reason.startsWith('скептик') ? 'skeptic' : 'analyst'): CandidateResult {
   const scores = Object.fromEntries(DIMENSION_KEYS.map((d) => [d, null])) as ComponentScores;
   const conf: ConfidenceComponents = { completeness: 0, corroboration: 0, recency: 0, reliability: 0, russiaValidation: 0 };
   const summary = kind === 'invalid' ? `Ответ модели отклонён проверкой схемы — кандидат не оценивается: ${reason}` : `Провайдер недоступен — кандидат не оценивается в этом прогоне: ${reason}`;
-  reviews.push({ reviewer: 'quality_gate', model: PIPELINE_VERSION, decision: 'hold', summary, findings: [reason], citedClaims: [] });
+  const kept = partial.sources.length || partial.searches.length ? ` Исследование технически не завершено; сохранено: источников ${partial.sources.length}, поисков ${partial.searches.length}.` : ' Исследование технически не завершено.';
+  reviews.push({ reviewer: 'quality_gate', model: PIPELINE_VERSION, decision: 'hold', summary: summary + kept, findings: [reason], citedClaims: [] });
   return {
     externalId: seed.externalId,
     seed,
     isNew,
-    sources: [],
-    claims: [],
-    searches: [],
+    incomplete: { stage, kind, reason },
+    // evidence already collected is preserved; claims only as code-checked, never skeptic-reviewed, never scored
+    sources: partial.sources,
+    claims: (partial.claims ?? []).map((c) => ({ ...c, skepticVerdict: 'not_reviewed' as const, skepticReason: 'исследование технически не завершено — скептик не выносил вердикт' })),
+    searches: partial.searches,
     competitors: [],
     reviews,
     assessment: {
@@ -277,9 +310,9 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
 
   // 1. Analyst (LLM pass #1) — runtime-validated
   const got = await guarded(() => p.llm.analyse(seed, asOf, ctx, evidenceMode ? evidence : undefined));
-  if (!got.ok) return invalidResult(seed, isNew, reviews, `аналитик: ${got.reason}`, [p.llm.model, p.skeptic.model], got.kind);
+  if (!got.ok) return invalidResult(seed, isNew, reviews, `аналитик: ${got.reason}`, [p.llm.model, p.skeptic.model], got.kind, { sources: sourceRows(reads), searches });
   const parsed = analystProposalSchema.safeParse(got.value);
-  if (!parsed.success) return invalidResult(seed, isNew, reviews, `аналитик: ${issues(parsed.error)}`, [p.llm.model, p.skeptic.model]);
+  if (!parsed.success) return invalidResult(seed, isNew, reviews, `аналитик: ${issues(parsed.error)}`, [p.llm.model, p.skeptic.model], 'invalid', { sources: sourceRows(reads), searches });
   const proposal = parsed.data as AnalystProposal;
   reviews.push({ reviewer: 'analyst', model: proposal.model, decision: 'propose', summary: proposal.rationale, findings: [], citedClaims: proposal.claims.map((c) => c.key) });
 
@@ -311,25 +344,7 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
 
   // 3. Deterministic claim checker (code): specific quote ↔ fetched text, availability, source type
   const claims: ClaimRow[] = proposal.claims.map((c) => ({ key: c.key, dimension: c.dimension as DimensionKey, text: c.text, highImpact: !!c.highImpact, skepticVerdict: 'not_reviewed', skepticReason: null, ...checkClaim(c, reads, invented) }));
-  const sources: SourceRow[] = [...reads.rows.values()].map(({ read, key, agent }) => ({
-    key,
-    url: read.url,
-    publisher: read.publisher,
-    region: read.region,
-    sourceType: read.sourceType,
-    fetchStatus: read.status,
-    httpStatus: read.httpStatus,
-    contentHash: read.contentHash,
-    excerpt: read.status === 'ok' ? (read.text ?? '').slice(0, 2000) : null,
-    agent,
-    canonicalUrl: read.canonicalUrl ?? null,
-    fetchedAt: read.fetchedAt ?? null,
-    title: read.title ?? null,
-    contentType: read.contentType ?? null,
-    failure: read.failure ?? null,
-    offer: read.offer ?? null,
-    provenance: read.provenance ?? null,
-  }));
+  const sources: SourceRow[] = sourceRows(reads);
   const checkerFindings = claims.filter((c) => c.status === 'unretrievable' || c.status === 'unknown').map((c) => `${c.key}: ${c.reason}`);
   const quarantined = sources.filter((s) => s.fetchStatus === 'injection_suspected');
   if (quarantined.length) checkerFindings.push(`карантин: ${quarantined.map((s) => s.url).join(', ')} — попытка инъекции инструкций, содержимое не используется`);
@@ -347,16 +362,17 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
   // 4. Skeptic (LLM pass #2, different model): structured challenge, schema-validated, references checked
   const ruQueries = new Set(searches.filter((s) => s.region === 'ru' && s.status === 'ok').map((s) => norm(s.query)));
   const ch = await guarded(() => p.skeptic.challenge({ seed, asOf, proposal, claims, sources, rawCompetitors: raw, ruQueryCount: ruQueries.size }, ctx));
-  if (!ch.ok) return invalidResult(seed, isNew, reviews, `скептик: ${ch.reason}`, [proposal.model, p.skeptic.model], ch.kind);
+  const kept: Collected = { sources, searches, claims };
+  if (!ch.ok) return invalidResult(seed, isNew, reviews, `скептик: ${ch.reason}`, [proposal.model, p.skeptic.model], ch.kind, kept);
   const fParsed = skepticFindingsSchema.safeParse(ch.value);
-  if (!fParsed.success) return invalidResult(seed, isNew, reviews, `скептик: ${issues(fParsed.error)}`, [proposal.model, p.skeptic.model]);
+  if (!fParsed.success) return invalidResult(seed, isNew, reviews, `скептик: ${issues(fParsed.error)}`, [proposal.model, p.skeptic.model], 'invalid', kept);
   const findings = fParsed.data as SkepticFindings;
   const srcKeys = new Set(sources.map((s) => s.key));
   const badRefs = [
     ...findings.claimVerdicts.filter((v) => !claims.some((c) => c.key === v.claimKey) || v.sourceKeys.some((k) => !srcKeys.has(k))).map((v) => v.claimKey),
     ...findings.competitors.filter((c) => !srcKeys.has(c.sourceKey)).map((c) => c.name),
   ];
-  if (badRefs.length) return invalidResult(seed, isNew, reviews, `скептик сослался на несуществующие утверждения или источники: ${badRefs.join(', ')}`, [proposal.model, p.skeptic.model]);
+  if (badRefs.length) return invalidResult(seed, isNew, reviews, `скептик сослался на несуществующие утверждения или источники: ${badRefs.join(', ')}`, [proposal.model, p.skeptic.model], 'invalid', kept);
 
   // Skeptic output is a model output: every rival must be one that search actually surfaced — same
   // source, same name, same market, on a page that was fetched OK. Anything else is dropped (it can
@@ -484,8 +500,10 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
         notes.push(`${d}: ${prop.value} не засчитано — нет утверждения, подтверждённого кодом и скептиком`);
         v = null;
       }
-    } else if (prop.claims.length === 0 && v > UNSOURCED_CAP) {
-      notes.push(`${d}: ${v} → ${UNSOURCED_CAP} (суждение без источника ограничено)`);
+    } else if (ok.length === 0 && v > UNSOURCED_CAP) {
+      // A judgement whose cited claims are all unproven (quote not found, unretrievable…) is a judgement without a
+      // source: the same cap applies — citing a fabricated quote must not buy a 5 (audit 13.11.2026, P2).
+      notes.push(`${d}: ${v} → ${UNSOURCED_CAP} (${prop.claims.length ? 'суждение без подтверждённого источника ограничено' : 'суждение без источника ограничено'})`);
       v = UNSOURCED_CAP;
     }
     if (v !== null && !d.startsWith('ru') && refuted.length) {

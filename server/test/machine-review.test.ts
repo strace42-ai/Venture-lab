@@ -359,7 +359,7 @@ describeDb('P2 database integrity: feed / job / assessment consistency', () => {
   it('refuses a row whose feed differs from its job or candidate (direct SQL)', async () => {
     const live = (await db.pool.query("SELECT id FROM mr_jobs WHERE feed = 'live'")).rows[0].id;
     // fixture job, but labelled live
-    await expect(db.pool.query("INSERT INTO mr_reviews (job_id, candidate_id, feed, reviewer, model, decision, summary) VALUES ($1, $2, 'live', 'skeptic', 'm', 'support', 'cross feed')", [fx.job, fx.cand])).rejects.toThrow(/foreign key/);
+    await expect(db.pool.query("INSERT INTO mr_reviews (job_id, candidate_id, feed, reviewer, model, decision, summary, attempt) VALUES ($1, $2, 'live', 'skeptic', 'm', 'support', 'cross feed', 1)", [fx.job, fx.cand])).rejects.toThrow(/foreign key/);
     // live job + fixture candidate
     await expect(db.pool.query("INSERT INTO mr_claims (job_id, candidate_id, feed, claim_key, dimension, text, status, status_reason, skeptic_verdict) VALUES ($1, $2, 'live', 'k', 'westernNeed', 'cross feed claim', 'unknown', 'r', 'not_reviewed')", [live, fx.cand])).rejects.toThrow(/foreign key/);
     await expect(db.pool.query("INSERT INTO mr_usage (job_id, feed, attempt, provider, operation, request_id, cost, price_version, estimated_cost) VALUES ($1, 'live', 1, 'p', 'llm', 'x-cross', 1, 'v', 1)", [fx.job])).rejects.toThrow(/foreign key/);

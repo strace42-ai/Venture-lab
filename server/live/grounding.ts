@@ -160,6 +160,48 @@ export interface Grounded {
   uncertain: string[];
 }
 
+/** Promotional copy (discounts, sales) proves a campaign, never a product function. */
+const PROMO = /black\s*friday|cyber\s*monday|\b\d{1,2}\s?%\s?off\b|\bsale\b|\bdiscount|promo\s?code|скидк|распродаж|промокод|акци[яи]\b/i;
+
+const words = (x: string) =>
+  x
+    .toLowerCase()
+    .replace(/(\p{L})-(\p{L})/gu, '$1$2') // check-in → checkin
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter(Boolean);
+/** A crude, language-agnostic stem: 3-letter words exact, otherwise the first 5 letters (4 for 4–5 letter words). */
+const stem = (w: string) => (w.length <= 3 ? w : w.length <= 5 ? w.slice(0, 4) : w.slice(0, 5));
+/** A quote word matches a vocabulary stem by prefix (guidebook ↔ guid, гостей ↔ гост); 3-letter stems exactly. */
+const matches = (word: string, st: string) => (st.length <= 3 ? word === st : word.startsWith(st));
+
+/**
+ * Does a verbatim quote plausibly describe THIS job? (VL-004B-strict, P2 regression of 13.11.2026)
+ *  - promotional copy (Black Friday, % off, скидка…) never proves a function;
+ *  - the quote must share at least one term with the job: a word of the job slug (guest, guide, checkin,
+ *    instructions…) or of the candidate's Russian keywords (гид, гостя, инструкция, заселению…), compared by
+ *    a crude stem.
+ * This is a NECESSARY condition, not a semantic proof: a quote that mentions guests but describes guest
+ * identification still passes (a known gap; a semantic check is separate work).
+ */
+export function jobQuoteProblem(quote: string, job: string, seed: Pick<DiscoverySeed, 'ruKeywords'>): string | null {
+  if (PROMO.test(quote)) return 'рекламный текст (акция/скидка) не подтверждает функцию продукта';
+  const vocab = new Set([...words(job.replace(/-/g, ' ')), ...(seed.ruKeywords ?? []).flatMap(words)].filter((w) => w.length >= 3).map(stem));
+  const q = words(quote);
+  for (const v of vocab) if (q.some((w) => matches(w, v))) return null;
+  return 'цитата не содержит ни одного термина задачи — не подтверждает именно эту работу';
+}
+
+/** A price must state an amount with a currency, or a free tier — not any sentence that contains a digit. */
+const CTA = /^(get started|start|try|sign up|join|начать|попробовать|зарегистрироваться)( it| now| for)? (free|бесплатно)\W*$/i;
+
+export function priceProblem(price: string): string | null {
+  const p = price.trim();
+  if (p.length > 80) return 'слишком длинный фрагмент для цены';
+  if (CTA.test(p)) return 'призыв к действию («начать бесплатно»), а не тариф';
+  if (/(\d[\d\s.,]*\s?(₽|руб|р\.|rub|\$|€|£|usd|eur|gbp))|((\$|€|£)\s?\d)|бесплат|\bfree\b/i.test(p)) return null;
+  return 'нет суммы с валютой и нет бесплатного тарифа';
+}
+
 export function groundOffer(
   x: ExtractedOffer,
   page: { url: string; title: string | null; lang: string | null; text: string },
@@ -181,14 +223,16 @@ export function groundOffer(
       uncertain.push(`работа ${j.job}: не из списка работ идеи`);
       continue;
     }
-    const qp = quoteProblem(j.quote);
+    const qp = quoteProblem(j.quote) ?? jobQuoteProblem(j.quote, j.job, seed);
     if (qp) uncertain.push(`работа ${j.job}: ${qp}`);
     else if (!containsLiteral(page.text, j.quote)) uncertain.push(`работа ${j.job}: цитата «${j.quote.slice(0, 80)}» не найдена на странице`);
     else jobEvidence[j.job] ??= j.quote.trim();
   }
   let price: string | undefined;
   if (x.price) {
-    if (/\d|бесплат|free/i.test(x.price) && containsLiteral(page.text, x.price)) price = x.price.trim();
+    const pp = priceProblem(x.price);
+    if (pp) uncertain.push(`цена «${x.price.slice(0, 60)}» не принята: ${pp}`);
+    else if (containsLiteral(page.text, x.price)) price = x.price.trim();
     else uncertain.push(`цена «${x.price.slice(0, 60)}» не найдена на странице`);
   }
   const ev = combinedMarketEvidence(page, probe ?? null);
@@ -198,7 +242,13 @@ export function groundOffer(
     market = ev.market!;
   } else {
     // Not established: the model's guess is kept only as a label — never a proven rival, never proof of absence.
-    market = x.market === 'ru' ? 'ru' : 'west';
+    // A «ru» label is not given to a page with no Russian text at all (13.11.2026: Touch Stay, English pages,
+    // was labelled «ru» by the model). The possible-rival rules use `marketVerified`, not this label.
+    const cyr = (page.text.match(/[а-яё]/giu) ?? []).length;
+    const lat = (page.text.match(/[a-z]/gi) ?? []).length;
+    const russianText = cyr > 0 && cyr >= 0.1 * (cyr + lat);
+    market = x.market === 'ru' && russianText ? 'ru' : 'west';
+    if (x.market === 'ru' && !russianText) uncertain.push('модель указала рынок РФ, но на странице нет русского текста и признаков РФ — метка «ru» не присвоена');
     uncertain.push(
       `рынок ${ev.status === 'conflicting' ? 'противоречив' : 'не подтверждён'} (${ev.via}; модель: ${x.market})${ev.conflicts.length ? `; противоречия: ${ev.conflicts.join('; ')}` : ''}${ev.signals.length ? `; найдено: ${ev.signals.join(', ')}` : ''}`,
     );

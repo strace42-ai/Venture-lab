@@ -17,6 +17,7 @@ import { modelFamily, type LiveConfig } from './config';
 import { llmCostKop, llmWorstCaseKop, tariffFor, YANDEX_PRICE_VERSION } from './prices';
 import { fromYandex, type ProviderCaller } from './provider-http';
 import { planReasoning, type LlmOperation, type ReasoningEffort, type ReasoningPlan } from './reasoning';
+import { strictWireJson } from './strict-schema';
 import type { ExtractedOffer } from './grounding';
 import { analystProposalBase, skepticFindingsSchema } from '../machine/schemas';
 import {
@@ -32,7 +33,8 @@ import {
   type SkepticInput,
   type SkepticalReviewer,
 } from '../machine/types';
-import type { ISODate } from '../../src/domain/types';
+import type { DimensionKey, ISODate } from '../../src/domain/types';
+import { DIMENSION_KEYS } from '../../src/domain/scoring';
 
 const completionSchema = z.object({
   id: z.string().optional(),
@@ -211,9 +213,10 @@ export class AIStudioChat {
       { role: 'system', content: `${r.system}\n\n${UNTRUSTED_RULES}\nTASK: ${r.task}` },
       { role: 'user', content: JSON.stringify({ DATA: r.data }) },
     ];
+    // strict=true: only a schema that passes our strict-mode check is ever sent (no paid request for a schema the API rejects)
     const format =
       this.cfg.responseFormat === 'json_schema'
-        ? { response_format: { type: 'json_schema', json_schema: { name: r.task.replace(/[^a-z_]/gi, '_'), strict: true, schema: z.toJSONSchema(r.wire, { unrepresentable: 'any' }) } } }
+        ? { response_format: { type: 'json_schema', json_schema: { name: r.task.replace(/[^a-z_]/gi, '_'), strict: true, schema: strictWireJson(r.wire, r.task) } } }
         : this.cfg.responseFormat === 'json_object'
           ? { response_format: { type: 'json_object' } }
           : {};
@@ -269,7 +272,66 @@ export const discoveryWire = z.strictObject({
     .max(20),
 });
 
+/** Legacy (pre-strict) analyst wire — kept only to document the 13.11.2026 rejection in tests. Never sent. */
 export const analystWire = analystProposalBase.omit({ model: true });
+
+/**
+ * Analyst wire for strict json_schema (VL-004B-strict): every field required.
+ *  - `highImpact`: boolean, always present;
+ *  - `absence`: object or null (null = not an absence claim);
+ *  - `scores`: a FIXED object with all 12 rubric dimensions. Each entry has `value` 0–5 or null; null means
+ *    «no score» and is never turned into 0.
+ * Value ranges, URL/key formats and cross-references are enforced locally after parsing
+ * (`analystFromWire` → `analystProposalSchema`).
+ */
+const strictScore = z.strictObject({ value: z.number().int().min(0).max(5).nullable(), claims: z.array(z.string().max(80)).max(20) });
+export const analystStrictWire = z.strictObject({
+  claims: z
+    .array(
+      z.strictObject({
+        key: z.string().max(80),
+        dimension: z.enum(DIMENSION_KEYS as unknown as [string, ...string[]]),
+        text: z.string().max(1000),
+        quote: z.string().max(500),
+        sourceUrls: z.array(z.string().max(2000)).max(10),
+        highImpact: z.boolean(),
+        absence: z.strictObject({ market: z.enum(['west', 'ru']), job: z.string().max(80) }).nullable(),
+      }),
+    )
+    .max(60),
+  scores: z.strictObject(Object.fromEntries(DIMENSION_KEYS.map((d) => [d, strictScore])) as Record<DimensionKey, typeof strictScore>),
+  founderFit: z
+    .strictObject({ skills: z.number().int().min(0).max(10), access: z.number().int().min(0).max(10), timeToSale: z.number().int().min(0).max(10), motivation: z.number().int().min(0).max(5), synergy: z.number().int().min(0).max(5) })
+    .nullable(),
+  ruQueries: z.array(z.string().max(300)).max(20),
+  rationale: z.string().max(4000),
+});
+export type AnalystStrictWire = z.infer<typeof analystStrictWire>;
+
+/**
+ * Explicit conversion of the strict wire into the internal proposal (the scoring formula and the evidence
+ * rules are unchanged):
+ *  - `absence: null` → no absence;
+ *  - a dimension with `value: null` → no score for it (the dimension stays unscored, never 0);
+ *  - `highImpact` is kept as given.
+ * The result is still validated by `analystProposalSchema` in the pipeline: ranges, URL formats, duplicate
+ * keys and references to claims.
+ */
+export function analystFromWire(w: AnalystStrictWire, model: string): Omit<AnalystProposal, 'ruQueries'> & { ruQueries: string[] } {
+  const scores: Record<string, { value: number; claims: string[] }> = {};
+  for (const d of DIMENSION_KEYS) {
+    const s = w.scores[d];
+    if (s && s.value !== null) scores[d] = { value: s.value, claims: s.claims };
+  }
+  return {
+    model,
+    claims: w.claims.map((c) => ({ key: c.key, dimension: c.dimension, text: c.text, quote: c.quote, sourceUrls: c.sourceUrls, highImpact: c.highImpact, ...(c.absence ? { absence: c.absence } : {}) })),
+    scores,
+    founderFit: w.founderFit,
+    ruQueries: w.ruQueries,
+    rationale: w.rationale,
+  } as unknown as Omit<AnalystProposal, 'ruQueries'> & { ruQueries: string[] };
+}
 export const skepticWire = skepticFindingsSchema.omit({ model: true });
 
 export const offerWire = z.strictObject({
@@ -334,11 +396,12 @@ export class YandexAnalyst implements LLMProvider {
         'Не путай популярность (пользователи, установки) с оплатой (платящие клиенты, выручка): оплату утверждай только цитатой о цене/оплате. ' +
         'Утверждение «в РФ нет конкурента» помечай absence {market:"ru", job}. ruQueries — 5–8 запросов на русском и английском (синонимы, бренды, цены, заменители) для поиска конкурентов в РФ. Оценки 0–5 только со ссылками на ключи утверждений.',
       data: { asOf, seed, rubricDimensions: ['westernNeed', 'westernPay', 'ruWeakness', 'ruUnmetJob', 'monetization', 'speedToPilot', 'mvpFeasible', 'fastTest', 'distribution', 'retention', 'defensibility', 'riskManageable'], evidence },
-      schema: analystWire,
-      wire: analystWire,
+      schema: analystStrictWire,
+      wire: analystStrictWire,
       answerTokens: this.cfg.llmMaxTokens,
     });
-    return { ...(out as Omit<AnalystProposal, 'model'>), ruQueries: [...new Set([...out.ruQueries, ...ruQueries])].slice(0, 20), model: this.model } as AnalystProposal;
+    const p = analystFromWire(out, this.model);
+    return { ...p, ruQueries: [...new Set([...p.ruQueries, ...ruQueries])].slice(0, 20) } as AnalystProposal;
   }
 }
 

@@ -16,6 +16,9 @@
  *       requires VL_LIVE_PROVIDER=yandex, YANDEX_FOLDER_ID, YANDEX_API_KEY|YANDEX_IAM_TOKEN, VL_LIVE_EXECUTE=phase-b-authorized,
  *       VL_TRIAL_ID, VL_TRIAL_BUDGET_RUB (≤ 300); never in CI; no --as-of (real date); exclusive (no parallel paid runs).
  *   npm run research:worker:export -- --live --trial <id> --out review.csv     (independent manual review, no network)
+ *   npm run research:worker:recover -- --live --trial <id> --stage stage2 --mark-incomplete [--apply]
+ *       audited reclassification of a technically unfinished stage «succeeded → incomplete» (DB only, no network);
+ *       then `--execute --stage stage2 … --retry` starts a NEW run of the stage (separately authorised).
  *   There is no scheduled live run (tick --live is refused).
  */
 import { loadConfig } from '../config';
@@ -29,6 +32,7 @@ import { NodeTransport, systemResolver } from '../live/net/transport';
 import { describeProviderRoute, providerTransportFromEnv, proxyFromEnv, type ProviderTransport } from '../live/net/provider-proxy';
 import { CapturingTransport, defaultRawDir } from '../live/raw-capture';
 import { livePlan, parseSeeds, runPaidStage } from '../live/run';
+import { reclassifyIncompleteStage } from '../live/recover';
 import { exportReviewCsv } from '../machine/export';
 import { machineOverview } from '../machine/read';
 import { dueRun } from '../machine/schedule';
@@ -43,7 +47,7 @@ const opt = (name: string) => {
 const num = (name: string) => (opt(name) !== undefined ? Number(opt(name)) : undefined);
 
 function print(r: RunResult) {
-  const icon = r.status === 'succeeded' ? '✔' : r.status === 'already-succeeded' || r.status === 'already-running' ? '•' : '✖';
+  const icon = r.status === 'succeeded' ? '✔' : r.status === 'already-succeeded' || r.status === 'already-running' ? '•' : r.status === 'incomplete' || r.status === 'already-incomplete' ? '⚠' : '✖';
   console.log(`${icon} ${r.jobKey} · попытка ${r.attempt} · ${r.status}`);
   console.log(`  ${r.message}`);
   if (r.spent !== undefined) console.log(`  Расход попытки: ${r.spent} ед.`);
@@ -58,6 +62,7 @@ const rub = (kop: number) => (Number.isFinite(kop) ? `${(kop / 100).toFixed(2)} 
 /** --live: dry-run (no network) or Phase B execute. Returns true when handled. */
 async function live(): Promise<void> {
   if (cmd === 'export') return exportCsv();
+  if (cmd === 'recover') return recover();
   if (cmd !== 'run' && cmd !== 'status') {
     console.error('Живой режим: только разовый запуск `run --live --once --dry-run|--execute`. Расписания для live нет.');
     process.exitCode = 2;
@@ -168,6 +173,31 @@ async function exportCsv(): Promise<void> {
     const r = await exportReviewCsv(pool, { trialId: opt('--trial'), jobKey: opt('--job') });
     writeFileSync(out, r.csv, { mode: 0o600 });
     console.log(`✔ ${r.rows} строк → ${out}`);
+  } finally {
+    await pool.end();
+  }
+}
+
+/** Audited reclassification `succeeded → incomplete` of a technically unfinished trial stage (DB only, no network). */
+async function recover(): Promise<void> {
+  const trial = opt('--trial');
+  const stage = opt('--stage');
+  if (!trial || (stage !== 'stage2' && stage !== 'stage3') || !flags.has('--mark-incomplete')) {
+    console.error('Укажите: recover --live --trial <id> --stage stage2|stage3 --mark-incomplete [--apply]  (без --apply — только проверка)');
+    process.exitCode = 2;
+    return;
+  }
+  const pool = createPool(loadConfig().databaseUrl);
+  try {
+    const r = await reclassifyIncompleteStage(pool, trial, stage, { apply: flags.has('--apply') });
+    console.log(`${r.applied ? '✔ ПРИМЕНЕНО' : r.ok ? '• ПРОВЕРКА (без --apply ничего не изменено)' : '✖ ОТКАЗ'}: ${r.jobKey ?? '—'} (прогон ${r.run ?? '—'}), статус «${r.from ?? '—'}»${r.applied ? ' → «incomplete»' : ''}`);
+    for (const p of r.problems) console.log(`  - ${p}`);
+    if (r.evidence) {
+      for (const h of r.evidence.technicalHolds) console.log(`  технический отказ: ${h.candidate} — ${h.findings.join('; ')}`);
+      console.log(`  утверждений со скептиком: ${r.evidence.reviewedClaims}; конкурентов: ${r.evidence.competitors}; снимков: ${r.evidence.snapshots}`);
+      console.log(`  попытки: ${r.evidence.attempts.map((a) => `#${a.attempt} ${a.status} (${a.used ?? a.reserved} коп.)`).join(', ')}; журнал: ${r.evidence.usage.rows} записей, ${rub(r.evidence.usage.committedKop)}, из них unknown ${rub(r.evidence.usage.unknownKop)} — не изменяется`);
+    }
+    if (!r.ok) process.exitCode = 2;
   } finally {
     await pool.end();
   }
