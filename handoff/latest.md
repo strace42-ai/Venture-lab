@@ -1,5 +1,37 @@
 # Venture Lab — Latest handoff
 
+## Before stage2 r3 — claim-key normalisation, bounded word forms, full r2 replay, finance check (2026-11-13)
+**Input:** stage2 r2 (Touch Stay) ended `incomplete`. Qwen's reply (strict schema accepted by Yandex, HTTP 200) used dimension names as claim keys (`westernNeed`), and the local format refused them. This PR is offline; the real DB and history are unchanged.
+
+1. **`normalizeClaimKey` / `analystFromWire`** — the identifier only:
+   - camelCase → kebab, lower case, separators → `-`;
+   - score references go through the same mapping;
+   - **refused, never repaired:** non-ASCII keys (no guessed transliteration), empty or over-long keys, two keys colliding after normalisation, duplicates, dangling references;
+   - the analyst prompt shows valid keys (`western-need-1`, `ru-gap-1`) as an extra precaution.
+2. **Second blocker found by the replay:** two r2 claims had NO `sourceUrls` (ruUnmetJob, mvpFeasible), and `min(1)` rejected the whole proposal.
+   - **Now:** a claim may arrive without a source; the checker records it as `unknown` («утверждение без источника — не доказательство»). It never supports a score.
+   - The formula and the evidence rules are unchanged.
+3. **Bounded word forms:** a short term (≤ 3 letters) matches the same word, or the same word plus a closed list of Russian noun endings (гид → гидов/гиды/гидом…) or the English plural. «гидравлика», «гидроизоляция» and «гидрант» never match.
+   - The BnBuddy false UNKNOWN is fixed.
+   - Guest identification / registration stays UNKNOWN.
+4. **Replay** (`recordings/replay-r2.ts`, `stage2-r2-2026-11-13.json`):
+   - **REAL:** 4 Search API result sets, 7 extract_offer replies (page texts as Qwen saw them), the analyse_candidate reply.
+   - **RECONSTRUCTED:** page HTML from those texts; YouTube / G2 / Trustpilot failures as in r2.
+   - **SIMULATED:** the skeptic (no real DeepSeek reply for a full research exists) and the results of the Russian competitor/counter queries, which reuse the one recorded RU result set.
+   - **Result (PostgreSQL, through `runPaidStage`):** the run completes. 12 claims are stored with normalised keys and untouched facts. **4 stay unproven:** ru-weakness (quote not on the page), ru-unmet-job and mvp-feasible (no source), defensibility («AI chatbot» < 12 characters). 8 are `vendor_claim` (Touch Stay's own pages).
+   - **Rivals:** BnBuddy (direct, market unknown → possible), E-regcard (substitute, primary UNKNOWN), Автопилот (adjacent, primary UNKNOWN). ruWeakness / ruUnmetJob are null.
+   - **With the SIMULATED lenient skeptic:** AUTOMATED_EVIDENCE_PASSED, 76, grade C. This rests on vendor self-reports and has no proven Russian evidence — a quality risk to judge before stage3. It is not a verdict on the idea.
+5. **Finance check of r2** (SQL on the real DB, read-only):
+   - search 4 × 49 = 196 kop; Qwen 8 calls = 400 kop (7 × extract = 218, analyse = 182); reads 0;
+   - total 596 kop = `mr_attempts.used`; no unknown.
+   - **The 0.40 ₽ gap was an arithmetic error in the r2 report** (extract 2.18 ₽, not 1.78 ₽). The ledger is correct and untouched.
+- **Recorded corpus:** identical. **Benchmark:** identical except the synthetic cost (the longer system prompt).
+- **Checks:**
+  - `lint` ✔, `typecheck` ✔, `build` ✔;
+  - `CI=true npm test` with PostgreSQL ✔: **517 tests in 29 files**.
+
+---
+
 ## PR #13 audit fix 2 (on `c965198`) — a PROVEN direct rival refutes «no analogues», by code
 - **Defect:** `blockAbsence()` looked only at POSSIBLE rivals. A skeptic wrongly «supporting» an absence claim was accepted although a proven direct rival in that market had been found.
 - **Fix (`pipeline.ts`):** after the verdicts, code decides every **absence** claim against the rivals found, whatever the skeptic wrote (supported, no verdict, a bad refutation, or a hidden rival):

@@ -46,7 +46,9 @@ export const proposedClaimSchema = z.strictObject({
   // Validated for presence/size here; specificity is judged per claim (quoteProblem) so one weak
   // claim does not discard the whole proposal.
   quote: z.string().max(500),
-  sourceUrls: z.array(httpUrl).min(1).max(10),
+  // A claim may arrive WITHOUT a source (stage2 r2, 13.11.2026: ruUnmetJob, mvpFeasible). It is kept and recorded
+  // as unproven (status unknown) — it can never support a score — instead of discarding the whole proposal.
+  sourceUrls: z.array(httpUrl).max(10),
   highImpact: z.boolean().optional(),
   absence: z.strictObject({ market: z.enum(['west', 'ru']), job: z.string().min(1) }).optional(),
 });

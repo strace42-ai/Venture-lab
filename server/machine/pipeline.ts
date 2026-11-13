@@ -151,6 +151,9 @@ function checkClaim(c: AnalystProposal['claims'][number], reads: Reads, invented
   let failed = 0;
   let quarantined = 0;
   const problem = quoteProblem(c.quote);
+  if (c.sourceUrls.length === 0) {
+    return { quote: c.quote, sourceKeys: [], supportingKeys: [], status: 'unknown', reason: 'утверждение без источника — не доказательство (цитату не с чем сверить)', quoteLocations: [] };
+  }
   for (const url of c.sourceUrls) {
     const r = reads.rows.get(url);
     if (!r) continue;
