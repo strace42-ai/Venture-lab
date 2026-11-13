@@ -1,7 +1,7 @@
 # Venture Lab — Latest handoff
 
 **Task:** VL-004B / Live Research Provider Adapters, Evidence Safety & Controlled Trial — **Phase A only** (`tasks/current-task.md` v1.0)
-**Status:** PHASE A IMPLEMENTED + AUDIT ROUNDS 1–2 FIXES (round 1 on `9fe7bac`, round 2 on `feb9a52`), offline only. **No paid API call was made, no cloud resource created, no deploy.** PR open, **not merged**. Phase B is blocked until the founder authorises it.
+**Status:** PHASE A IMPLEMENTED + AUDIT ROUNDS 1–3 FIXES (round 1 on `9fe7bac`, round 2 on `feb9a52`, round 3 on `a5026da`), offline only. **No paid API call was made, no cloud resource created, no deploy.** PR open, **not merged**. Phase B is blocked until the founder authorises it.
 **As of:** 2026-11-13 · **Implementer:** Claude Code
 
 ## Git
@@ -10,6 +10,30 @@
 | Base | `main` @ `c900fd6` (VL-004A merged; VL-004B docs activated) |
 | Branch | `claude/vl-004b-live-providers` |
 | PR | opened to `main` (see the PR list), not merged |
+
+## Audit round 3 — NULL-safe constraints (audit of `a5026da`)
+In PostgreSQL a CHECK passes when its expression is NULL (UNKNOWN). Migration 006 is already applied in existing databases, so the fix is a new migration, **007_null_safe_checks**, rather than an edit of 006.
+
+| Constraint | Loophole | Fix | PostgreSQL tests (`migration-006.test.ts`, a real upgrade 005 → 006 → 007) |
+|---|---|---|---|
+| `mr_competitors_market_status_consistent` (006) | `market_verified = (market_status IN …)` is NULL when `market_verified IS NULL`, so «verified + NULL» was accepted | `market_status IS NULL OR market_verified IS NOT DISTINCT FROM (market_status IN ('verified','declared'))` | • refused: `verified + NULL`, `unknown + NULL`, `declared + NULL`, `conflicting + NULL`, `declared + false`;<br>• refused: status NULL on a new row (`market_status_required`), with or without a boolean;<br>• accepted: all four consistent pairs;<br>• the historical row is kept unchanged (`NULL / true`) and never counted as a proven rival. |
+| `mr_usage_cost_bound` (005) | `reconciled` / `tariff` / `not_billed` with `actual_cost NULL`: `cost = actual_cost` and `actual_cost <= estimated_cost` were both NULL, so the row was accepted (an «observed» cost without an observation). In addition, `estimated_cost IS NULL` bypassed the whole check. | `actual_cost IS NOT NULL`, NULL-safe `IS NOT DISTINCT FROM` comparisons; new `mr_usage_estimate_required` (`NOT VALID`, so rows written before 005 stay as they were) | • refused: `reconciled` / `tariff` / `not_billed` without an actual cost, a missing estimate, a cost above the bound, `unknown` below the worst case;<br>• accepted: valid rows of every reconciliation kind. |
+
+Other constraints of 005/006 were reviewed:
+- the column CHECKs of the form `col IS NULL OR …` are nullable by design (optional values);
+- `mr_snapshot_entries_carry_other_job` compares with the NOT NULL `job_id`;
+- `fetch_status`, `reconciliation` and `carried_count` are NOT NULL;
+- the carry trigger raises on NULL dates.
+
+No other loophole was found. The 004 checks referenced here are on NOT NULL columns.
+
+A pre-existing test (`machine-review.test.ts`, cross-feed usage row) inserted a usage row without `estimated_cost`. It now sets one, so it still asserts the **foreign-key** refusal it was written for.
+
+Checks:
+- real upgrade of the populated QA database 006 → 007: both new checks validated against all existing rows;
+- fresh database 001–007 plus the fixture 3-day CLI: 3/10 → 3/10 → 4/10, unchanged;
+- 377 tests;
+- benchmark unchanged.
 
 ## Audit round 2 — fixes (audit of `feb9a52`)
 | # | Finding | Fix | Tests |
@@ -101,7 +125,7 @@ Rivals with an unproven market are shown but not counted: 2 of 2. Independent pu
 | Check | Result |
 |---|---|
 | `npm run lint` / `typecheck` / `build` | ✔ / ✔ / ✔ |
-| `CI=true TEST_DATABASE_URL=… npm test` | ✔ **22 files, 375 tests** (round 2; round 1: 350; initial: 334). Round 2 added `live-market` 5, `migration-006` 3 and `live-providers` +17. Earlier per-file counts: `live-net` 42, `live-providers` 38, `live-pipeline` 25, `live-worker` 13, UI test +2 assertions. All VL-001…VL-004A tests pass unchanged. |
+| `CI=true TEST_DATABASE_URL=… npm test` | ✔ **22 files, 377 tests** (round 3; round 2: 375; round 1: 350; initial: 334). Round 2 added `live-market` 5, `migration-006` 3 and `live-providers` +17. Earlier per-file counts: `live-net` 42, `live-providers` 38, `live-pipeline` 25, `live-worker` 13, UI test +2 assertions. All VL-001…VL-004A tests pass unchanged. |
 | Fixture CLI 3 days (fresh DB) | ✔ 3/10 → 3/10 → 4/10, same scores as VL-004A |
 | `--live --once --dry-run` | ✔ no network. `--execute` is refused without config, in CI and for deprecated models; `tick --live` is refused. |
 | `npm run research:benchmark` | ✔ (table above) |

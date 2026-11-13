@@ -59,6 +59,10 @@ The architecture source of truth is `docs/no-vpn-automation-architecture.md` v2.
 - **Assessment date.** Assessments, sources and snapshots reference `(job_id, feed, as_of)`, so they cannot be backdated.
 - **Snapshot entries** reference `(snapshot_id, job_id, feed)` and `(assessment_id, job_id, candidate_id, title, market_score, confidence, evidence_grade, state)`. A frozen entry is therefore an exact copy of an `AUTOMATED_EVIDENCE_PASSED` assessment from the same job and candidate.
 - **Grade rule.** A passed assessment can never have grade D.
+- **Migration 007 (VL-004B audit round 3) — NULL-safe CHECKs.** A CHECK passes when it evaluates to NULL, so:
+  - `market_status` ↔ `market_verified` now uses `IS NOT DISTINCT FROM`: a status paired with a NULL boolean is refused;
+  - `mr_usage_cost_bound` requires a non-NULL `actual_cost` for `reconciled` / `tariff` / `not_billed` and compares costs NULL-safely;
+  - new usage rows must carry `estimated_cost` (`NOT VALID`, so rows written before 005 stay as they were).
 - **Migration 006 (VL-004B audit round 2).** `mr_competitors.market_status`:
   - historical rows are NULL, which reads as «not assessed», never verified (005 had defaulted them to `market_verified=true`);
   - `market_verified` lost its default;
