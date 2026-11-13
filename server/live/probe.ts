@@ -1,14 +1,20 @@
 /**
- * Stage-1 probe of a live trial (VL-004B-prep): the cheapest possible proof that the real providers
- * behave as the adapters expect — WITHOUT the production schemas.
- *  - Search API: one RU and one COM query → the XML is parsed into documents;
- *  - per model (analyst + skeptic): a TRANSPORT check (tiny plain completion, usage reported) and a
- *    MINIMAL-SCHEMA check (json_schema/json_object with a 2-field object, max_tokens 60).
- * The full production schemas are checked on the first candidate (stage 2), not here.
+ * Stage-1 probe of a live trial (VL-004B-prep, reasoning-aware since VL-004B-reasoning): the cheapest proof
+ * that the real providers behave as the adapters expect — WITHOUT the production schemas.
+ *  - Search API: one RU and one COM query → the XML is parsed into documents (2 required checks).
+ *  - Per model (analyst + skeptic), 2 required checks each:
+ *    - TRANSPORT: a tiny plain completion. HTTP 200 + usage prove transport and billing ONLY. Empty content
+ *      or finish_reason=length is reported as «no content generated», never as a generated answer.
+ *    - MINIMAL SCHEMA: the operation `probe_schema` with the production reasoning policy (reasoning.ts).
+ *      It passes only with JSON in `content` that matches the schema; reasoning_content never counts.
+ *  - Per model, 1 diagnostic (NOT required): `reasoning_effort: "none"`. It reports whether the mode is
+ *    rejected, ignored or works. Its outcome never fails the probe, and production does not use the mode
+ *    until it is marked verified in reasoning.ts.
  * Checks never stop each other (except auth failures): the report says exactly what passed.
  */
 import { z } from 'zod';
 import { InvalidModelOutput, ProviderAuthError, RateLimited, type CallContext } from '../machine/types';
+import { describeMeta, ReasoningModeUnsupported } from './ai-studio';
 import type { LiveBundle } from './providers';
 
 export const PROBE_QUERIES = [
@@ -18,23 +24,31 @@ export const PROBE_QUERIES = [
 
 /** 2 searches + (transport + minimal schema) × 2 models — every one is required for a passed probe. */
 export const PROBE_REQUIRED_CHECKS = PROBE_QUERIES.length + 2 * 2;
+/** Diagnostic (non-required) calls: reasoning_effort=none × 2 models. */
+export const PROBE_DIAGNOSTIC_CALLS = 2;
 
 const miniSchema = z.strictObject({ ok: z.boolean(), word: z.string().max(40) });
+const MINI_PROMPT = 'Верни JSON-объект: ok=true и word — одно любое слово.';
+const MINI_ANSWER_TOKENS = 60;
 
 export interface ProbeCheck {
   check: string;
   ok: boolean;
+  /** Required checks decide the probe; diagnostics only inform. */
+  required: boolean;
   detail: string;
 }
+
+export type ReasoningOffOutcome = 'disabled' | 'ignored' | 'rejected' | 'inconclusive';
 
 export async function runProbe(bundle: Pick<LiveBundle, 'providers' | 'chat'>, models: { analyst: string; skeptic: string }, ctx: CallContext): Promise<ProbeCheck[]> {
   const out: ProbeCheck[] = [];
   const guard = async (check: string, f: () => Promise<string>) => {
     try {
-      out.push({ check, ok: true, detail: await f() });
+      out.push({ check, ok: true, required: true, detail: await f() });
     } catch (e) {
       if (e instanceof ProviderAuthError) throw e; // credentials/roles wrong: stop everything
-      if (e instanceof InvalidModelOutput || e instanceof RateLimited) out.push({ check, ok: false, detail: e.message.slice(0, 300) });
+      if (e instanceof InvalidModelOutput || e instanceof RateLimited) out.push({ check, ok: false, required: true, detail: e.message.slice(0, 400) });
       else throw e;
     }
   };
@@ -48,13 +62,50 @@ export async function runProbe(bundle: Pick<LiveBundle, 'providers' | 'chat'>, m
   for (const [role, model] of [['analyst', models.analyst], ['skeptic', models.skeptic]] as const) {
     await guard(`transport:${role}:${model}`, async () => {
       const r = await bundle.chat.ping(ctx, model);
-      if (!r.usageReported) throw new InvalidModelOutput('ответ без usage — стоимость не сверяется');
-      return `ответ «${r.content}», finish_reason ${r.finishReason ?? '—'}, usage есть`;
+      if (!r.meta.transportOk) throw new InvalidModelOutput('ответ без usage — стоимость не сверяется');
+      const gen = r.meta.contentGenerated
+        ? `генерация содержимого: да («${r.content}»)`
+        : `генерация содержимого: НЕТ — ${r.meta.reasoningExhausted ? 'рассуждение израсходовало лимит' : 'content пуст или обрезан'} (это не считается ответом)`;
+      return `транспорт ✔ (HTTP 200, usage есть); ${gen}; ${describeMeta(r.meta)}`;
     });
     await guard(`mini-schema:${role}:${model}`, async () => {
-      const v = await bundle.chat.complete(ctx, { model, task: 'probe_schema', system: 'Верни JSON-объект: ok=true и word — одно любое слово.', data: {}, schema: miniSchema, wire: miniSchema, maxTokens: 60 });
-      return `валидный JSON по мини-схеме (ok=${v.ok})`;
+      const { value, meta, plan } = await bundle.chat.completeWithMeta(ctx, { model, task: 'probe_schema', system: MINI_PROMPT, data: {}, schema: miniSchema, wire: miniSchema, answerTokens: MINI_ANSWER_TOKENS });
+      return `валидный JSON в content по мини-схеме (ok=${value.ok}); политика: ${plan.why}; ${describeMeta(meta)}`;
     });
   }
+  for (const [role, model] of [['analyst', models.analyst], ['skeptic', models.skeptic]] as const) {
+    const check = `reasoning-off:${role}:${model}`;
+    try {
+      const outcome = await reasoningOffDiagnostic(bundle, model, ctx);
+      out.push({ check, ok: outcome.outcome === 'disabled', required: false, detail: `${outcome.outcome}: ${outcome.detail} (диагностика, не влияет на итог пробы)` });
+    } catch (e) {
+      if (e instanceof ProviderAuthError) throw e;
+      if (e instanceof RateLimited || e instanceof InvalidModelOutput) out.push({ check, ok: false, required: false, detail: `inconclusive: ${e.message.slice(0, 300)} (диагностика, не влияет на итог пробы)` });
+      else throw e;
+    }
+  }
   return out;
+}
+
+/**
+ * One call with `reasoning_effort: "none"`:
+ *  - disabled: accepted, no reasoning (no reasoning_content, reasoning_tokens 0 or absent) and valid JSON in content;
+ *  - ignored: accepted but reasoning still present;
+ *  - rejected: a 4xx naming the parameter;
+ *  - inconclusive: accepted, no reasoning, but no valid JSON.
+ */
+export async function reasoningOffDiagnostic(bundle: Pick<LiveBundle, 'chat'>, model: string, ctx: CallContext): Promise<{ outcome: ReasoningOffOutcome; detail: string }> {
+  try {
+    const { meta } = await bundle.chat.completeWithMeta(ctx, { model, task: 'probe_schema', system: MINI_PROMPT, data: {}, schema: miniSchema, wire: miniSchema, answerTokens: MINI_ANSWER_TOKENS, forceEffort: 'none' });
+    const reasoned = meta.reasoningChars > 0 || (meta.reasoningTokens ?? 0) > 0;
+    return reasoned ? { outcome: 'ignored', detail: `параметр принят, но модель рассуждала; ${describeMeta(meta)}` } : { outcome: 'disabled', detail: `рассуждений нет, валидный JSON; ${describeMeta(meta)}` };
+  } catch (e) {
+    if (e instanceof ReasoningModeUnsupported) return { outcome: 'rejected', detail: e.message.slice(0, 300) };
+    if (e instanceof InvalidModelOutput) {
+      // Reasoning that ate the (small) budget means the parameter was ignored.
+      if (/рассуждение израсходовало/.test(e.message)) return { outcome: 'ignored', detail: e.message.slice(0, 300) };
+      return { outcome: 'inconclusive', detail: e.message.slice(0, 300) };
+    }
+    throw e;
+  }
 }

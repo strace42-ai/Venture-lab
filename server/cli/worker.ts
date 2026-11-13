@@ -150,10 +150,10 @@ async function live(): Promise<void> {
     console.log(`• LIVE ${gate.trial.stage}: испытание ${gate.trial.id}, потолок ступени ${gate.maxSpendKop / 100} ₽, общий потолок ${gate.trial.budgetKop / 100} ₽; модели ${cfg!.analystModel} / ${cfg!.skepticModel}; сырые ответы → ${rawDir}`);
     const r = await runPaidStage(pool, cfg!, gate, { providerTransport: capture, webTransport: new NodeTransport(), resolver: systemResolver }, { seeds, lockFile, retry: flags.has('--retry') });
     print(r);
-    if (r.probe) for (const c of r.probe) console.log(`  ${c.ok ? '✔' : '✖'} ${c.check}: ${c.detail}`);
+    if (r.probe) for (const c of r.probe) console.log(`  ${c.required ? (c.ok ? '✔' : '✖') : c.ok ? 'ℹ✔' : 'ℹ'} ${c.check}: ${c.detail}`);
     if (r.spent !== undefined) console.log(`  Учтено в журнале: ${rub(r.spent)} (лимит приложения не заменяет бюджет и оповещения в Yandex Cloud Billing).`);
     console.log(`  Сырые ответы (без секретов): ${capture.files.length} файлов в ${rawDir}`);
-    if (r.status !== 'succeeded' || (r.probe && r.probe.some((c) => !c.ok))) process.exitCode = 1;
+    if (r.status !== 'succeeded' || (r.probe && r.probe.some((c) => c.required && !c.ok))) process.exitCode = 1;
   } finally {
     await pool.end();
   }
