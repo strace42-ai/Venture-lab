@@ -410,7 +410,16 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
   // …but an unproven market is NOT evidence of absence: a rival whose page proves the job while its market is
   // conflicting/unknown is a POSSIBLE competitor — it can never raise the «empty Russian niche».
   // …and a rival whose page only WEAKLY matches the primary job (UNKNOWN meaning) is possible too, never proven.
-  const possible = competitors.filter((c) => (c.marketVerified === false && c.kind !== 'substitute') || c.primaryJobStatus === 'unknown');
+  // A rival is POSSIBLY relevant to a market when its competition there is not proven either way:
+  //  - its market is not established (it may be anywhere) and its page proves a job of the idea; or
+  //  - its primary job is UNKNOWN (quote on the page, meaning not established) and it is in that market, or its
+  //    market is not established.
+  // A PROVEN rival of another market (e.g. a verified western one) is not possible competition in this market.
+  const possibleIn = (market: 'ru' | 'west') =>
+    competitors.filter((c) => (c.marketVerified === false && c.kind !== 'substitute') || (c.primaryJobStatus === 'unknown' && (c.marketVerified === false || c.market === market)));
+  /** Rivals that forbid SUPPORTING «nobody does the primary job in <market>»: possibly direct, or primary job UNKNOWN. */
+  const blockAbsence = (market: 'ru' | 'west') => possibleIn(market).filter((c) => c.kind === 'direct' || c.primaryJobStatus === 'unknown');
+  const possible = possibleIn('ru');
   for (const c of competitors.filter((x) => x.primaryJobStatus === 'unknown')) {
     rejected.push(`«${c.name}»: основная работа (${seed.primaryJob}) на странице не доказана — смысловое соответствие UNKNOWN; не прямой конкурент, но и не доказательство отсутствия`);
   }
@@ -433,8 +442,10 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
     if (v.verdict === 'supported' && (v.sourceKeys.length === 0 || v.sourceKeys.some((k) => !c.supportingKeys.includes(k)))) problem = 'подтверждение не опирается на источник, где код нашёл цитату';
     if (v.verdict === 'refuted' && absence && !v.sourceKeys.some((k) => proven.some((x) => x.sourceKey === k && x.market === absence.market && x.kind === 'direct'))) problem = 'опровержение не опирается на подтверждённого прямого конкурента (с установленным рынком)';
     if (v.verdict === 'refuted' && !absence && (v.sourceKeys.length === 0 || v.sourceKeys.some((k) => !okSrc.has(k)))) problem = 'опровержение не опирается на загруженный источник';
-    if (!problem && v.verdict === 'supported' && absence?.market === 'ru' && possible.some((x) => x.kind === 'direct'))
-      problem = `пробел в РФ не может считаться подтверждённым: есть возможный прямой конкурент с неустановленным рынком (${possible.filter((x) => x.kind === 'direct').map((x) => x.name).join(', ')})`;
+    if (!problem && v.verdict === 'supported' && absence && blockAbsence(absence.market).length) {
+      const xs = blockAbsence(absence.market);
+      problem = `отсутствие конкурентов (${absence.market === 'ru' ? 'РФ' : 'Запад'}) не может считаться подтверждённым: есть возможные конкуренты — ${xs.map((x) => `${x.name} (${x.primaryJobStatus === 'unknown' ? 'основная функция UNKNOWN' : 'рынок не установлен'})`).join(', ')}`;
+    }
     if (problem) {
       downgraded.add(c.key);
       rejected.push(`отклонено: вердикт «${v.verdict === 'supported' ? 'подтверждено' : 'опровергнуто'}» по ${c.key} — ${problem}`);
@@ -479,7 +490,7 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
   // Possible rivals (market not established) never let the RU dimensions rise above «competition unclear» (3).
   if (possible.length && ruCap > 3) {
     ruCap = 3;
-    notes.push(`РФ: потолок 3 — есть возможные конкуренты с неустановленным рынком (${possible.map((x) => x.name).join(', ')})`);
+    notes.push(`РФ: потолок 3 — есть возможные конкуренты (рынок или основная функция не установлены): ${possible.map((x) => x.name).join(', ')}`);
   }
   const scores = {} as Record<DimensionKey, RawScore>;
   const scoreClaimKeys = new Set<string>();

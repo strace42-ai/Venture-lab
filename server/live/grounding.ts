@@ -178,10 +178,36 @@ const STOP = new Set(['по', 'на', 'в', 'во', 'и', 'с', 'со', 'к', '�
 /** Quote tokens: words split at hyphens AND hyphen-joined compounds (check-in → check, in, checkin). */
 const quoteTokens = (x: string) => [...new Set([...x.toLowerCase().split(/[^\p{L}\p{N}]+/u), ...words(x)].filter((w) => w.length >= 2 && !STOP.has(w)))];
 /** Descriptions of the job: its slug, and each Russian keyword phrase of the candidate — as groups of stems. */
-const jobDescriptions = (job: string, seed: Pick<DiscoverySeed, 'ruKeywords'>): string[][] =>
+/** A Russian adjective form (цифровой, электронная, гостевой, посуточная…): never the HEAD of a description. */
+const RU_ADJ = /(ый|ой|ий|ая|яя|ое|ые|ого|его|ому|ему|ым|ых|ую|юю)$/;
+
+interface JobDescription {
+  /** All stems of the description. */
+  stems: string[];
+  /** The stem that NAMES the function (the head word); null = cannot be determined → never proven. */
+  head: string | null;
+}
+
+/**
+ * Descriptions of a job, each with its HEAD — the word that names the function, as opposed to the user, the
+ * object or a modifier. Language rules only, no list of categories:
+ *  - the job slug is English, head-final: guest-GUIDE, checkin-INSTRUCTIONS, quote-COMPARISON,
+ *    invoice-REMINDERS;
+ *  - a Russian keyword phrase: the first word that is not an adjective form and is ≥ 3 letters long
+ *    («цифровой ГИД гостя», «электронная ИНСТРУКЦИЯ по заселению», «гостевой ПОРТАЛ посуточная аренда»,
+ *    «СРАВНЕНИЕ коммерческих предложений», «ии СЕКРЕТАРЬ звонки»);
+ *  - a Latin-script phrase: its last word ≥ 3 letters long.
+ */
+const jobDescriptions = (job: string, seed: Pick<DiscoverySeed, 'ruKeywords'>): JobDescription[] =>
   [job.replace(/-/g, ' '), ...(seed.ruKeywords ?? [])]
-    .map((d) => [...new Set([...words(d), ...d.toLowerCase().split(/[^\p{L}\p{N}]+/u)].filter((w) => w.length >= 2 && !STOP.has(w)).map(stem))])
-    .filter((g) => g.length > 0);
+    .map((d) => {
+      const parts = d.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 2 && !STOP.has(w));
+      const stems = [...new Set([...words(d), ...parts].filter((w) => w.length >= 2 && !STOP.has(w)).map(stem))];
+      const long = parts.filter((w) => w.length >= 3);
+      const headWord = /[а-яё]/i.test(d) ? long.find((w) => !RU_ADJ.test(w)) : long.at(-1);
+      return { stems, head: headWord ? stem(headWord) : null };
+    })
+    .filter((g) => g.stems.length > 0);
 
 export interface JobSupport {
   level: 'proven' | 'uncertain' | 'none';
@@ -195,8 +221,9 @@ export interface JobSupport {
  *  - promotional copy never proves a function → none;
  *  - the quote must match ONE description of the job — its slug, or one Russian keyword phrase of the
  *    candidate — by prefix stem:
- *      ≥ 2 distinct quote words of the SAME description → proven («The guidebook your guests…»: guidebook +
- *      guests; «Инструкции по заселению»: инструкции + заселению);
+ *      ≥ 2 distinct quote words of the SAME description INCLUDING its head word (the function) → proven
+ *      («The guidebook your guests…»: GUIDEbook + guests; «Инструкции по заселению»: ИНСТРУКЦИИ + заселению);
+ *      two general words without the head → UNKNOWN («Цифровая регистрация гостей» vs «цифровой ГИД гостя»);
  *      words from different descriptions only, or a single word → UNKNOWN: E-regcard «Подключите быструю
  *      идентификацию гостей» matches only «гостей» (the user of the product, not the guide); «Электронная
  *      регистрация гостей» matches «электронная» and «гостей» from two different phrases;
@@ -208,11 +235,18 @@ export function jobQuoteSupport(quote: string, job: string, seed: Pick<Discovery
   const tokens = quoteTokens(quote);
   // the same concept matched twice through a joined compound (check-in → check + checkin) counts once
   const distinct = (ws: string[]) => ws.filter((w) => !ws.some((o) => o !== w && o.length > w.length && o.startsWith(w)));
-  const groups = jobDescriptions(job, seed).map((g) => distinct(tokens.filter((w) => g.some((v) => matches(w, v)))));
-  const best = groups.reduce<string[]>((a, g) => (g.length > a.length ? g : a), []);
-  if (best.length >= 2) return { level: 'proven', matched: best, reason: null };
-  const any = distinct([...new Set(groups.flat())]);
-  if (any.length >= 1) return { level: 'uncertain', matched: any, reason: `смысловое соответствие не доказано: совпало ${any.length === 1 ? `одно слово («${any[0]}»)` : `по одному слову из разных описаний («${any.join('», «')}»)`} — UNKNOWN` };
+  const groups = jobDescriptions(job, seed).map((g) => {
+    const m = distinct(tokens.filter((w) => g.stems.some((v) => matches(w, v))));
+    return { matched: m, head: g.head !== null && m.some((w) => matches(w, g.head!)) };
+  });
+  // proven = two distinct words of ONE description, one of them its head (the function itself)
+  const best = groups.filter((g) => g.head && g.matched.length >= 2).sort((a, b) => b.matched.length - a.matched.length)[0];
+  if (best) return { level: 'proven', matched: best.matched, reason: null };
+  const any = distinct([...new Set(groups.flatMap((g) => g.matched))]);
+  if (any.length >= 1) {
+    const why = groups.some((g) => g.matched.length >= 2) ? `совпали общие слова («${any.join('», «')}»), но не слово самой функции` : any.length === 1 ? `совпало одно слово («${any[0]}»)` : `по одному слову из разных описаний («${any.join('», «')}»)`;
+    return { level: 'uncertain', matched: any, reason: `смысловое соответствие не доказано: ${why} — UNKNOWN` };
+  }
   return { level: 'none', matched: [], reason: 'цитата не содержит ни одного термина задачи — не подтверждает именно эту работу' };
 }
 

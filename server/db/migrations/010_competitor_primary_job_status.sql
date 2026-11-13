@@ -5,5 +5,7 @@
 --   absent  — no quote for the primary job.
 -- Historical rows stay NULL («not assessed»); nothing is rewritten.
 ALTER TABLE mr_competitors ADD COLUMN primary_job_status text CHECK (primary_job_status IS NULL OR primary_job_status IN ('proven', 'unknown', 'absent'));
--- a «direct» rival must have its primary job proven (new rows; NOT VALID keeps history as it is)
-ALTER TABLE mr_competitors ADD CONSTRAINT mr_competitors_direct_needs_proven_job CHECK (kind <> 'direct' OR primary_job_status IS NULL OR primary_job_status = 'proven') NOT VALID;
+-- A «direct» rival must have its primary job PROVEN: direct + NULL and direct + unknown are refused for every new
+-- or updated row (NULL-safe: «IS NOT DISTINCT FROM», a plain «=» would let NULL through). NOT VALID: the
+-- historical rows written before this migration (NULL = not assessed) are kept as they are, never rewritten.
+ALTER TABLE mr_competitors ADD CONSTRAINT mr_competitors_direct_needs_proven_job CHECK (kind <> 'direct' OR primary_job_status IS NOT DISTINCT FROM 'proven') NOT VALID;

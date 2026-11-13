@@ -1,5 +1,34 @@
 # Venture Lab — Latest handoff
 
+## PR #13 audit fixes (on `6a30684`) — UNKNOWN rivals block «no rivals», head-word semantic check, strict 010 CHECK
+- **P1 — an UNKNOWN rival did not block an absence claim.** The «supported absence» check looked only for `possible.some(kind === 'direct')`, but an UNKNOWN rival never gets kind `direct`.
+  - **Now `blockAbsence(market)`:** a rival possibly relevant in THAT market (market unproven + direct, or primary job UNKNOWN in that market / with an unproven market) turns a «supported» absence into `needs_more_evidence`. This works for absence claims about any market.
+  - **`possibleIn(market)`:** a PROVEN rival of another market, or a western UNKNOWN rival, neither blocks nor caps the Russian conclusion (no over-blocking).
+  - **Tests (PostgreSQL-free integration, a stub skeptic that wrongly supports «no analogues in Russia»):**
+    - an RU UNKNOWN rival gives `needs_more_evidence`; ruUnmetJob/ruWeakness stay null, not raised;
+    - a proven western rival and a western UNKNOWN rival keep the RU conclusion (4).
+  - Both new tests fail on the previous `pipeline.ts` (checked).
+- **P2 — two general words proved a job** («Цифровая регистрация гостей» vs «цифровой гид гостя»).
+  - **Now `proven` needs ≥ 2 words of ONE description INCLUDING its head word** — the function. The head is found by language rules, without category lists: the English slug is head-final (guest-GUIDE, quote-COMPARISON), a Russian phrase's head is its first non-adjective word ≥ 3 letters (цифровой ГИД гостя, электронная ИНСТРУКЦИЯ по заселению).
+  - Otherwise the result is UNKNOWN.
+  - **Negative cases:** регистрация / паспорт / оплата; «хранение логов VCDS»; «хранилище КП»; «выставление счетов».
+  - **Positive cases kept:** real guest guides and check-in instructions (Touch Stay, RealtyCalendar, GuestCom, RYNTO), the VAG log analysis, ВНИКЛИ, invoice reminders.
+- **P2 — migration 010 CHECK:** `kind <> 'direct' OR primary_job_status IS NOT DISTINCT FROM 'proven'` NOT VALID.
+  - Refuses direct + NULL, direct + unknown and direct + absent for new rows.
+  - A real upgrade 009 → 010 keeps a historical direct + NULL row byte-identical.
+  - An UPDATE to direct + unknown is refused by the CHECK itself (tested with the append-only trigger disabled).
+  - Two migration-006 tests now insert `primary_job_status = 'proven'` for their direct rows.
+- **Full recorded corpus, before vs after — exactly ONE change:**
+  - Vortholm (supplier-quote-compare) moves from `direct / primary proven` to a **possible rival** (`substitute`, primary job UNKNOWN). Its quote «сводит коммерческие предложения поставщиков в одну таблицу» names the object, not the function «сравнение».
+  - **No score, state, confidence or RU dimension changed:** ВНИКЛИ alone still refutes the gap, and the idea stays RESEARCH_HOLD at 10.
+  - Benchmark direct-RU recall 100% → 75% (fn 1 = Vortholm, shown as a possible rival); precision 100%.
+- **Unchanged:** formula, unverified-judgement marks, dossier/CSV, stage2 recovery, history, ledger. `vl_phase_b_probe` is still at 009 (probe succeeded, stage2 incomplete, 48 rows / 15.19 ₽).
+- **Checks:**
+  - `lint` ✔, `typecheck` ✔, `build` ✔;
+  - `CI=true npm test` with PostgreSQL ✔: **505 tests in 28 files**.
+
+---
+
 ## VL-004B evidence quality — unverified judgements marked, semantic job check (2026-11-13)
 **Input:** founder's request, plus ChatGPT's review of PR #12 (`abd6819`). This is an offline PR. **Not changed:** the scoring formula, historical assessments, the budget ledger, statuses, and the recovery results in `vl_phase_b_probe`. Migration 010 has NOT been applied to it.
 

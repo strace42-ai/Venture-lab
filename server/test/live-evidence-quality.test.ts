@@ -13,14 +13,19 @@ import { RecordedProviders, RecordedWeb, TEST_ENV, toStrictAnalyst, virtualClock
 import { SEEDS } from '../live/recordings/world';
 import { liveRunOptions } from '../live/run';
 import { exportReviewCsv } from '../machine/export';
-import { EVIDENCE_DIMENSIONS, researchCandidate } from '../machine/pipeline';
+import { EVIDENCE_DIMENSIONS, researchCandidate, type Providers } from '../machine/pipeline';
+import { FixtureLLMProvider, FixtureSearchProvider, FixtureSkeptic, FixtureSourceReader } from '../machine/providers/fixture';
 import { machineCandidate } from '../machine/read';
-import { CallContext } from '../machine/types';
+import { CallContext, type AnalystProposal, type DiscoverySeed, type PageRead, type SkepticFindings, type SkepticInput } from '../machine/types';
 import { runWorkerJob } from '../machine/worker';
 import { UNVERIFIED_JUDGEMENT_MARK, unverifiedJudgements } from '../../src/domain/machine';
 import { DIMENSION_KEYS } from '../../src/domain/scoring';
 import type { DimensionKey } from '../../src/domain/types';
-import { createTestDb, describeDb, type TestDb } from './helpers';
+import pg from 'pg';
+import { randomBytes } from 'node:crypto';
+import { listMigrations, migrate } from '../db/migrate';
+import { createPool } from '../db/pool';
+import { createTestDb, describeDb, TEST_DATABASE_URL, type TestDb } from './helpers';
 
 const cfg = loadLiveConfig(TEST_ENV);
 const JUDGEMENTS = DIMENSION_KEYS.filter((d) => !EVIDENCE_DIMENSIONS.has(d));
@@ -95,7 +100,7 @@ describeDb('marks reach the dossier and the CSV export; UNKNOWN primary job is s
     expect(lines.find((l) => l.startsWith('assessment,') && l.includes(SEEDS.guest!.externalId))).toMatch(/экспертные оценки модели без подтверждённого источника/);
   });
 
-  it('migration 010: a «direct» rival needs a proven primary job (new rows); historical NULL rows stay as they were', async () => {
+  it('migration 010: new rows refuse direct + unknown AND direct + NULL; other kinds may be unknown/NULL', async () => {
     const job = (await db.pool.query("SELECT id FROM mr_jobs WHERE feed = 'live' LIMIT 1")).rows[0].id;
     const cand = (await db.pool.query("SELECT id FROM mr_candidates WHERE feed = 'live' LIMIT 1")).rows[0].id;
     const ins = (name: string, kind: string, status: string | null) =>
@@ -104,11 +109,141 @@ describeDb('marks reach the dossier and the CSV export; UNKNOWN primary job is s
         [job, cand, name, kind, status],
       );
     await expect(ins('Unknown Direct', 'direct', 'unknown')).rejects.toThrow(/mr_competitors_direct_needs_proven_job/);
+    await expect(ins('Null Direct', 'direct', null)).rejects.toThrow(/mr_competitors_direct_needs_proven_job/);
+    await expect(ins('Absent Direct', 'direct', 'absent')).rejects.toThrow(/mr_competitors_direct_needs_proven_job/);
     await expect(ins('Proven Direct', 'direct', 'proven')).resolves.toBeTruthy();
     await expect(ins('Possible Adjacent', 'adjacent', 'unknown')).resolves.toBeTruthy();
-    await expect(ins('Legacy Row', 'direct', null)).resolves.toBeTruthy(); // historical shape (not assessed)
+    await expect(ins('Substitute Null', 'substitute', null)).resolves.toBeTruthy();
+    // UPDATE cannot turn a row into direct + NULL/unknown either (rows are append-only; the CHECK holds as well)
+    await expect(db.pool.query("UPDATE mr_competitors SET kind = 'direct' WHERE name = 'Possible Adjacent'")).rejects.toThrow();
+    await expect(db.pool.query("UPDATE mr_competitors SET primary_job_status = NULL WHERE name = 'Proven Direct'")).rejects.toThrow();
     // every competitor the pipeline stored: direct ⇒ proven
     const rows = (await db.pool.query("SELECT kind, primary_job_status FROM mr_competitors WHERE classification_reason <> 'r'")).rows;
     for (const x of rows.filter((y) => y.kind === 'direct')) expect(x.primary_job_status).toBe('proven');
+  });
+});
+
+// ------------------------------------------------------------------ P1 (audit of PR #13): UNKNOWN rivals vs «no rivals»
+const DAY = '2026-11-12';
+const iSeed: DiscoverySeed = { externalId: 'unknown-rival', title: 'Тест UNKNOWN-конкурента', pitch: 'Тестовый кандидат.', segment: 'B2B', category: 'Finance', primaryJob: 'invoice-reminders', jobs: ['invoice-reminders'], westernProduct: 'Invoice Chaser' };
+const REVIEW = 'https://example.org/invoice-chaser-review';
+const SURVEY = 'https://example.org/ru-freelance-survey';
+const RIVAL = 'https://rival.example.com/reminders';
+type Rival = { market: 'ru' | 'west'; primary: 'proven' | 'unknown' } | null;
+
+function rivalProviders(rival: Rival): Providers {
+  const search = new FixtureSearchProvider(DAY);
+  const reader = new FixtureSourceReader(DAY);
+  const fs = new FixtureSkeptic();
+  const quote = 'sends automatic payment reminders';
+  const proposal: AnalystProposal = {
+    model: 'stub-analyst',
+    claims: [
+      { key: 'w-need', dimension: 'westernNeed', text: 'Есть спрос.', quote: 'send polite automatic payment reminders', sourceUrls: [REVIEW], highImpact: true },
+      { key: 'ru-gap', dimension: 'ruUnmetJob', text: 'В РФ нет сервиса напоминаний.', quote: 'напоминания отправляют вручную', sourceUrls: [SURVEY], highImpact: true, absence: { market: 'ru', job: 'invoice-reminders' } },
+      { key: 'ru-weak', dimension: 'ruWeakness', text: 'Российских аналогов нет.', quote: 'напоминания отправляют вручную', sourceUrls: [SURVEY], highImpact: true, absence: { market: 'ru', job: 'invoice-reminders' } },
+    ],
+    scores: { westernNeed: { value: 4, claims: ['w-need'] }, ruUnmetJob: { value: 5, claims: ['ru-gap'] }, ruWeakness: { value: 5, claims: ['ru-weak'] } },
+    founderFit: null,
+    ruQueries: ['нет результатов один', 'нет результатов два', 'нет результатов три'],
+    rationale: 'Тест.',
+  };
+  // the skeptic model wrongly SUPPORTS both absence claims, citing exactly the source that contains the quote
+  const supportGaps = (f: SkepticFindings, input: SkepticInput): SkepticFindings => ({
+    ...f,
+    claimVerdicts: f.claimVerdicts.map((v) => (v.claimKey === 'ru-gap' || v.claimKey === 'ru-weak' ? { ...v, verdict: 'supported', sourceKeys: input.claims.find((x) => x.key === v.claimKey)!.supportingKeys, reason: 'аналогов нет' } : v)),
+    disputes: [],
+  });
+  return {
+    search: { name: 'stub-search', search: async (q, region, ctx) => [...(await search.search(q, region, ctx)), ...(rival && region === 'ru' && q === 'нет результатов один' ? [{ url: RIVAL, title: 'Rival' }] : [])] },
+    reader: {
+      name: 'stub-reader',
+      read: async (url, ctx): Promise<PageRead> =>
+        url === RIVAL && rival
+          ? {
+              url, status: 'ok', httpStatus: 200, publisher: 'rival.example.com', sourceType: 'company_self_report', region: rival.market, contentHash: 'x',
+              text: 'Rival Reminders sends automatic payment reminders to clients.',
+              offer: {
+                name: 'Rival Reminders', market: rival.market, jobs: rival.primary === 'proven' ? ['invoice-reminders'] : [],
+                grounding: { level: 'partial', jobEvidence: rival.primary === 'proven' ? { 'invoice-reminders': quote } : {}, uncertain: [], extractor: 'm', marketVerified: true, marketStatus: 'verified', marketSignals: [], marketConflicts: [], ...(rival.primary === 'unknown' ? { uncertainJobs: { 'invoice-reminders': quote } } : {}) },
+              },
+            }
+          : reader.read(url, ctx),
+    },
+    llm: Object.assign(new FixtureLLMProvider(), { analyse: async () => proposal }),
+    skeptic: { name: fs.name, model: fs.model, counterQueries: (s: DiscoverySeed) => fs.counterQueries(s), challenge: async (i, c) => supportGaps(await fs.challenge(i, c), i) } as Providers['skeptic'],
+  };
+}
+const runRival = (rival: Rival) => researchCandidate(iSeed, true, DAY, rivalProviders(rival), new CallContext('t', 1, 1_000_000));
+
+describe('P1: a possibly relevant rival in the market forbids SUPPORTING «no rivals there»; a proven rival of ANOTHER market does not', () => {
+  it('baseline (no rival): the absence claims are supported; RU scores 4 (independent source, cap 4 — rule unchanged)', async () => {
+    const r = await runRival(null);
+    expect(r.claims.find((c) => c.key === 'ru-gap')!.skepticVerdict).toBe('supported');
+    expect(r.assessment.scores.ruUnmetJob).toBe(4);
+  });
+
+  it('RU rival with primary job UNKNOWN + skeptic «no analogues in Russia» → needs_more_evidence, no score raise', async () => {
+    const base = await runRival(null);
+    const r = await runRival({ market: 'ru', primary: 'unknown' });
+    const rival = r.competitors.find((c) => c.name === 'Rival Reminders')!;
+    expect(rival).toMatchObject({ primaryJobStatus: 'unknown', market: 'ru' });
+    expect(rival.kind).not.toBe('direct');
+    for (const k of ['ru-gap', 'ru-weak']) {
+      const c = r.claims.find((x) => x.key === k)!;
+      expect(c.supportingKeys.length, k).toBeGreaterThan(0); // the quote IS on the page …
+      expect(c.skepticVerdict, k).toBe('needs_more_evidence'); // … but «no rivals» is not accepted
+      expect(c.skepticReason).toMatch(/отсутствие конкурентов \(РФ\) не может считаться подтверждённым: есть возможные конкуренты — Rival Reminders \(основная функция UNKNOWN\)/);
+    }
+    expect(r.assessment.scores.ruUnmetJob).toBeNull();
+    expect(r.assessment.scores.ruWeakness).toBeNull();
+    for (const d of ['ruUnmetJob', 'ruWeakness'] as const) expect(r.assessment.scores[d] ?? 0).toBeLessThanOrEqual(base.assessment.scores[d] ?? 0);
+  });
+
+  it('a PROVEN western rival does not by itself block the Russian conclusion (no over-blocking)', async () => {
+    const r = await runRival({ market: 'west', primary: 'proven' });
+    expect(r.competitors.find((c) => c.name === 'Rival Reminders')).toMatchObject({ market: 'west', kind: 'direct', primaryJobStatus: 'proven' });
+    expect(r.claims.find((c) => c.key === 'ru-gap')!.skepticVerdict).toBe('supported');
+    expect(r.assessment.scores.ruUnmetJob).toBe(4);
+  });
+
+  it('a western rival with primary job UNKNOWN does not block or cap the Russian conclusion either', async () => {
+    const r = await runRival({ market: 'west', primary: 'unknown' });
+    expect(r.claims.find((c) => c.key === 'ru-gap')!.skepticVerdict).toBe('supported');
+    expect(r.assessment.scores.ruUnmetJob).toBe(4);
+    expect(r.assessment.dimensionNotes.join(' ')).not.toMatch(/потолок 3/);
+  });
+});
+
+describeDb('migration 010 on a database that already holds historical «direct» rivals (written before 010)', () => {
+  it('history is kept as it is (NULL = not assessed, never rewritten); the CHECK binds new rows; the CHECK alone also refuses an UPDATE', async () => {
+    const schema = `t_${randomBytes(6).toString('hex')}`;
+    const admin = new pg.Client({ connectionString: TEST_DATABASE_URL });
+    await admin.connect();
+    await admin.query(`CREATE SCHEMA ${schema}`);
+    await admin.end();
+    const pool = createPool(TEST_DATABASE_URL!, schema);
+    try {
+      await migrate(pool, listMigrations().filter((m) => m.id <= '009_trial_runs_incomplete'));
+      const job = (await pool.query("INSERT INTO mr_jobs (job_key, feed, as_of, timezone, status, attempts, max_attempts, budget_limit, monthly_cap, spent, pipeline_version) VALUES ('daily:live:2026-11-12', 'live', '2026-11-12', 'Asia/Novokuznetsk', 'succeeded', 1, 2, 20000, 40000, 0, 'v') RETURNING id")).rows[0].id;
+      const cand = (await pool.query("INSERT INTO mr_candidates (feed, external_id, first_job_id, first_seen, seed_title, seed_pitch, segment, category, primary_job, jobs, western_product) VALUES ('live', 'old-cand', $1, '2026-11-12', 'Старый', 'p', 'B2B', 'X', 'job-a', '{job-a}', 'W') RETURNING id", [job])).rows[0].id;
+      await pool.query("INSERT INTO mr_competitors (job_id, candidate_id, feed, name, url, market, kind, found_by, source_key, note, classification_reason, market_status, market_verified) VALUES ($1, $2, 'live', 'Old Direct', 'https://old.example.ru/', 'ru', 'direct', 'skeptic', 's1', null, 'r', 'verified', true)", [job, cand]);
+      const before = (await pool.query("SELECT * FROM mr_competitors WHERE name = 'Old Direct'")).rows[0];
+      expect((await migrate(pool)).applied).toEqual(['010_competitor_primary_job_status']);
+      const after = (await pool.query("SELECT * FROM mr_competitors WHERE name = 'Old Direct'")).rows[0];
+      expect(after).toEqual({ ...before, primary_job_status: null }); // historical row unchanged, «not assessed»
+      await expect(pool.query("INSERT INTO mr_competitors (job_id, candidate_id, feed, name, url, market, kind, found_by, source_key, note, classification_reason, market_status, market_verified) VALUES ($1, $2, 'live', 'New Direct', 'https://new.example.ru/', 'ru', 'direct', 'skeptic', 's2', null, 'r', 'verified', true)", [job, cand])).rejects.toThrow(/mr_competitors_direct_needs_proven_job/);
+      // the CHECK itself (not only the append-only trigger) refuses an UPDATE to direct + unknown
+      await pool.query('ALTER TABLE mr_competitors DISABLE TRIGGER mr_competitors_append_only');
+      await pool.query("INSERT INTO mr_competitors (job_id, candidate_id, feed, name, url, market, kind, found_by, source_key, note, classification_reason, market_status, market_verified, primary_job_status) VALUES ($1, $2, 'live', 'Adj', 'https://adj.example.ru/', 'ru', 'adjacent', 'skeptic', 's3', null, 'r', 'verified', true, 'unknown')", [job, cand]);
+      await expect(pool.query("UPDATE mr_competitors SET kind = 'direct' WHERE name = 'Adj'")).rejects.toThrow(/mr_competitors_direct_needs_proven_job/);
+      await pool.query('ALTER TABLE mr_competitors ENABLE TRIGGER mr_competitors_append_only');
+    } finally {
+      await pool.end();
+      const c = new pg.Client({ connectionString: TEST_DATABASE_URL });
+      await c.connect();
+      await c.query(`DROP SCHEMA ${schema} CASCADE`);
+      await c.end();
+    }
   });
 });

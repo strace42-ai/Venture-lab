@@ -290,6 +290,10 @@ describe('P2 regressions on the REAL stage2 extractions (13.11.2026)', () => {
       ['Digital guidebook (PWA)', 'guest-guide'], // guide, but for whom/what job is not stated
       ['Самостоятельное заселение по коду замка', 'checkin-instructions'], // check-in, but no instructions
       ['Contact collection', 'checkin-instructions'],
+      // audit of PR #13 (P2): two general words of the description, but not the function itself («гид»)
+      ['Цифровая регистрация гостей', 'guest-guide'],
+      ['Цифровой паспорт гостя', 'guest-guide'],
+      ['Электронная оплата заселения', 'checkin-instructions'], // «заселения» + «электронная», no «инструкция»
     ] as const) {
       expect(jobQuoteSupport(quote, job, SEED).level, quote).not.toBe('proven');
     }
@@ -297,6 +301,24 @@ describe('P2 regressions on the REAL stage2 extractions (13.11.2026)', () => {
     expect(jobQuoteSupport('The guidebook your guests actually use.', 'guest-guide', SEED)).toMatchObject({ level: 'proven' });
     expect(jobQuoteSupport('Инструкции по заселению и выезду;', 'checkin-instructions', SEED)).toMatchObject({ level: 'proven' });
     expect(jobQuoteSupport('Цифровой гид гостя с правилами дома', 'guest-guide', SEED)).toMatchObject({ level: 'proven' });
+    expect(jobQuoteSupport('Электронный гид для гостей апартаментов', 'guest-guide', SEED)).toMatchObject({ level: 'proven' });
+    expect(jobQuoteSupport('Гостевой портал для посуточной аренды', 'guest-guide', SEED)).toMatchObject({ level: 'proven' });
+    expect(jobQuoteSupport('Электронная инструкция по заселению для каждого объекта', 'checkin-instructions', SEED)).toMatchObject({ level: 'proven' });
+    expect(jobQuoteSupport('Share everything your guests need before and during the stay, from check-in instructions to local recommendations.', 'checkin-instructions', SEED)).toMatchObject({ level: 'proven' });
+    // the reason names what is missing
+    expect(jobQuoteSupport('Цифровая регистрация гостей', 'guest-guide', SEED).reason).toMatch(/совпали общие слова .*не слово самой функции — UNKNOWN/);
+  });
+
+  it('the rule is category-agnostic (head word of the description): other ideas behave the same way', () => {
+    const vag = { ruKeywords: ['расшифровка автоскан vcds', 'анализ логов vcds'] };
+    expect(jobQuoteSupport('онлайн-анализ CSV-логов измеряемых величин VCDS', 'vag-csv-log-analysis', vag).level).toBe('proven'); // АНАЛИЗ + логов
+    expect(jobQuoteSupport('хранение логов VCDS в облаке', 'vag-csv-log-analysis', vag).level).toBe('uncertain'); // логов + VCDS, no «анализ»
+    const quotes = { ruKeywords: ['сравнение коммерческих предложений', 'сравнить кп поставщиков'] };
+    expect(jobQuoteSupport('загрузите КП в PDF или Excel и получите сравнительную таблицу условий', 'quote-comparison', quotes).level).toBe('proven'); // СРАВНительную + КП
+    expect(jobQuoteSupport('хранилище коммерческих предложений поставщиков', 'quote-comparison', quotes).level).toBe('uncertain');
+    const invoices = { ruKeywords: ['напоминания об оплате счетов'] };
+    expect(jobQuoteSupport('автоматические напоминания об оплате', 'invoice-reminders', invoices).level).toBe('proven');
+    expect(jobQuoteSupport('выставление счетов и оплата онлайн', 'invoice-reminders', invoices).level).toBe('uncertain');
   });
 
   it('in the pipeline: a rival whose primary job is UNKNOWN is a possible rival — never a proven direct competitor, never proof of an empty niche', async () => {

@@ -114,9 +114,12 @@ describe('Case B — VAGLOGS vs VAG Report: adjacent, not direct', () => {
 });
 
 describe('Case C — crowded quote comparison', () => {
-  it('ВНИКЛИ and Vortholm are direct; the unsupported RU-gap claim is removed (contradicted → 0) and the idea held', () => {
+  it('ВНИКЛИ is direct, Vortholm a POSSIBLE rival (primary job UNKNOWN); the unsupported RU-gap claim is removed (contradicted → 0) and the idea held', () => {
     const c = cand(base.result, 'supplier-quote-compare');
-    expect(ruDirect(c)).toEqual(['Vortholm', 'ВНИКЛИ']);
+    // audit of PR #13 (P2): Vortholm's quote names only the object («коммерческие предложения поставщиков»), not the
+    // function («сравнение») → UNKNOWN; the outcome (score, state) is unchanged — ВНИКЛИ alone refutes the gap
+    expect(ruDirect(c)).toEqual(['ВНИКЛИ']);
+    expect(c.competitors.find((x) => x.name === 'Vortholm')).toMatchObject({ primaryJobStatus: 'unknown' });
     expect(c.claims.find((x) => x.key === 'ru-gap')!.status).toBe('contradicted');
     expect(c.assessment.scores.ruUnmetJob).toBe(0);
     expect(c.assessment.state).toBe('RESEARCH_HOLD');
@@ -221,7 +224,9 @@ describe('model independence and provenance', () => {
 describe('offline benchmark (recorded corpus)', () => {
   it('guardrails remove the model\'s false «direct» rivals and false «supported» claims; nothing real is lost', async () => {
     const b = await runBenchmark();
-    expect(b.competitors).toMatchObject({ fp: 0, fn: 0, phantomsDropped: b.competitors.phantoms });
+    // fn 1 = Vortholm, now a POSSIBLE rival (primary job UNKNOWN), not lost: shown, caps RU at 3, blocks «no rivals»
+    // (precision over recall — audit of PR #13). No false «direct» rival.
+    expect(b.competitors).toMatchObject({ fp: 0, fn: 1, phantomsDropped: b.competitors.phantoms });
     expect(b.competitors.modelOnly.fp).toBeGreaterThan(0);
     expect(b.claims).toMatchObject({ fp: 0 });
     expect(b.claims.modelOnly.fp).toBeGreaterThan(0);
