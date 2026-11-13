@@ -2,14 +2,16 @@
  * CSV export for an INDEPENDENT manual review of a run or a whole trial (VL-004B-prep).
  * One row per item; machine columns first, then empty reviewer columns (the reviewer never edits the
  * database — the review is a separate file, not an approval):
- *  - assessment: state, score, grade, hold reasons;
+ *  - assessment: state, score, grade, hold reasons, execution judgements without a proven source;
+ *  - judgement: one row per execution judgement counted from the model's opinion alone (unverified);
  *  - source: URL, canonical URL, fetch status/failure, source type, provenance (independence + signals);
- *  - competitor: name, URL, kind, market + market status + signals, uncertainty, job evidence quotes,
+ *  - competitor: name, URL, kind, primary-job status (proven / UNKNOWN / absent), market + market status + signals, uncertainty, job evidence quotes,
  *    classification reason, price note;
  *  - claim: text, quote, cited and supporting sources, quote locations, checker status/reason,
  *    skeptic verdict/reason.
  */
 import type { Queryable } from '../db/pool';
+import { unverifiedJudgements } from '../../src/domain/machine';
 
 const COLUMNS = [
   'kind', 'job_key', 'trial_stage', 'candidate_id', 'item', 'url', 'source_keys', 'quote',
@@ -46,7 +48,13 @@ export async function exportReviewCsv(db: Queryable, sel: { trialId?: string; jo
     const base = { job_key: j.job_key, trial_stage: j.trial_stage ?? '' };
     const q = async <T,>(sql: string) => (await db.query(sql, [j.id])).rows as T[];
     for (const a of await q<Record<string, unknown>>('SELECT a.*, c.external_id FROM mr_assessments a JOIN mr_candidates c ON c.id = a.candidate_id WHERE a.job_id = $1 ORDER BY a.id')) {
-      rows.push({ ...base, kind: 'assessment', candidate_id: a.external_id as string, item: a.title as string, machine_label: `score ${a.market_score} · confidence ${a.confidence} · grade ${a.evidence_grade}`, machine_status: a.state as string, machine_reason: (a.hold_reasons as string[]).join(' | ') });
+      const notes = (a.dimension_notes as string[] | null) ?? [];
+      const unverified = unverifiedJudgements(notes);
+      rows.push({ ...base, kind: 'assessment', candidate_id: a.external_id as string, item: a.title as string, machine_label: `score ${a.market_score} · confidence ${a.confidence} · grade ${a.evidence_grade}`, machine_status: a.state as string, machine_reason: (a.hold_reasons as string[]).join(' | '), uncertainty: unverified.length ? `экспертные оценки модели без подтверждённого источника: ${unverified.join(', ')}` : '' });
+      // one row per unverified execution judgement, for the manual audit of the scoring debt
+      for (const n of notes.filter((x) => unverified.some((d) => x.startsWith(`${d}:`)))) {
+        rows.push({ ...base, kind: 'judgement', candidate_id: a.external_id as string, item: n.slice(0, n.indexOf(':')), machine_label: n.slice(n.indexOf(':') + 1).trim(), machine_status: 'unverified_model_judgement', machine_reason: n });
+      }
     }
     const sources = await q<Record<string, unknown>>('SELECT s.*, c.external_id FROM mr_sources s JOIN mr_candidates c ON c.id = s.candidate_id WHERE s.job_id = $1 ORDER BY s.candidate_id, s.id');
     const srcBy = new Map(sources.map((s) => [`${s.external_id}|${s.source_key}`, s]));
@@ -68,7 +76,9 @@ export async function exportReviewCsv(db: Queryable, sel: { trialId?: string; jo
       rows.push({
         ...base, kind: 'competitor', candidate_id: k.external_id as string, item: k.name as string, url: (k.url as string | null) ?? '', source_keys: (k.source_key as string | null) ?? '',
         quote: Object.entries(ev).map(([job, quote]) => `${job}: «${quote}»`).join(' | '),
-        machine_label: k.kind as string, machine_status: `found by ${k.found_by}`, market: k.market as string,
+        machine_label: k.kind as string,
+        machine_status: `found by ${k.found_by}${k.primary_job_status ? `; primary job: ${k.primary_job_status === 'unknown' ? 'UNKNOWN (смысл не доказан)' : k.primary_job_status}` : ''}`,
+        market: k.market as string,
         market_status: (k.market_status as string | null) ?? 'not_assessed (historical)', signals: (offer?.grounding?.marketSignals ?? []).join('; '),
         uncertainty: [...(offer?.grounding?.marketConflicts ?? []), ...(offer?.grounding?.uncertain ?? [])].join(' | '), source_type: (s?.source_type as string | undefined) ?? '',
         machine_reason: [k.classification_reason as string, (k.note as string | null) ?? ''].filter(Boolean).join(' · '),

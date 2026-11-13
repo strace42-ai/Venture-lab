@@ -75,7 +75,7 @@ describeDb('VL-004B live worker on recorded HTTP (Case G)', () => {
     expect(g.searches.world).toBeGreaterThan(5);
     expect(g.pages.ok).toBeGreaterThan(10);
     expect(g.pages.byStatus.robots_disallowed).toBe(2);
-    expect(g.competitors.ruDirect).toBe(4); // RealtyCalendar + GuestCom, ВНИКЛИ + Vortholm (market proven)
+    expect(g.competitors.ruDirect).toBe(3); // RealtyCalendar + GuestCom, ВНИКЛИ (market proven); Vortholm: primary job UNKNOWN (audit of PR #13)
     expect(g.competitors.ruAdjacent).toBe(0);
     expect(g.competitors.marketUnverified).toBe(2); // RYNTO, VAGLOGS: shown, not counted
     expect(g.contradictions).toBe(2);

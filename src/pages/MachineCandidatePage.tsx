@@ -7,7 +7,7 @@ import { Badge, ConfidenceMeter, EmptyState, Panel, ScoreRing } from '../compone
 import { useLoad } from '../data/context';
 import { useMachineClient } from '../data/machine';
 import { useFeed } from '../data/machine-feed';
-import { CLAIM_STATUS_LABEL, MACHINE_STATE_LABEL, type ClaimStatus, type MachineCandidateDetail, type MachineFeed } from '../domain/machine';
+import { CLAIM_STATUS_LABEL, UNVERIFIED_JUDGEMENT_MARK, MACHINE_STATE_LABEL, type ClaimStatus, type MachineCandidateDetail, type MachineFeed } from '../domain/machine';
 import { DIMENSIONS, contribution } from '../domain/scoring';
 import { cx } from '../lib/cx';
 import { formatDateShort } from '../lib/format';
@@ -185,6 +185,9 @@ function Dossier({ d, feed }: { d: MachineCandidateDetail; feed: MachineFeed }) 
                     {c.foundBy === 'skeptic' && <span className="small tone-warn">найден скептиком</span>}
                     {c.note && <span className="muted small">{c.note}</span>}
                     <span className="muted small mcomp__reason">{c.reason}</span>
+                    {c.primaryJobStatus === 'unknown' && (
+                      <span className="small tone-warn mcomp__reason">Основная функция на странице не доказана (смысл UNKNOWN) — возможный, а не доказанный прямой конкурент.</span>
+                    )}
                     {c.marketVerified === false && (
                       <span className="small tone-warn mcomp__reason">
                         {c.marketStatus === 'not_assessed'
@@ -238,9 +241,18 @@ function Dossier({ d, feed }: { d: MachineCandidateDetail; feed: MachineFeed }) 
             <ul className="mdims" aria-label="Разбивка машинного балла">
               {DIMENSIONS.map((dim) => {
                 const raw = a.scores[dim.key];
+                const unverified = a.unverifiedJudgements?.includes(dim.key) ?? false;
                 return (
                   <li key={dim.key} className="mdims__row">
-                    <span>{dim.short}</span>
+                    <span>
+                      {dim.short}
+                      {unverified && (
+                        <span className="small tone-warn" title={UNVERIFIED_JUDGEMENT_MARK}>
+                          {' '}
+                          · без источника
+                        </span>
+                      )}
+                    </span>
                     <span className={cx('num', raw === null && 'muted')}>{raw === null ? '?' : `${raw}/5`}</span>
                     <span className="num muted">
                       {contribution(dim.max, raw)}/{dim.max}
@@ -249,6 +261,11 @@ function Dossier({ d, feed }: { d: MachineCandidateDetail; feed: MachineFeed }) 
                 );
               })}
             </ul>
+            {(a.unverifiedJudgements?.length ?? 0) > 0 && (
+              <p className="small tone-warn">
+                Экспертные оценки модели без подтверждённого источника ({a.unverifiedJudgements!.length}): учитываются по текущей формуле (до 4/5), помечены для аудита.
+              </p>
+            )}
             {a.dimensionNotes.length > 0 && (
               <details className="mnotes">
                 <summary>Как скорректирован балл ({a.dimensionNotes.length})</summary>

@@ -3,6 +3,7 @@
  * Every query is scoped to exactly one feed ('fixture' | 'live'); legacy/demo/test data are never read.
  */
 import { DIMENSION_KEYS } from '../../src/domain/scoring';
+import { unverifiedJudgements } from '../../src/domain/machine';
 import type {
   MachineAssessment,
   MachineCandidateDetail,
@@ -72,6 +73,7 @@ function assessmentFrom(r: Row): MachineAssessment {
     holdReasons: r.hold_reasons as string[],
     rationale: r.rationale as string,
     dimensionNotes: r.dimension_notes as string[],
+    unverifiedJudgements: unverifiedJudgements(r.dimension_notes as string[]),
     models: r.models as string[],
     pipelineVersion: r.pipeline_version as string,
   };
@@ -335,6 +337,7 @@ export async function machineCandidate(db: Queryable, feed: MachineFeed, externa
       // Historical rows (before 006) have no status: their market was never assessed → not «verified».
       marketStatus: (x.market_status as MachineCandidateDetail['competitors'][number]['marketStatus']) ?? 'not_assessed',
       marketVerified: x.market_status === 'verified' || x.market_status === 'declared',
+      ...(x.primary_job_status ? { primaryJobStatus: x.primary_job_status as 'proven' | 'unknown' | 'absent' } : {}),
     })),
     reviews: (await q('SELECT * FROM mr_reviews WHERE job_id = $1 AND candidate_id = $2 ORDER BY id')).map((x) => ({
       reviewer: x.reviewer as MachineCandidateDetail['reviews'][number]['reviewer'],

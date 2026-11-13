@@ -13,7 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { AIStudioChat, analystFromWire, analystStrictWire, analystWire, discoveryWire, offerWire, skepticWire } from '../live/ai-studio';
 import { loadLiveConfig } from '../live/config';
-import { groundOffer, jobQuoteProblem, priceProblem, type ExtractedOffer } from '../live/grounding';
+import { groundOffer, jobQuoteProblem, jobQuoteSupport, priceProblem, type ExtractedOffer } from '../live/grounding';
 import { assessProvenance } from '../live/provenance';
 import type { PageMeta } from '../live/html';
 import type { TransportRequest, TransportResponse, Transport } from '../live/net/transport';
@@ -275,8 +275,68 @@ describe('P2 regressions on the REAL stage2 extractions (13.11.2026)', () => {
     expect(cited.assessment.dimensionNotes.join('\n')).toMatch(/суждение без подтверждённого источника ограничено/);
   });
 
-  it('KNOWN GAP (separate work): a quote that only mentions guests passes the term check (E-regcard: guest identification)', () => {
+  it('FIXED: a quote about guest IDENTIFICATION does not prove the guest-guide function — UNKNOWN, not a proven job', () => {
     const g = ground(call('https://eregcard-id.ru/'));
-    expect(g.offer!.jobs).toContain('guest-guide'); // necessary condition only — a semantic quote↔job check is not implemented
+    expect(g.offer!.jobs).not.toContain('guest-guide');
+    expect(g.offer!.grounding!.uncertainJobs).toEqual({ 'guest-guide': 'Подключите быструю идентификацию гостей' });
+    expect(g.uncertain.join(' ')).toMatch(/guest-guide: смысловое соответствие не доказано: совпало одно слово \(«гостей»\) — UNKNOWN/);
+    expect(jobQuoteSupport('Подключите быструю идентификацию гостей', 'guest-guide', SEED)).toMatchObject({ level: 'uncertain', matched: ['гостей'] });
+  });
+
+  it('negative cases: one shared word (user, entity, generic product noun) never proves a job', () => {
+    for (const [quote, job] of [
+      ['Электронная регистрация гостей в отеле', 'guest-guide'], // guests, not a guide
+      ['Онлайн-оплата проживания для гостей', 'guest-guide'],
+      ['Digital guidebook (PWA)', 'guest-guide'], // guide, but for whom/what job is not stated
+      ['Самостоятельное заселение по коду замка', 'checkin-instructions'], // check-in, but no instructions
+      ['Contact collection', 'checkin-instructions'],
+      // audit of PR #13 (P2): two general words of the description, but not the function itself («гид»)
+      ['Цифровая регистрация гостей', 'guest-guide'],
+      ['Цифровой паспорт гостя', 'guest-guide'],
+      ['Электронная оплата заселения', 'checkin-instructions'], // «заселения» + «электронная», no «инструкция»
+    ] as const) {
+      expect(jobQuoteSupport(quote, job, SEED).level, quote).not.toBe('proven');
+    }
+    // and the positive real quotes stay proven
+    expect(jobQuoteSupport('The guidebook your guests actually use.', 'guest-guide', SEED)).toMatchObject({ level: 'proven' });
+    expect(jobQuoteSupport('Инструкции по заселению и выезду;', 'checkin-instructions', SEED)).toMatchObject({ level: 'proven' });
+    expect(jobQuoteSupport('Цифровой гид гостя с правилами дома', 'guest-guide', SEED)).toMatchObject({ level: 'proven' });
+    expect(jobQuoteSupport('Электронный гид для гостей апартаментов', 'guest-guide', SEED)).toMatchObject({ level: 'proven' });
+    expect(jobQuoteSupport('Гостевой портал для посуточной аренды', 'guest-guide', SEED)).toMatchObject({ level: 'proven' });
+    expect(jobQuoteSupport('Электронная инструкция по заселению для каждого объекта', 'checkin-instructions', SEED)).toMatchObject({ level: 'proven' });
+    expect(jobQuoteSupport('Share everything your guests need before and during the stay, from check-in instructions to local recommendations.', 'checkin-instructions', SEED)).toMatchObject({ level: 'proven' });
+    // the reason names what is missing
+    expect(jobQuoteSupport('Цифровая регистрация гостей', 'guest-guide', SEED).reason).toMatch(/совпали общие слова .*не слово самой функции — UNKNOWN/);
+  });
+
+  it('the rule is category-agnostic (head word of the description): other ideas behave the same way', () => {
+    const vag = { ruKeywords: ['расшифровка автоскан vcds', 'анализ логов vcds'] };
+    expect(jobQuoteSupport('онлайн-анализ CSV-логов измеряемых величин VCDS', 'vag-csv-log-analysis', vag).level).toBe('proven'); // АНАЛИЗ + логов
+    expect(jobQuoteSupport('хранение логов VCDS в облаке', 'vag-csv-log-analysis', vag).level).toBe('uncertain'); // логов + VCDS, no «анализ»
+    const quotes = { ruKeywords: ['сравнение коммерческих предложений', 'сравнить кп поставщиков'] };
+    expect(jobQuoteSupport('загрузите КП в PDF или Excel и получите сравнительную таблицу условий', 'quote-comparison', quotes).level).toBe('proven'); // СРАВНительную + КП
+    expect(jobQuoteSupport('хранилище коммерческих предложений поставщиков', 'quote-comparison', quotes).level).toBe('uncertain');
+    const invoices = { ruKeywords: ['напоминания об оплате счетов'] };
+    expect(jobQuoteSupport('автоматические напоминания об оплате', 'invoice-reminders', invoices).level).toBe('proven');
+    expect(jobQuoteSupport('выставление счетов и оплата онлайн', 'invoice-reminders', invoices).level).toBe('uncertain');
+  });
+
+  it('in the pipeline: a rival whose primary job is UNKNOWN is a possible rival — never a proven direct competitor, never proof of an empty niche', async () => {
+    const web = new RecordedWeb();
+    // GuestCom's page with its guest-guide quote replaced by an identification-only phrase present on the page
+    const hook: ConstructorParameters<typeof RecordedProviders>[0] = {
+      llm: (task, data) =>
+        task === 'extract_offer' && (data.page as { url: string }).url === 'https://gcom.host/'
+          ? { content: JSON.stringify({ isProductPage: true, name: 'GuestCom', market: 'ru', jobs: [{ job: 'guest-guide', quote: 'Электронный гид для гостей апартаментов'.replace('Электронный гид для', 'Регистрация') }], price: null, pageKind: 'vendor' }) }
+          : undefined,
+    };
+    const b = buildLiveProviders(cfg, { providerTransport: new RecordedProviders(hook), webTransport: web, resolver: web, sleep: async () => {}, clock: virtualClock() });
+    const r = await researchCandidate(SEEDS.guest!, true, '2026-11-12', b.providers, new CallContext('t', 1, 10_000_000));
+    const gc = r.competitors.find((c) => c.name === 'GuestCom');
+    if (gc) {
+      expect(gc.kind).not.toBe('direct');
+      expect(gc.primaryJobStatus).not.toBe('proven');
+    }
+    for (const c of r.competitors.filter((x) => x.kind === 'direct')) expect(c.primaryJobStatus, c.name).toBe('proven');
   });
 });

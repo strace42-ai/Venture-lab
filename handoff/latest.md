@@ -1,5 +1,106 @@
 # Venture Lab — Latest handoff
 
+## PR #13 audit fix 2 (on `c965198`) — a PROVEN direct rival refutes «no analogues», by code
+- **Defect:** `blockAbsence()` looked only at POSSIBLE rivals. A skeptic wrongly «supporting» an absence claim was accepted although a proven direct rival in that market had been found.
+- **Fix (`pipeline.ts`):** after the verdicts, code decides every **absence** claim against the rivals found, whatever the skeptic wrote (supported, no verdict, a bad refutation, or a hidden rival):
+  1. **A proven direct rival in that market** (market verified, primary job proven) → the claim is `contradicted`. The reason cites the rival's real source key and URL. A «supported» verdict becomes `needs_more_evidence` («отклонён кодом»), and the finding appears in the skeptic review (dossier).
+  2. **Only possible rivals there** (market or primary job not established) → `needs_more_evidence` (unchanged).
+  3. **A proven rival of another market only** → no effect.
+  - Claims WITHOUT `absence` («existing services serve the need poorly») are not refuted by a rival's existence; the RU cap applies as before.
+- **Code-level guarantees:** a proven rival never disappears: rivals the skeptic omits are added by code, and the kind is decided by code. A refuted claim scores 0 for RU dimensions and never raises the score. The selection rules are unchanged: one rival alone is not a hold.
+- **Tests:** `live-evidence-quality.test.ts` +5:
+  - RU direct + wrong «supported» → contradicted, real source cited, `ruUnmetJob` / `ruWeakness` = 0, reason in the dossier;
+  - no verdict / rival hidden by the skeptic → the rival stays direct, the claim is refuted;
+  - RU UNKNOWN → `needs_more_evidence`, null;
+  - a western direct with an RU-only absence → supported, 4;
+  - a non-absence weakness claim → not refuted, cap 2.
+
+  3 of these fail on the previous `pipeline.ts`.
+- **Full recorded corpus:** identical to `c965198` (claims, verdicts, rivals, scores); the benchmark is identical. The recorded skeptic already refuted where it should; the new rule only acts when the skeptic is wrong.
+- **Unchanged:** formula, other migrations, trial history, ledger. `vl_phase_b_probe` is still at 009.
+- **Checks:**
+  - `lint` ✔, `typecheck` ✔, `build` ✔;
+  - `CI=true npm test` with PostgreSQL ✔: **510 tests in 28 files**.
+
+---
+
+## PR #13 audit fixes (on `6a30684`) — UNKNOWN rivals block «no rivals», head-word semantic check, strict 010 CHECK
+- **P1 — an UNKNOWN rival did not block an absence claim.** The «supported absence» check looked only for `possible.some(kind === 'direct')`, but an UNKNOWN rival never gets kind `direct`.
+  - **Now `blockAbsence(market)`:** a rival possibly relevant in THAT market (market unproven + direct, or primary job UNKNOWN in that market / with an unproven market) turns a «supported» absence into `needs_more_evidence`. This works for absence claims about any market.
+  - **`possibleIn(market)`:** a PROVEN rival of another market, or a western UNKNOWN rival, neither blocks nor caps the Russian conclusion (no over-blocking).
+  - **Tests (PostgreSQL-free integration, a stub skeptic that wrongly supports «no analogues in Russia»):**
+    - an RU UNKNOWN rival gives `needs_more_evidence`; ruUnmetJob/ruWeakness stay null, not raised;
+    - a proven western rival and a western UNKNOWN rival keep the RU conclusion (4).
+  - Both new tests fail on the previous `pipeline.ts` (checked).
+- **P2 — two general words proved a job** («Цифровая регистрация гостей» vs «цифровой гид гостя»).
+  - **Now `proven` needs ≥ 2 words of ONE description INCLUDING its head word** — the function. The head is found by language rules, without category lists: the English slug is head-final (guest-GUIDE, quote-COMPARISON), a Russian phrase's head is its first non-adjective word ≥ 3 letters (цифровой ГИД гостя, электронная ИНСТРУКЦИЯ по заселению).
+  - Otherwise the result is UNKNOWN.
+  - **Negative cases:** регистрация / паспорт / оплата; «хранение логов VCDS»; «хранилище КП»; «выставление счетов».
+  - **Positive cases kept:** real guest guides and check-in instructions (Touch Stay, RealtyCalendar, GuestCom, RYNTO), the VAG log analysis, ВНИКЛИ, invoice reminders.
+- **P2 — migration 010 CHECK:** `kind <> 'direct' OR primary_job_status IS NOT DISTINCT FROM 'proven'` NOT VALID.
+  - Refuses direct + NULL, direct + unknown and direct + absent for new rows.
+  - A real upgrade 009 → 010 keeps a historical direct + NULL row byte-identical.
+  - An UPDATE to direct + unknown is refused by the CHECK itself (tested with the append-only trigger disabled).
+  - Two migration-006 tests now insert `primary_job_status = 'proven'` for their direct rows.
+- **Full recorded corpus, before vs after — exactly ONE change:**
+  - Vortholm (supplier-quote-compare) moves from `direct / primary proven` to a **possible rival** (`substitute`, primary job UNKNOWN). Its quote «сводит коммерческие предложения поставщиков в одну таблицу» names the object, not the function «сравнение».
+  - **No score, state, confidence or RU dimension changed:** ВНИКЛИ alone still refutes the gap, and the idea stays RESEARCH_HOLD at 10.
+  - Benchmark direct-RU recall 100% → 75% (fn 1 = Vortholm, shown as a possible rival); precision 100%.
+- **Unchanged:** formula, unverified-judgement marks, dossier/CSV, stage2 recovery, history, ledger. `vl_phase_b_probe` is still at 009 (probe succeeded, stage2 incomplete, 48 rows / 15.19 ₽).
+- **Checks:**
+  - `lint` ✔, `typecheck` ✔, `build` ✔;
+  - `CI=true npm test` with PostgreSQL ✔: **505 tests in 28 files**.
+
+---
+
+## VL-004B evidence quality — unverified judgements marked, semantic job check (2026-11-13)
+**Input:** founder's request, plus ChatGPT's review of PR #12 (`abd6819`). This is an offline PR. **Not changed:** the scoring formula, historical assessments, the budget ledger, statuses, and the recovery results in `vl_phase_b_probe`. Migration 010 has NOT been applied to it.
+
+**1. Unverified execution judgements** (speedToPilot, mvpFeasible, fastTest, retention, defensibility, riskManageable):
+- **Marked whenever counted from the model alone.** Every such score > 0 counted without a proven claim (and not refuted) gets the note `<dim>: <v> — не подтверждено источником: экспертная оценка модели`. This now applies to every such score, not only a capped 5 → 4.
+- **Where it shows:**
+  - dimension notes;
+  - the machine dossier: `MachineAssessment.unverifiedJudgements`, a badge «без источника» in the score breakdown, and a summary line;
+  - CSV: one `judgement` row per item (`unverified_model_judgement`), plus a list in the assessment row.
+- **Formula unchanged:** scores up to 4 are still counted. Historical assessments are not rewritten, so their marks are absent.
+
+**2. Semantic quote ↔ job check** (`grounding.ts: jobQuoteSupport`):
+- **proven** only if ≥ 2 distinct quote words match ONE description of the job: its slug, or one Russian keyword phrase of the candidate.
+- **UNKNOWN** — a single word, or words from different descriptions:
+  - «Подключите быструю идентификацию гостей» matches only «гостей»;
+  - «Электронная регистрация гостей» matches words from two phrases.
+- **none** — promotional copy, or no term at all.
+- **Effect:** the E-regcard known gap is closed.
+- **A rival with an UNKNOWN primary job:**
+  - kind comes from the PROVEN jobs only, so it is never a proven direct competitor;
+  - it is a **possible** rival, like an unproven market: the existing rules apply (it blocks support for an «empty RU niche», RU cap 3);
+  - it is stored as `primary_job_status` (migration **010**, NULL for history);
+  - a DB check (NOT VALID) requires `direct ⇒ proven` for new rows;
+  - it is shown in the dossier and in the CSV.
+
+**Benchmark** identical to PR #12: states, scores and rivals of the recorded corpus.
+
+**Tests:**
+- `live-evidence-quality.test.ts` (5): marks for 3/5, capped 5 and 0; evidence dimensions never marked; dossier and CSV; migration 010 refuses `direct + unknown`; history NULL kept.
+- `live-strict-extraction.test.ts` (+3 negative):
+  - E-regcard is UNKNOWN;
+  - entity-only and cross-phrase quotes never prove a job;
+  - in the pipeline, every direct rival has its primary job proven.
+- The migration-list test is updated.
+
+**Checks:**
+- `lint` ✔, `typecheck` ✔, `build` ✔.
+- `CI=true npm test` with PostgreSQL ✔: **499 tests in 28 files**.
+
+**Next (separate decisions):**
+- reconcile the 400/502 with Billing;
+- apply 010 to `vl_phase_b_probe`;
+- the paid `--retry` of Touch Stay (r2, 48.12 ₽).
+
+No paid request, no merge, `VL_LIVE_EXECUTE` off.
+
+---
+
 ## VL-004B-stage2-resume — strict analyst schema, «incomplete» status, safe resume, evidence kept, extraction regressions (2026-11-13)
 **Input.** Stage2 of `phase-b-pilot-01` (Touch Stay) on 13.11.2026.
 - The analyst got HTTP 400 «Invalid JSON Schema: all fields must be required, 'highImpact' is optional».

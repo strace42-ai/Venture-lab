@@ -68,7 +68,7 @@ describe('possible rivals never raise the Russian niche', () => {
       const r = await research(gap, m);
       expect(r.competitors.find((c) => c.name === 'Rival Reminders')).toMatchObject({ kind: 'direct', marketVerified: false, marketStatus: m });
       expect(r.assessment.scores.ruUnmetJob).toBe(3);
-      expect(r.assessment.dimensionNotes.join(' ')).toMatch(/потолок 3 — есть возможные конкуренты с неустановленным рынком \(Rival Reminders\)/);
+      expect(r.assessment.dimensionNotes.join(' ')).toMatch(/потолок 3 — есть возможные конкуренты \(рынок или основная функция не установлены\): Rival Reminders/);
       // not counted as proven: no «≥2 direct / free» hold, and Russia validation does not count it
       expect(r.assessment.holdReasons.join(' ')).not.toMatch(/Пробел опровергнут/);
     }
@@ -93,7 +93,7 @@ describe('possible rivals never raise the Russian niche', () => {
     expect(r.claims.find((x) => x.key === 'ru-gap')!.supportingKeys.length).toBeGreaterThan(0); // the quote IS on the page
     const c = r.claims.find((x) => x.key === 'ru-gap')!;
     expect(c.skepticVerdict).toBe('needs_more_evidence');
-    expect(c.skepticReason).toMatch(/возможный прямой конкурент с неустановленным рынком/);
+    expect(c.skepticReason).toMatch(/отсутствие конкурентов \(РФ\) не может считаться подтверждённым: есть возможные конкуренты — Rival Reminders \(рынок не установлен\)/);
     expect(r.assessment.scores.ruUnmetJob).toBeNull();
   });
 });
@@ -122,7 +122,9 @@ describe('recorded corpus: Quote Compare with rivals whose pages lose every RU s
     const b = buildLiveProviders(loadLiveConfig(TEST_ENV), { providerTransport: prov, webTransport: web, resolver: web, sleep: async () => {}, clock: virtualClock() });
     const r = await runPipeline(DAY, [], b.providers, new CallContext('t', 1, 1_000_000), { maxNew: 6, evidenceHits: 3, hitsPerQuery: 3, maxRuQueries: 8 });
     const c = r.candidates.find((x) => x.externalId === 'supplier-quote-compare')!;
-    expect(c.competitors.map((x) => `${x.name}:${x.kind}:${x.marketStatus}`).sort()).toEqual(['Vortholm:direct:unknown', 'ВНИКЛИ:direct:unknown']);
+    // audit of PR #13 (P2): Vortholm's quote «сводит коммерческие предложения поставщиков в одну таблицу» names the
+    // object, not the function (no «сравнение»): primary job UNKNOWN → a possible rival, no longer «direct»
+    expect(c.competitors.map((x) => `${x.name}:${x.kind}:${x.marketStatus}:${x.primaryJobStatus}`).sort()).toEqual(['Vortholm:substitute:unknown:unknown', 'ВНИКЛИ:direct:unknown:proven']);
     const gap = c.claims.find((x) => x.key === 'ru-gap')!;
     expect(gap.status).not.toBe('contradicted'); // not refuted by unproven rivals …
     expect(gap.skepticVerdict).toBe('needs_more_evidence');

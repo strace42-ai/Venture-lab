@@ -9,6 +9,7 @@
  * result atomically. Scores are computed ONLY by src/domain/scoring.ts (single source of truth).
  */
 import { z } from 'zod';
+import { unverifiedJudgementNote } from '../../src/domain/machine';
 import { DIMENSION_KEYS, evidenceConfidence, founderFit, marketScore } from '../../src/domain/scoring';
 import { analystProposalSchema, discoverySeedSchema, quoteProblem, skepticFindingsSchema } from './schemas';
 import type { ComponentScores, ConfidenceComponents, DimensionKey, ISODate, RawScore } from '../../src/domain/types';
@@ -78,6 +79,11 @@ const PAYMENT_EVIDENCE = /[$€£₽]|руб|\bUSD\b|\bEUR\b|per (month|year|use
 const limit = <T,>(xs: T[], n: number | undefined) => (n === undefined ? xs : xs.slice(0, n));
 
 /** direct = the rival's page proves the idea's PRIMARY job; adjacent = another of its jobs; else substitute. */
+/** proven: the page proves the primary job · unknown: only a weak (one-term) match · absent. */
+function primaryJobStatus(r: RawCompetitor, seed: DiscoverySeed): NonNullable<CompetitorRow['primaryJobStatus']> {
+  return r.jobs.includes(seed.primaryJob) ? 'proven' : r.uncertainJobs?.includes(seed.primaryJob) ? 'unknown' : 'absent';
+}
+
 function codeKind(r: RawCompetitor, seed: DiscoverySeed): CompetitorRow['kind'] {
   return r.jobs.includes(seed.primaryJob) ? 'direct' : r.jobs.some((j) => seed.jobs.includes(j)) ? 'adjacent' : 'substitute';
 }
@@ -332,7 +338,7 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
     const offer = r.read.status === 'ok' ? r.read.offer : null;
     // The western analogue the idea is modelled on is evidence of demand, not a rival.
     if (!offer || isWesternAnalogue(offer.name, url, seed) || raw.some((x) => x.market === offer.market && x.name === offer.name)) return;
-    raw.push({ name: offer.name, url, market: offer.market, sourceKey: r.key, jobs: offer.jobs, price: offer.price ?? null, foundBy: by, marketVerified: offer.grounding ? offer.grounding.marketVerified : true, marketStatus: offer.grounding ? offer.grounding.marketStatus : 'declared' });
+    raw.push({ name: offer.name, url, market: offer.market, sourceKey: r.key, jobs: offer.jobs, price: offer.price ?? null, foundBy: by, marketVerified: offer.grounding ? offer.grounding.marketVerified : true, marketStatus: offer.grounding ? offer.grounding.marketStatus : 'declared', uncertainJobs: Object.keys(offer.grounding?.uncertainJobs ?? {}) });
   };
   for (const q of limit(proposal.ruQueries, opts.maxRuQueries)) {
     for (const h of limit(await runSearch(p.search, ctx, searches, { agent: 'analyst', purpose: 'ru_competitors', region: 'ru', query: q }), opts.hitsPerQuery)) await collect(h.url, 'analyst');
@@ -390,20 +396,33 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
     // The kind follows the jobs PROVEN on the rival's page (code), not the model's opinion.
     const kind = codeKind(r, seed);
     if (kind !== c.kind) rejected.push(`«${c.name}»: скептик указал «${c.kind}», по подтверждённым на странице работам — «${kind}»`);
-    competitors.push({ name: c.name, url: r.url, market: c.market, kind, foundBy: r.foundBy, sourceKey: c.sourceKey, note: r.price ? `цена: ${r.price}` : null, reason: kind === c.kind ? c.reason : `${c.reason} (исправлено кодом: ${kind})`, marketVerified: r.marketVerified !== false, marketStatus: r.marketStatus ?? 'declared' });
+    competitors.push({ name: c.name, url: r.url, market: c.market, kind, foundBy: r.foundBy, sourceKey: c.sourceKey, note: r.price ? `цена: ${r.price}` : null, reason: kind === c.kind ? c.reason : `${c.reason} (исправлено кодом: ${kind})`, marketVerified: r.marketVerified !== false, marketStatus: r.marketStatus ?? 'declared', primaryJobStatus: primaryJobStatus(r, seed) });
   }
   // A rival the skeptic did not mention is still a rival: no model can hide a competitor found on a fetched page.
   for (const r of raw) {
     if (competitors.some((x) => x.name === r.name && x.market === r.market)) continue;
     const kind = codeKind(r, seed);
     rejected.push(`«${r.name}» не упомянут скептиком — классифицирован кодом как «${kind}»`);
-    competitors.push({ name: r.name, url: r.url, market: r.market, kind, foundBy: r.foundBy, sourceKey: r.sourceKey, note: r.price ? `цена: ${r.price}` : null, reason: 'классифицирован кодом по работам, подтверждённым на странице', marketVerified: r.marketVerified !== false, marketStatus: r.marketStatus ?? 'declared' });
+    competitors.push({ name: r.name, url: r.url, market: r.market, kind, foundBy: r.foundBy, sourceKey: r.sourceKey, note: r.price ? `цена: ${r.price}` : null, reason: 'классифицирован кодом по работам, подтверждённым на странице', marketVerified: r.marketVerified !== false, marketStatus: r.marketStatus ?? 'declared', primaryJobStatus: primaryJobStatus(r, seed) });
   }
   // Only rivals whose market is established by page signals count as proven competition.
   const proven = competitors.filter((c) => c.marketVerified !== false);
   // …but an unproven market is NOT evidence of absence: a rival whose page proves the job while its market is
   // conflicting/unknown is a POSSIBLE competitor — it can never raise the «empty Russian niche».
-  const possible = competitors.filter((c) => c.marketVerified === false && c.kind !== 'substitute');
+  // …and a rival whose page only WEAKLY matches the primary job (UNKNOWN meaning) is possible too, never proven.
+  // A rival is POSSIBLY relevant to a market when its competition there is not proven either way:
+  //  - its market is not established (it may be anywhere) and its page proves a job of the idea; or
+  //  - its primary job is UNKNOWN (quote on the page, meaning not established) and it is in that market, or its
+  //    market is not established.
+  // A PROVEN rival of another market (e.g. a verified western one) is not possible competition in this market.
+  const possibleIn = (market: 'ru' | 'west') =>
+    competitors.filter((c) => (c.marketVerified === false && c.kind !== 'substitute') || (c.primaryJobStatus === 'unknown' && (c.marketVerified === false || c.market === market)));
+  /** Rivals that forbid SUPPORTING «nobody does the primary job in <market>»: possibly direct, or primary job UNKNOWN. */
+  const blockAbsence = (market: 'ru' | 'west') => possibleIn(market).filter((c) => c.kind === 'direct' || c.primaryJobStatus === 'unknown');
+  const possible = possibleIn('ru');
+  for (const c of competitors.filter((x) => x.primaryJobStatus === 'unknown')) {
+    rejected.push(`«${c.name}»: основная работа (${seed.primaryJob}) на странице не доказана — смысловое соответствие UNKNOWN; не прямой конкурент, но и не доказательство отсутствия`);
+  }
   for (const c of competitors.filter((x) => x.marketVerified === false)) {
     rejected.push(`«${c.name}»: рынок ${c.marketStatus === 'conflicting' ? 'противоречив' : 'не подтверждён'} — не учитывается как доказанный конкурент, но не считается и доказательством отсутствия; перепроверяется автоматически`);
   }
@@ -423,8 +442,10 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
     if (v.verdict === 'supported' && (v.sourceKeys.length === 0 || v.sourceKeys.some((k) => !c.supportingKeys.includes(k)))) problem = 'подтверждение не опирается на источник, где код нашёл цитату';
     if (v.verdict === 'refuted' && absence && !v.sourceKeys.some((k) => proven.some((x) => x.sourceKey === k && x.market === absence.market && x.kind === 'direct'))) problem = 'опровержение не опирается на подтверждённого прямого конкурента (с установленным рынком)';
     if (v.verdict === 'refuted' && !absence && (v.sourceKeys.length === 0 || v.sourceKeys.some((k) => !okSrc.has(k)))) problem = 'опровержение не опирается на загруженный источник';
-    if (!problem && v.verdict === 'supported' && absence?.market === 'ru' && possible.some((x) => x.kind === 'direct'))
-      problem = `пробел в РФ не может считаться подтверждённым: есть возможный прямой конкурент с неустановленным рынком (${possible.filter((x) => x.kind === 'direct').map((x) => x.name).join(', ')})`;
+    if (!problem && v.verdict === 'supported' && absence && blockAbsence(absence.market).length) {
+      const xs = blockAbsence(absence.market);
+      problem = `отсутствие конкурентов (${absence.market === 'ru' ? 'РФ' : 'Запад'}) не может считаться подтверждённым: есть возможные конкуренты — ${xs.map((x) => `${x.name} (${x.primaryJobStatus === 'unknown' ? 'основная функция UNKNOWN' : 'рынок не установлен'})`).join(', ')}`;
+    }
     if (problem) {
       downgraded.add(c.key);
       rejected.push(`отклонено: вердикт «${v.verdict === 'supported' ? 'подтверждено' : 'опровергнуто'}» по ${c.key} — ${problem}`);
@@ -438,6 +459,34 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
       c.status = 'contradicted';
       c.reason = `опровергнуто скептиком: ${v.reason}`;
     }
+  }
+  // «Nobody does the primary job in <market>» is decided by CODE against the rivals actually found, whatever the
+  // skeptic wrote (a missing, «supported» or badly-cited verdict). Three cases (audit of PR #13, P1):
+  //  1. a PROVEN direct rival in that market (market verified, primary job proven on its page) → the absence claim
+  //     is CONTRADICTED, citing the rival's real source key and URL;
+  //  2. only POSSIBLE rivals there (market or primary job not established) → not refuted, not supported
+  //     (needs_more_evidence — handled above);
+  //  3. a proven rival of ANOTHER market only → no effect on this market.
+  // Only absence claims are touched: «existing rivals serve the need poorly» (no `absence`) is a different claim
+  // that the presence of a rival does not refute.
+  for (const c of claims) {
+    const absence = proposal.claims.find((pc) => pc.key === c.key)?.absence;
+    if (!absence || c.status === 'contradicted') continue;
+    const rivals = proven.filter((x) => x.market === absence.market && x.kind === 'direct' && x.primaryJobStatus !== 'unknown' && x.primaryJobStatus !== 'absent');
+    if (!rivals.length) continue;
+    const where = absence.market === 'ru' ? 'в РФ' : 'на Западе';
+    const cite = rivals.map((x) => `${x.name} [${x.sourceKey ?? '—'}] ${x.url ?? ''}`.trim()).join('; ');
+    if (c.skepticVerdict === 'supported' || c.skepticVerdict === 'needs_more_evidence' || c.skepticVerdict === 'not_reviewed') {
+      const was = c.skepticVerdict === 'supported' ? 'подтверждено' : c.skepticVerdict === 'needs_more_evidence' ? 'нужны доказательства' : 'нет вердикта';
+      rejected.push(`опровергнуто кодом: ${c.key} («${was}» у скептика) — ${where} есть подтверждённый прямой конкурент: ${cite}`);
+      downgraded.add(c.key);
+      if (c.skepticVerdict === 'supported') {
+        c.skepticVerdict = 'needs_more_evidence';
+        c.skepticReason = `вердикт скептика «подтверждено» отклонён кодом: ${where} есть подтверждённый прямой конкурент — ${cite}`;
+      }
+    }
+    c.status = 'contradicted';
+    c.reason = `опровергнуто кодом: ${where} есть подтверждённый прямой конкурент (рынок подтверждён, основная функция доказана на странице) — ${cite}`;
   }
   // A dispute that rests on a rejected verdict cannot be critical.
   const disputes = findings.disputes.map((d) => (d.claimKey && downgraded.has(d.claimKey) && d.severity === 'critical' ? { ...d, severity: 'minor' as const, reason: `${d.reason} (понижено: вердикт отклонён кодом)` } : d));
@@ -469,7 +518,7 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
   // Possible rivals (market not established) never let the RU dimensions rise above «competition unclear» (3).
   if (possible.length && ruCap > 3) {
     ruCap = 3;
-    notes.push(`РФ: потолок 3 — есть возможные конкуренты с неустановленным рынком (${possible.map((x) => x.name).join(', ')})`);
+    notes.push(`РФ: потолок 3 — есть возможные конкуренты (рынок или основная функция не установлены): ${possible.map((x) => x.name).join(', ')}`);
   }
   const scores = {} as Record<DimensionKey, RawScore>;
   const scoreClaimKeys = new Set<string>();
@@ -506,6 +555,9 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
       notes.push(`${d}: ${v} → ${UNSOURCED_CAP} (${prop.claims.length ? 'суждение без подтверждённого источника ограничено' : 'суждение без источника ограничено'})`);
       v = UNSOURCED_CAP;
     }
+    // Technical debt, made visible (formula unchanged): an execution judgement counted WITHOUT any proven claim is
+    // the model's expert opinion. Every such score > 0 is marked for later audit — not only a capped 5.
+    if (!EVIDENCE_DIMENSIONS.has(d) && v !== null && v > 0 && ok.length === 0 && refuted.length === 0) notes.push(unverifiedJudgementNote(d, v));
     if (v !== null && !d.startsWith('ru') && refuted.length) {
       notes.push(`${d}: ${v} → 1 (утверждение опровергнуто скептиком)`);
       v = 1;

@@ -44,7 +44,7 @@ describeDb('migrations 006–007 on a database that already ran 005', () => {
     expect((await pool.query("SELECT market_verified FROM mr_competitors WHERE name = 'Old Rival'")).rows[0].market_verified).toBe(true); // the 005 default
     // upgrade
     const r = await migrate(pool);
-    expect(r.applied).toEqual(['006_competitor_market_status', '007_null_safe_checks', '008_live_trials', '009_trial_runs_incomplete']);
+    expect(r.applied).toEqual(['006_competitor_market_status', '007_null_safe_checks', '008_live_trials', '009_trial_runs_incomplete', '010_competitor_primary_job_status']);
   });
   afterAll(async () => {
     await pool?.end();
@@ -66,7 +66,8 @@ describeDb('migrations 006–007 on a database that already ran 005', () => {
     const cand = (await pool.query("SELECT id FROM mr_candidates WHERE external_id = 'old-candidate'")).rows[0].id;
     let n = 0;
     const ins = (cols: string, vals: string) =>
-      pool.query(`INSERT INTO mr_competitors (job_id, candidate_id, feed, name, url, market, kind, found_by, source_key, note, classification_reason${cols}) VALUES ($1, $2, 'live', $3, null, 'ru', 'direct', 'skeptic', 's2', null, 'r'${vals})`, [jobId, cand, `New Rival ${++n}`]);
+      // primary_job_status 'proven': since 010 a «direct» rival must have its primary job proven (not under test here)
+      pool.query(`INSERT INTO mr_competitors (job_id, candidate_id, feed, name, url, market, kind, found_by, source_key, note, classification_reason, primary_job_status${cols}) VALUES ($1, $2, 'live', $3, null, 'ru', 'direct', 'skeptic', 's2', null, 'r', 'proven'${vals})`, [jobId, cand, `New Rival ${++n}`]);
     await expect(ins('', '')).rejects.toThrow(/market_status_required/);
     await expect(ins(', market_verified, market_status', ", true, 'unknown'")).rejects.toThrow(/market_status_consistent/);
     await expect(ins(', market_verified, market_status', ", false, 'banana'")).rejects.toThrow(/check/i);
@@ -79,7 +80,7 @@ describeDb('migrations 006–007 on a database that already ran 005', () => {
     let n = 100;
     const ins = (verified: boolean | null, status: string | null) =>
       pool.query(
-        "INSERT INTO mr_competitors (job_id, candidate_id, feed, name, url, market, kind, found_by, source_key, note, classification_reason, market_verified, market_status) VALUES ($1, $2, 'live', $3, null, 'ru', 'direct', 'skeptic', 's3', null, 'r', $4, $5)",
+        "INSERT INTO mr_competitors (job_id, candidate_id, feed, name, url, market, kind, found_by, source_key, note, classification_reason, market_verified, market_status, primary_job_status) VALUES ($1, $2, 'live', $3, null, 'ru', 'direct', 'skeptic', 's3', null, 'r', $4, $5, 'proven')",
         [jobId, cand, `Null Rival ${++n}`, verified, status],
       );
     await expect(ins(null, 'verified')).rejects.toThrow(/market_status_consistent/);
