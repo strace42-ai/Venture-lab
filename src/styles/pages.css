@@ -3104,3 +3104,10 @@
 .mdossier .scorecard__top { display: flex; align-items: center; gap: var(--s-5); }
 .mclaim__skeptic { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 var(--s-1); }
 .mcomp__reason { flex-basis: 100%; }
+
+/* VL-004B — run diagnostics */
+.diag-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr)); gap: var(--s-3) var(--s-5); margin: 0; }
+.diag-grid > div { min-width: 0; display: grid; gap: 2px; }
+.diag-grid dt { font-size: var(--fs-11); text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-3); }
+.diag-grid dd { margin: 0; font-size: var(--fs-13); overflow-wrap: anywhere; }
+.msource__line { display: block; overflow-wrap: anywhere; }

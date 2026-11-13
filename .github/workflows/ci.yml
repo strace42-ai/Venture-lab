@@ -81,5 +81,18 @@ jobs:
           npm run research:worker:run -- --fixture --as-of 2026-11-12 | tee /tmp/again.txt
           grep -q "already-succeeded" /tmp/again.txt
           npm run research:worker:status -- --fixture
-          # live providers are not configured in this sprint and must be refused
-          if npm run research:worker:run -- --as-of 2026-11-12; then echo "live run was not refused"; exit 1; fi
+          # a run without an explicit feed is refused
+          if npm run research:worker:run -- --as-of 2026-11-12; then echo "run without feed was not refused"; exit 1; fi
+      - name: CLI smoke — VL-004B live adapters (no network, no paid calls)
+        run: |
+          # dry-run: config + worst-case plan, no request of any kind
+          npm run research:worker:run -- --live --once --dry-run --as-of 2026-11-12 | tee /tmp/dry.txt
+          grep -q "DRY-RUN" /tmp/dry.txt
+          # paid execution is refused without Phase B configuration, and always refused in CI
+          if npm run research:worker:run -- --live --once --execute --max-spend-rub 1; then echo "live execute was not refused"; exit 1; fi
+          if VL_LIVE_PROVIDER=yandex YANDEX_FOLDER_ID=b1gcifolder0000000 YANDEX_API_KEY=ci-dummy-not-a-key npm run research:worker:run -- --live --once --execute --max-spend-rub 1; then echo "live execute ran in CI"; exit 1; fi
+          # no schedule for live in Phase A
+          if npm run research:worker:tick -- --live; then echo "live tick was not refused"; exit 1; fi
+          # offline benchmark on recorded HTTP
+          npm run research:benchmark | tee /tmp/bench.txt
+          grep -q "offline benchmark" /tmp/bench.txt

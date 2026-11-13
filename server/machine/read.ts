@@ -10,6 +10,7 @@ import type {
   MachineFeed,
   MachineOverview,
   MachineRun,
+  MachineRunDiagnostics,
   MachineSnapshotMeta,
   MachineState,
   MachineTopEntry,
@@ -96,7 +97,7 @@ export async function listMachineSnapshots(db: Queryable, feed: MachineFeed): Pr
 
 async function snapshotEntries(db: Queryable, snapshotId: number, firstJobId: number): Promise<MachineTopEntry[]> {
   const r = await db.query(
-    `SELECT e.*, c.external_id, c.first_job_id, a.category, a.segment, a.founder_fit
+    `SELECT e.*, c.external_id, c.first_job_id, a.category, a.segment, a.founder_fit, to_char(a.as_of, 'YYYY-MM-DD') AS assessed_as_of
        FROM mr_snapshot_entries e
        JOIN mr_candidates c ON c.id = e.candidate_id
        JOIN mr_assessments a ON a.id = e.assessment_id
@@ -116,7 +117,49 @@ async function snapshotEntries(db: Queryable, snapshotId: number, firstJobId: nu
     prevRank: (x.prev_rank as number | null) ?? null,
     scoreDelta: (x.score_delta as number | null) ?? null,
     isNew: x.first_job_id === firstJobId,
+    assessedAsOf: x.assessed_as_of as string,
+    carried: x.assessment_job_id !== null && x.assessment_job_id !== undefined,
   }));
+}
+
+/** What happened in one run: coverage, failures, validated rivals, contradictions, money (estimated vs observed). */
+export async function runDiagnostics(db: Queryable, jobId: number): Promise<MachineRunDiagnostics | null> {
+  const j = (await db.query('SELECT id, to_char(as_of, \'YYYY-MM-DD\') AS as_of, status, independence, partial_reason, error FROM mr_jobs WHERE id = $1', [jobId])).rows[0];
+  if (!j) return null;
+  const q = async (sql: string) => (await db.query(sql, [jobId])).rows as Row[];
+  const searches = await q("SELECT region, count(*)::int AS n, count(*) FILTER (WHERE status <> 'ok')::int AS failed FROM mr_searches WHERE job_id = $1 GROUP BY region");
+  const pages = await q('SELECT fetch_status, count(DISTINCT url)::int AS n FROM mr_sources WHERE job_id = $1 GROUP BY fetch_status');
+  const comps = await q(
+    "SELECT count(*) FILTER (WHERE market = 'ru' AND kind = 'direct' AND market_status IN ('verified', 'declared'))::int AS direct, count(*) FILTER (WHERE market = 'ru' AND kind = 'adjacent' AND market_status IN ('verified', 'declared'))::int AS adjacent, count(DISTINCT name) FILTER (WHERE market = 'ru' AND market_status IN ('verified', 'declared'))::int AS distinct_ru, count(*) FILTER (WHERE market_status IS NULL OR market_status IN ('conflicting', 'unknown'))::int AS unverified FROM mr_competitors WHERE job_id = $1",
+  );
+  const indep = await q("SELECT count(DISTINCT url)::int AS n FROM mr_sources WHERE job_id = $1 AND provenance->>'independence' = 'unverified'");
+  const contra = await q("SELECT count(*)::int AS n FROM mr_claims WHERE job_id = $1 AND status = 'contradicted'");
+  const cost = await q(
+    `SELECT COALESCE(SUM(COALESCE(estimated_cost, cost)), 0)::int AS estimated, COALESCE(SUM(cost), 0)::int AS charged, COALESCE(SUM(actual_cost), 0)::int AS observed,
+            count(*) FILTER (WHERE reconciliation IN ('unknown', 'estimate_only'))::int AS unknown, count(*) FILTER (WHERE reconciliation = 'anomaly_over_estimate')::int AS anomalies
+       FROM mr_usage WHERE job_id = $1`,
+  );
+  const conf = await q('SELECT round(avg(confidence))::int AS c FROM mr_assessments WHERE job_id = $1');
+  const carried = await q('SELECT COALESCE(max(carried_count), 0)::int AS n FROM mr_snapshots WHERE job_id = $1');
+  const by = (region: string) => searches.find((x) => x.region === region)?.n as number | undefined;
+  const byStatus = Object.fromEntries(pages.map((p) => [p.fetch_status as string, p.n as number]));
+  const ok = (byStatus.ok as number | undefined) ?? 0;
+  return {
+    jobId,
+    asOf: j.as_of as string,
+    status: j.status as MachineRunDiagnostics['status'],
+    independence: (j.independence as MachineRunDiagnostics['independence']) ?? null,
+    searches: { ru: by('ru') ?? 0, west: by('west') ?? 0, world: by('world') ?? 0, failed: searches.reduce((a, x) => a + (x.failed as number), 0) },
+    pages: { ok, failed: Object.values(byStatus).reduce((a, n) => a + n, 0) - ok, byStatus },
+    competitors: { ruDirect: comps[0]!.direct as number, ruAdjacent: comps[0]!.adjacent as number, distinctRu: comps[0]!.distinct_ru as number, marketUnverified: comps[0]!.unverified as number },
+    independenceUnverified: indep[0]!.n as number,
+    contradictions: contra[0]!.n as number,
+    cost: { estimated: cost[0]!.estimated as number, charged: cost[0]!.charged as number, observed: cost[0]!.observed as number, unknownCalls: cost[0]!.unknown as number, anomalies: cost[0]!.anomalies as number },
+    averageConfidence: (conf[0]!.c as number | null) ?? null,
+    partialReason: (j.partial_reason as string | null) ?? null,
+    error: (j.error as string | null) ?? null,
+    carried: carried[0]!.n as number,
+  };
 }
 
 export async function machineSnapshot(db: Queryable, feed: MachineFeed, asOf: ISODate) {
@@ -217,6 +260,7 @@ export async function machineOverview(db: Queryable, feed: MachineFeed, now = ne
     changes,
     costs: { lastRun: (latest?.spent as number | undefined) ?? 0, month, budgetPerRun: (latest?.budget_limit as number | undefined) ?? DEFAULT_JOB_BUDGET, monthlyBudget: (latest?.monthly_cap as number | undefined) ?? DEFAULT_MONTHLY_BUDGET, priceVersion },
     totals,
+    diagnostics: latest ? await runDiagnostics(db, latest.id as number) : null,
   };
 }
 
@@ -253,6 +297,11 @@ export async function machineCandidate(db: Queryable, feed: MachineFeed, externa
       httpStatus: (s.http_status as number | null) ?? null,
       excerpt: (s.excerpt as string | null) ?? null,
       agent: s.agent as 'analyst' | 'skeptic',
+      canonicalUrl: (s.canonical_url as string | null) ?? null,
+      fetchedAt: s.fetched_at ? (s.fetched_at as Date).toISOString() : null,
+      failure: (s.failure as string | null) ?? null,
+      offerUncertain: ((s.offer as { grounding?: { uncertain?: string[] } } | null)?.grounding?.uncertain ?? []).slice(0, 10),
+      provenance: (s.provenance as MachineCandidateDetail['sources'][number]['provenance']) ?? null,
     })),
     claims: (await q('SELECT * FROM mr_claims WHERE job_id = $1 AND candidate_id = $2 ORDER BY id')).map((x) => ({
       key: x.claim_key as string,
@@ -283,6 +332,9 @@ export async function machineCandidate(db: Queryable, feed: MachineFeed, externa
       foundBy: x.found_by as 'analyst' | 'skeptic',
       note: (x.note as string | null) ?? null,
       reason: x.classification_reason as string,
+      // Historical rows (before 006) have no status: their market was never assessed → not «verified».
+      marketStatus: (x.market_status as MachineCandidateDetail['competitors'][number]['marketStatus']) ?? 'not_assessed',
+      marketVerified: x.market_status === 'verified' || x.market_status === 'declared',
     })),
     reviews: (await q('SELECT * FROM mr_reviews WHERE job_id = $1 AND candidate_id = $2 ORDER BY id')).map((x) => ({
       reviewer: x.reviewer as MachineCandidateDetail['reviews'][number]['reviewer'],

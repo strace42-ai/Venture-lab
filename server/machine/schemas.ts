@@ -35,6 +35,8 @@ export const discoverySeedSchema = z.strictObject({
   primaryJob: z.string().regex(/^[a-z0-9][a-z0-9-]{1,60}$/),
   jobs: z.array(z.string().regex(/^[a-z0-9][a-z0-9-]{1,60}$/)).min(1),
   westernProduct: z.string().trim().min(1).max(200),
+  ruKeywords: z.array(z.string().trim().min(2).max(120)).max(12).optional(),
+  sourceUrl: httpUrl.optional(),
 });
 
 export const proposedClaimSchema = z.strictObject({
@@ -49,8 +51,7 @@ export const proposedClaimSchema = z.strictObject({
   absence: z.strictObject({ market: z.enum(['west', 'ru']), job: z.string().min(1) }).optional(),
 });
 
-export const analystProposalSchema = z
-  .strictObject({
+export const analystProposalBase = z.strictObject({
     model: z.string().min(1).max(120),
     claims: z.array(proposedClaimSchema).max(60),
     scores: z.partialRecord(dim, z.strictObject({ value: raw, claims: z.array(z.string()).max(20) })),
@@ -59,8 +60,9 @@ export const analystProposalSchema = z
       .nullable(),
     ruQueries: z.array(z.string().trim().min(1).max(300)).max(20),
     rationale: z.string().trim().min(3).max(4000),
-  })
-  .superRefine((p, ctx) => {
+  });
+
+export const analystProposalSchema = analystProposalBase.superRefine((p, ctx) => {
     const keys = new Set<string>();
     for (const c of p.claims) {
       if (keys.has(c.key)) ctx.addIssue({ code: 'custom', message: `повтор ключа утверждения ${c.key}` });

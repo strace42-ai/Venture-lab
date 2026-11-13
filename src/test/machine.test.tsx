@@ -32,8 +32,8 @@ function overview(over: Partial<MachineOverview> = {}): MachineOverview {
       holdCount: 1,
       publishedAt: '2026-11-12T03:00:02Z',
       entries: [
-        { rank: 1, externalId: 'invoice-reminders-smb', title: 'Пример: напоминания об оплате', category: 'Finance', segment: 'B2B', marketScore: 72, confidence: 74, founderFit: 27, evidenceGrade: 'B', prevRank: 1, scoreDelta: 0, isNew: false },
-        { rank: 2, externalId: 'focus-coworking-1on1', title: 'Фокус-коворкинг 1-на-1', category: 'Productivity', segment: 'B2C', marketScore: 64, confidence: 65, founderFit: 24, evidenceGrade: 'B', prevRank: 1, scoreDelta: -4, isNew: false },
+        { rank: 1, externalId: 'invoice-reminders-smb', title: 'Пример: напоминания об оплате', category: 'Finance', segment: 'B2B', marketScore: 72, confidence: 74, founderFit: 27, evidenceGrade: 'B', prevRank: 1, scoreDelta: 0, isNew: false, assessedAsOf: '2026-11-12', carried: false },
+        { rank: 2, externalId: 'focus-coworking-1on1', title: 'Фокус-коворкинг 1-на-1', category: 'Productivity', segment: 'B2C', marketScore: 64, confidence: 65, founderFit: 24, evidenceGrade: 'B', prevRank: 1, scoreDelta: -4, isNew: false, assessedAsOf: '2026-11-12', carried: false },
       ],
     },
     previousSnapshot: { asOf: '2026-11-11', jobId: 2, eligibleCount: 2, holdCount: 1, publishedAt: '2026-11-11T03:00:00Z' },
@@ -42,6 +42,7 @@ function overview(over: Partial<MachineOverview> = {}): MachineOverview {
     changes: [{ kind: 'competitor', externalId: 'focus-coworking-1on1', title: 'Фокус-коворкинг 1-на-1', competitor: 'Пример: ФокусПара', market: 'ru', competitorKind: 'direct', url: null }],
     costs: { lastRun: 659, month: 1754, budgetPerRun: 2000, monthlyBudget: 40000, priceVersion: 'fixture-prices-2026-11' },
     totals: { candidates: 3, passed: 2, held: 1, discovered: 0 },
+    diagnostics: null,
     ...over,
   };
 }
@@ -117,12 +118,13 @@ describe('Автоматический TOP-10 (machine dashboard)', () => {
     expect(screen.getByText('Новый конкурент в РФ')).toBeInTheDocument();
   });
 
-  it('switching to the live feed shows an honest «not connected» state', async () => {
+  it('switching to the live feed shows an honest «no live runs, paid calls disabled» state', async () => {
     const user = renderAt('/machine');
     await screen.findByRole('table', { name: 'Автоматический TOP-10' });
     await user.click(screen.getByRole('radio', { name: 'Живой воркер' }));
     expect(screen.getByTestId('loc')).toHaveTextContent('feed=live');
-    expect(await screen.findByText('Живой воркер ещё не подключён')).toBeInTheDocument();
+    expect(await screen.findByText('Живых прогонов ещё не было')).toBeInTheDocument();
+    expect(screen.getByText(/платные вызовы выключены до отдельного разрешения/)).toBeInTheDocument();
   });
 
   it('a failed latest run keeps showing the last successful TOP with a failure indicator', async () => {
@@ -130,6 +132,39 @@ describe('Автоматический TOP-10 (machine dashboard)', () => {
     renderAt('/machine', client({ overview: async () => overview({ latestRun: failed }) }));
     expect(await screen.findByText(/бюджет задания исчерпан — показан последний успешный TOP-10/)).toBeInTheDocument();
     expect(screen.getByRole('table', { name: 'Автоматический TOP-10' })).toBeInTheDocument();
+  });
+
+  it('live feed: run diagnostics, ₽ costs and carried-forward entries are shown honestly', async () => {
+    const liveRun = { ...run, feed: 'live' as const, jobKey: 'daily:live:2026-11-13', asOf: '2026-11-13', spent: 1834, budgetLimit: 20000 };
+    const snap = overview().snapshot!;
+    const live = overview({
+      feed: 'live',
+      latestRun: liveRun,
+      lastSuccess: liveRun,
+      snapshot: { ...snap, asOf: '2026-11-13', entries: [snap.entries[0]!, { ...snap.entries[1]!, carried: true, assessedAsOf: '2026-11-12' }] },
+      costs: { lastRun: 1834, month: 5523, budgetPerRun: 20000, monthlyBudget: 40000, priceVersion: 'yandex-2026-11-12' },
+      diagnostics: {
+        jobId: 9, asOf: '2026-11-13', status: 'succeeded', independence: 'independent',
+        searches: { ru: 31, west: 2, world: 12, failed: 1 },
+        pages: { ok: 22, failed: 3, byStatus: { ok: 22, robots_disallowed: 2, blocked: 1 } },
+        competitors: { ruDirect: 5, ruAdjacent: 1, distinctRu: 6, marketUnverified: 2 },
+        independenceUnverified: 1,
+        contradictions: 2,
+        cost: { estimated: 4120, charged: 1834, observed: 1834, unknownCalls: 1, anomalies: 0 },
+        averageConfidence: 47, partialReason: null, error: null, carried: 1,
+      },
+    });
+    renderAt('/machine?feed=live', client({ overview: async () => live }));
+    expect(await screen.findByText('Диагностика последнего прогона')).toBeInTheDocument();
+    expect(screen.getByText(/две независимые модели/)).toBeInTheDocument();
+    expect(screen.getByText(/запрещено robots\.txt: 2/)).toBeInTheDocument();
+    expect(screen.getByText(/прямых 5 · смежных 1/)).toBeInTheDocument();
+    expect(screen.getByText(/рынок не подтверждён \(не учтены\): 2/)).toBeInTheDocument();
+    expect(screen.getByText(/источников: 1 — учтены как «тип не установлен»/)).toBeInTheDocument();
+    expect(screen.getByText(/41,20 ₽ → 18,34 ₽/)).toBeInTheDocument();
+    expect(screen.getByText(/без подтверждённой стоимости: 1 \(учтён максимум\)/)).toBeInTheDocument();
+    expect(screen.getAllByText(/оценка от 12 нояб.*не перепроверялась|оценка от .*не перепроверялась/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/только ручной разовый запуск/)).toBeInTheDocument();
   });
 
   it('API errors render a retryable error state', async () => {

@@ -1,4 +1,4 @@
-# Autonomous machine-research worker (VL-004A) — as implemented
+# Autonomous machine-research worker (VL-004A + VL-004B Phase A) — as implemented
 
 The architecture source of truth is `docs/no-vpn-automation-architecture.md` v2.0. This page describes what the code does today.
 **There is no human approval step anywhere in the machine pipeline.**
@@ -59,19 +59,94 @@ The architecture source of truth is `docs/no-vpn-automation-architecture.md` v2.
 - **Assessment date.** Assessments, sources and snapshots reference `(job_id, feed, as_of)`, so they cannot be backdated.
 - **Snapshot entries** reference `(snapshot_id, job_id, feed)` and `(assessment_id, job_id, candidate_id, title, market_score, confidence, evidence_grade, state)`. A frozen entry is therefore an exact copy of an `AUTOMATED_EVIDENCE_PASSED` assessment from the same job and candidate.
 - **Grade rule.** A passed assessment can never have grade D.
+- **Migration 007 (VL-004B audit round 3) — NULL-safe CHECKs.** A CHECK passes when it evaluates to NULL, so:
+  - `market_status` ↔ `market_verified` now uses `IS NOT DISTINCT FROM`: a status paired with a NULL boolean is refused;
+  - `mr_usage_cost_bound` requires a non-NULL `actual_cost` for `reconciled` / `tariff` / `not_billed` and compares costs NULL-safely;
+  - new usage rows must carry `estimated_cost` (`NOT VALID`, so rows written before 005 stay as they were).
+- **Migration 006 (VL-004B audit round 2).** `mr_competitors.market_status`:
+  - historical rows are NULL, which reads as «not assessed», never verified (005 had defaulted them to `market_verified=true`);
+  - `market_verified` lost its default;
+  - new rows must state the status, and the two columns must agree. Both rules are enforced by `NOT VALID` checks, so history is not rewritten.
+- **Migration 005 (VL-004B).**
+  - Source provenance: canonical URL, fetch time, title, content type, failure, grounded offer, extraction model.
+  - Quote locations.
+  - Usage reconciliation, with a CHECK that the ledger never counts less than the worst case unless the provider reported the cost.
+  - Job independence mode.
+  - Carried-forward snapshot entries.
+  - New fetch statuses: `robots_disallowed`, `unsafe_url`, `unsupported_content`, `too_large`, `timeout`.
 - **Immutability.** Event tables are append-only. Jobs and attempts cannot be deleted, a job's identity is immutable, a reservation can only grow (top-up) and only while its attempt is running and unsettled, and recorded usage cannot be rewritten.
 
 ## Providers
-`SearchProvider`, `SourceReader`, `LLMProvider` and `SkepticalReviewer` live in `server/machine/types.ts`. This sprint has only the fixture implementations (`server/machine/providers/fixture.ts`, `server/machine/fixtures/world.ts`).
+`SearchProvider`, `SourceReader`, `LLMProvider` and `SkepticalReviewer` live in `server/machine/types.ts`. There are two implementations:
+- **fixture** (`server/machine/providers/fixture.ts`, `server/machine/fixtures/world.ts`) — offline emulation, the `fixture` feed;
+- **live** (`server/live/*`, VL-004B) — Yandex Search API, AI Studio (Qwen3.6 35B analyst/extraction, DeepSeek V4.1 Flash skeptic) and a secure page reader, the `live` feed. In Phase A they are exercised only on recorded HTTP; paid calls need Phase B authorisation (see `docs/live-provider-setup.md`).
+
+### Live mode (VL-004B) — what code guarantees around the models
+- **Search results are leads.** Discovery seeds must come from real discovery hits (`sourceUrl` ∈ hits). Before analysis the analyst gets an **evidence pack** of pages actually found and fetched, and every claim may cite only those URLs. A model-generated URL is **never fetched** and never counts.
+- **Secure reader** (`server/live/net/`):
+  - http(s) on 80/443 only;
+  - every DNS answer must be public (no loopback, private, link-local/metadata, CGNAT, ULA, mapped forms…), and the connection is pinned to the validated address, so DNS rebinding cannot redirect it;
+  - redirects are re-validated hop by hop, and https→http is refused;
+  - robots.txt is honoured (5xx = disallow);
+  - size cap after decompression, timeouts, HTML/text only (PDF → `unsupported_content`);
+  - visible text only: scripts and hidden elements are dropped;
+  - instruction-like content (also when hidden) → quarantine.
+- **Offers are grounded by code** (`server/live/grounding.ts`). The extraction model proposes name, market, jobs-with-quotes and price; code keeps only what is literally on the page. Anything else is stored as «uncertain» and never used.
+- **A rival's market must be established, not guessed** (audits P1, round 2). `marketEvidence()` returns one of three states:
+  - **`verified`.**
+    - A **strong RU signal** establishes «ru» whatever the page language: a ₽/руб/RUB price, a +7 phone, ИНН/ОГРН, or Russian payment rails (СБП, «Мир», ЮKassa). An English page of a Russian product is Russian.
+    - A multi-currency page with ₽ is sold in Russia; the mix is recorded.
+    - An RU domain alone also gives «ru», but only without western prices.
+    - $/€/£ prices with no RU signal give «west».
+  - **`conflicting`** — an RU domain with prices only in $/€/£.
+  - **`unknown`** — no availability signal at all. Russian language alone is localisation, not sales.
+
+  How the home page is used, and what a rival without a verified market means:
+  - **Home page only fills a gap.** It is fetched automatically (free) only when the product page is `unknown`. The signals of both pages are pooled and re-judged, with conflicts kept. A `conflicting` or `verified` page is never overridden.
+  - **A rival whose market is not verified** is stored with `mr_competitors.market_status` (`verified` · `declared` for fixture emulation · `conflicting` · `unknown`). It is a **possible competitor**, neither proof of competition nor proof of its absence:
+    - it is not used for refutations, «≥2 direct / free» holds or Russia validation;
+    - but while it exists the Russian dimensions are capped at 3 («competition unclear», never the 4 from an independent RU source);
+    - and an «empty niche in Russia» claim cannot be supported.
+  - These are page signals, not proof of legal registration or payment acceptance in Russia.
+- **Registrable domain** (`siteOf`) uses the Public Suffix List (`tldts`, including private suffixes): `a.b.co.uk` → `b.co.uk`, `alice.github.io` ≠ `bob.github.io`.
+- **«Independent» needs verifiable provenance** (`server/live/provenance.ts`, audit P1).
+  - The model's «independent» is necessary but never sufficient. All of these are also required:
+    - a site that does not belong to the product: not the seed source, not a site with a grounded offer this run, the brand not in the domain;
+    - no product offer on the page;
+    - publication markup (`og:type=article`, schema.org Article/Review/NewsArticle/BlogPosting, or `<article>`);
+    - a named publisher or author that is not the product.
+  - Otherwise the source type is UNKNOWN («тип не установлен») or a self-report, and it cannot raise the evidence grade or reliability.
+  - The decision and its signals are stored in `mr_sources.provenance`.
+- **Competitor kind is decided by code** from the jobs proven on the rival's page: direct = the idea's primary job. The skeptic's label is checked against it. A rival the skeptic omits is still counted, and a rival it invents is dropped. The Western analogue is never a rival.
+- **Popularity ≠ payment.** A claim about paying users or revenue needs a quote about money; «10,000 companies use» does not verify it.
+- **Independent second model.** The analyst and skeptic families must differ (Qwen vs DeepSeek). The same family is refused, or — only if explicitly allowed — every candidate is held as `single-model-degraded`.
+- **Money.** Before every paid call the worker reserves a worst case: input bytes + framing + `max_tokens`, or the search tariff. After the response it reconciles from `usage` × tariff, the tariff or «not billed».
+  - A timeout or missing usage keeps the worst case (`unknown`).
+  - Usage above the bound is an anomaly and stops paid calls.
+  - Retries happen only on 429/5xx, with backoff, jitter and Retry-After; there are no retries on 401/403. A circuit breaker opens after repeated failures.
+  - Ledger: `mr_usage.estimated_cost / actual_cost / reconciliation / provider_request_id`.
+- **Rotation.** At most `VL_LIVE_MAX_NEW` new candidates and `VL_LIVE_MAX_RECHECKS` incumbents (the least recently assessed) are researched per run. A recent PASSED assessment of an incumbent that was not rechecked is **carried forward** into the TOP with its own date. The DB requires that it is older than the snapshot, at most 30 days old, and an exact copy of that assessment.
+- **Diagnostics** of the latest run, on the dashboard and the API:
+  - searches by region;
+  - pages read and failure reasons;
+  - validated RU direct/adjacent rivals;
+  - contradictions;
+  - cost reserved → charged, unknown calls and anomalies;
+  - average confidence;
+  - partial or failure reason;
+  - carried entries.
 - The fixture world is an offline emulation.
 - Pages under real URLs paraphrase what the VL-003P corpus observed on 2026-11-12. They are **regression scenarios**: guest guide → RealtyCalendar / RYNTO / GuestCom; VAG → VAGLOGS; quote comparison → ВНИКЛИ / Vortholm.
 - Fictional items use example.* domains and names that start with «Пример:».
-- Live providers (Yandex Search API / AI Studio) are VL-004B. `--feed live` without providers is refused.
+- Live providers are in `server/live/`; they are only ever run on recorded HTTP in tests (`server/live/recordings/`) until Phase B.
 
 ## Commands
 ```bash
 npm run research:worker:run -- --fixture --as-of 2026-11-10   # also 2026-11-11, 2026-11-12
 npm run research:worker:tick -- --fixture [--now 2026-11-12T00:30:00Z]
 npm run research:worker:status -- --fixture
+npm run research:worker:run -- --live --once --dry-run          # VL-004B: config + worst-case plan, no network
+npm run research:benchmark                                       # VL-004B: offline guardrail benchmark (recorded HTTP)
+# Phase B only (founder-authorised): npm run research:worker:run -- --live --once --execute --max-spend-rub N
 ```
 API (read-only): `/api/machine/overview|runs|snapshots|snapshots/:asOf|candidates/:id?feed=fixture|live`. UI: `/machine` and `/machine/:id`.
