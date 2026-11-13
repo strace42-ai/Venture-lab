@@ -299,7 +299,7 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
     const offer = r.read.status === 'ok' ? r.read.offer : null;
     // The western analogue the idea is modelled on is evidence of demand, not a rival.
     if (!offer || isWesternAnalogue(offer.name, url, seed) || raw.some((x) => x.market === offer.market && x.name === offer.name)) return;
-    raw.push({ name: offer.name, url, market: offer.market, sourceKey: r.key, jobs: offer.jobs, price: offer.price ?? null, foundBy: by, marketVerified: offer.grounding ? offer.grounding.marketVerified : true });
+    raw.push({ name: offer.name, url, market: offer.market, sourceKey: r.key, jobs: offer.jobs, price: offer.price ?? null, foundBy: by, marketVerified: offer.grounding ? offer.grounding.marketVerified : true, marketStatus: offer.grounding ? offer.grounding.marketStatus : 'declared' });
   };
   for (const q of limit(proposal.ruQueries, opts.maxRuQueries)) {
     for (const h of limit(await runSearch(p.search, ctx, searches, { agent: 'analyst', purpose: 'ru_competitors', region: 'ru', query: q }), opts.hitsPerQuery)) await collect(h.url, 'analyst');
@@ -374,18 +374,23 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
     // The kind follows the jobs PROVEN on the rival's page (code), not the model's opinion.
     const kind = codeKind(r, seed);
     if (kind !== c.kind) rejected.push(`«${c.name}»: скептик указал «${c.kind}», по подтверждённым на странице работам — «${kind}»`);
-    competitors.push({ name: c.name, url: r.url, market: c.market, kind, foundBy: r.foundBy, sourceKey: c.sourceKey, note: r.price ? `цена: ${r.price}` : null, reason: kind === c.kind ? c.reason : `${c.reason} (исправлено кодом: ${kind})`, marketVerified: r.marketVerified !== false });
+    competitors.push({ name: c.name, url: r.url, market: c.market, kind, foundBy: r.foundBy, sourceKey: c.sourceKey, note: r.price ? `цена: ${r.price}` : null, reason: kind === c.kind ? c.reason : `${c.reason} (исправлено кодом: ${kind})`, marketVerified: r.marketVerified !== false, marketStatus: r.marketStatus ?? 'declared' });
   }
   // A rival the skeptic did not mention is still a rival: no model can hide a competitor found on a fetched page.
   for (const r of raw) {
     if (competitors.some((x) => x.name === r.name && x.market === r.market)) continue;
     const kind = codeKind(r, seed);
     rejected.push(`«${r.name}» не упомянут скептиком — классифицирован кодом как «${kind}»`);
-    competitors.push({ name: r.name, url: r.url, market: r.market, kind, foundBy: r.foundBy, sourceKey: r.sourceKey, note: r.price ? `цена: ${r.price}` : null, reason: 'классифицирован кодом по работам, подтверждённым на странице', marketVerified: r.marketVerified !== false });
+    competitors.push({ name: r.name, url: r.url, market: r.market, kind, foundBy: r.foundBy, sourceKey: r.sourceKey, note: r.price ? `цена: ${r.price}` : null, reason: 'классифицирован кодом по работам, подтверждённым на странице', marketVerified: r.marketVerified !== false, marketStatus: r.marketStatus ?? 'declared' });
   }
   // Only rivals whose market is established by page signals count as proven competition.
   const proven = competitors.filter((c) => c.marketVerified !== false);
-  for (const c of competitors.filter((x) => x.marketVerified === false)) rejected.push(`«${c.name}»: рынок не подтверждён признаками страницы — в оценке конкуренции не учитывается, перепроверяется автоматически`);
+  // …but an unproven market is NOT evidence of absence: a rival whose page proves the job while its market is
+  // conflicting/unknown is a POSSIBLE competitor — it can never raise the «empty Russian niche».
+  const possible = competitors.filter((c) => c.marketVerified === false && c.kind !== 'substitute');
+  for (const c of competitors.filter((x) => x.marketVerified === false)) {
+    rejected.push(`«${c.name}»: рынок ${c.marketStatus === 'conflicting' ? 'противоречив' : 'не подтверждён'} — не учитывается как доказанный конкурент, но не считается и доказательством отсутствия; перепроверяется автоматически`);
+  }
   const okSrc = new Set(sources.filter((s) => s.fetchStatus === 'ok').map((s) => s.key));
   const downgraded = new Set<string>();
   for (const c of claims) {
@@ -402,6 +407,8 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
     if (v.verdict === 'supported' && (v.sourceKeys.length === 0 || v.sourceKeys.some((k) => !c.supportingKeys.includes(k)))) problem = 'подтверждение не опирается на источник, где код нашёл цитату';
     if (v.verdict === 'refuted' && absence && !v.sourceKeys.some((k) => proven.some((x) => x.sourceKey === k && x.market === absence.market && x.kind === 'direct'))) problem = 'опровержение не опирается на подтверждённого прямого конкурента (с установленным рынком)';
     if (v.verdict === 'refuted' && !absence && (v.sourceKeys.length === 0 || v.sourceKeys.some((k) => !okSrc.has(k)))) problem = 'опровержение не опирается на загруженный источник';
+    if (!problem && v.verdict === 'supported' && absence?.market === 'ru' && possible.some((x) => x.kind === 'direct'))
+      problem = `пробел в РФ не может считаться подтверждённым: есть возможный прямой конкурент с неустановленным рынком (${possible.filter((x) => x.kind === 'direct').map((x) => x.name).join(', ')})`;
     if (problem) {
       downgraded.add(c.key);
       rejected.push(`отклонено: вердикт «${v.verdict === 'supported' ? 'подтверждено' : 'опровергнуто'}» по ${c.key} — ${problem}`);
@@ -442,7 +449,12 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
   // Zero rivals found is NOT proof of a gap: without rivals the cap is 3, or 4 only when an independent
   // Russian source supports an RU claim. Never 5/5 from searches alone.
   const ruIndependent = claims.some((c) => (c.dimension === 'ruWeakness' || c.dimension === 'ruUnmetJob') && claimSupports(c) && c.supportingKeys.some((k) => srcType.get(k)?.sourceType === 'independent' && srcType.get(k)?.region === 'ru'));
-  const ruCap = ruQueries.size < MIN_RU_QUERIES ? 2 : directRu.length >= 2 ? 1 : directRu.length === 1 ? 2 : adjacentRu.length ? 3 : ruIndependent ? 4 : 3;
+  let ruCap = ruQueries.size < MIN_RU_QUERIES ? 2 : directRu.length >= 2 ? 1 : directRu.length === 1 ? 2 : adjacentRu.length ? 3 : ruIndependent ? 4 : 3;
+  // Possible rivals (market not established) never let the RU dimensions rise above «competition unclear» (3).
+  if (possible.length && ruCap > 3) {
+    ruCap = 3;
+    notes.push(`РФ: потолок 3 — есть возможные конкуренты с неустановленным рынком (${possible.map((x) => x.name).join(', ')})`);
+  }
   const scores = {} as Record<DimensionKey, RawScore>;
   const scoreClaimKeys = new Set<string>();
   for (const d of DIMENSION_KEYS) {

@@ -130,7 +130,7 @@ export async function runDiagnostics(db: Queryable, jobId: number): Promise<Mach
   const searches = await q("SELECT region, count(*)::int AS n, count(*) FILTER (WHERE status <> 'ok')::int AS failed FROM mr_searches WHERE job_id = $1 GROUP BY region");
   const pages = await q('SELECT fetch_status, count(DISTINCT url)::int AS n FROM mr_sources WHERE job_id = $1 GROUP BY fetch_status');
   const comps = await q(
-    "SELECT count(*) FILTER (WHERE market = 'ru' AND kind = 'direct' AND market_verified)::int AS direct, count(*) FILTER (WHERE market = 'ru' AND kind = 'adjacent' AND market_verified)::int AS adjacent, count(DISTINCT name) FILTER (WHERE market = 'ru' AND market_verified)::int AS distinct_ru, count(*) FILTER (WHERE NOT market_verified)::int AS unverified FROM mr_competitors WHERE job_id = $1",
+    "SELECT count(*) FILTER (WHERE market = 'ru' AND kind = 'direct' AND market_status IN ('verified', 'declared'))::int AS direct, count(*) FILTER (WHERE market = 'ru' AND kind = 'adjacent' AND market_status IN ('verified', 'declared'))::int AS adjacent, count(DISTINCT name) FILTER (WHERE market = 'ru' AND market_status IN ('verified', 'declared'))::int AS distinct_ru, count(*) FILTER (WHERE market_status IS NULL OR market_status IN ('conflicting', 'unknown'))::int AS unverified FROM mr_competitors WHERE job_id = $1",
   );
   const indep = await q("SELECT count(DISTINCT url)::int AS n FROM mr_sources WHERE job_id = $1 AND provenance->>'independence' = 'unverified'");
   const contra = await q("SELECT count(*)::int AS n FROM mr_claims WHERE job_id = $1 AND status = 'contradicted'");
@@ -332,7 +332,9 @@ export async function machineCandidate(db: Queryable, feed: MachineFeed, externa
       foundBy: x.found_by as 'analyst' | 'skeptic',
       note: (x.note as string | null) ?? null,
       reason: x.classification_reason as string,
-      marketVerified: x.market_verified !== false,
+      // Historical rows (before 006) have no status: their market was never assessed → not «verified».
+      marketStatus: (x.market_status as MachineCandidateDetail['competitors'][number]['marketStatus']) ?? 'not_assessed',
+      marketVerified: x.market_status === 'verified' || x.market_status === 'declared',
     })),
     reviews: (await q('SELECT * FROM mr_reviews WHERE job_id = $1 AND candidate_id = $2 ORDER BY id')).map((x) => ({
       reviewer: x.reviewer as MachineCandidateDetail['reviews'][number]['reviewer'],

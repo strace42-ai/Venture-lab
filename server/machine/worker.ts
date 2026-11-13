@@ -337,8 +337,8 @@ async function persist(pool: Pool, feed: Feed, asOf: ISODate, jobId: number, att
       }
       for (const co of cand.competitors) {
         await c.query(
-          'INSERT INTO mr_competitors (job_id, candidate_id, feed, name, url, market, kind, found_by, source_key, note, classification_reason, market_verified) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
-          [jobId, id, feed, co.name, co.url, co.market, co.kind, co.foundBy, co.sourceKey, co.note, co.reason, co.marketVerified !== false],
+          'INSERT INTO mr_competitors (job_id, candidate_id, feed, name, url, market, kind, found_by, source_key, note, classification_reason, market_verified, market_status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)',
+          [jobId, id, feed, co.name, co.url, co.market, co.kind, co.foundBy, co.sourceKey, co.note, co.reason, co.marketVerified !== false, co.marketStatus ?? (co.marketVerified === false ? 'unknown' : 'declared')],
         );
       }
       for (const r of cand.reviews) {

@@ -55,21 +55,41 @@ export function marketSignal(url: string, lang: string | null, text: string): Re
 }
 
 /**
- * Market of a PRODUCT (where it is sold), from verifiable page signals only. Stricter than `marketSignal`
- * (which only says what language/region a page is written for): Russian-language text alone does NOT
- * prove the product is offered in Russia. «ru» needs an availability signal (RU domain, price in ₽/руб,
- * +7 phone, Russian legal identifiers) AND Russian-language content, with no western price signal;
- * «west» needs a $/€/£ price and an English (or other western) page with no RU availability signal.
- * Anything else is null = not established (the offer is kept, but never used as a proven rival).
- * NB: these are page signals, not proof of registration or payment acceptance in Russia.
+ * Market of a PRODUCT (where it is sold) from verifiable page signals — three distinct outcomes:
+ *  - `verified`    — availability established (see rules);
+ *  - `conflicting` — signals point to different markets and nothing strong resolves them;
+ *  - `unknown`     — no availability signal at all (e.g. no prices, localisation only).
+ * Neither `conflicting` nor `unknown` is evidence that a rival is ABSENT from Russia (the pipeline
+ * treats such a rival as a possible competitor: it is not counted as proven, but it also blocks any
+ * benefit to the «empty Russian niche» — see pipeline.ts).
+ *
+ * Strong RU availability (any one establishes «ru», whatever the page language — an English page of a
+ * Russian product is still Russian): a price in ₽/руб, a +7 phone, ИНН/ОГРН, Russian payment rails
+ * (СБП, карта «Мир», ЮKassa/ЮMoney). A multi-currency page with ₽ IS sold in Russia (also abroad).
+ * Weak RU: an RU domain (.ru/.рф/.su) — establishes «ru» only without contradicting western prices;
+ * Russian language alone never does (localisation ≠ sales).
+ * West: a $/€/£ price with no RU signal at all.
+ * NB: page signals, not proof of registration or payment acceptance in Russia.
  */
+export type MarketStatus = 'verified' | 'conflicting' | 'unknown';
+
 export interface MarketEvidence {
+  status: MarketStatus;
+  /** Set only when status = verified. */
   market: Region | null;
+  /** Every signal found, labelled with where it was found. */
   signals: string[];
   conflicts: string[];
 }
 
-export function marketEvidence(url: string, lang: string | null, text: string): MarketEvidence {
+interface RawSignals {
+  strongRu: string[];
+  weakRu: string[];
+  west: string[];
+  ruLanguage: boolean;
+}
+
+function rawSignals(url: string, lang: string | null, text: string, where = ''): RawSignals {
   let host = '';
   try {
     host = new URL(url).hostname.toLowerCase();
@@ -79,23 +99,50 @@ export function marketEvidence(url: string, lang: string | null, text: string): 
   const sample = text.slice(0, 50_000);
   const letters = sample.match(/\p{L}/gu)?.length ?? 0;
   const cyr = sample.match(/[\u0400-\u04ff]/g)?.length ?? 0;
-  const cyrShare = letters ? cyr / letters : 0;
-  const ru: string[] = [];
-  if (RU_TLD.test(host)) ru.push(`домен ${host}`);
-  if (/\d[\d\s\u00a0]*\s?(₽|руб\.?|рублей)/i.test(sample)) ru.push('цена в рублях');
-  if (/(?:\+7|\b8)[\s(-]*\d{3}[\s)-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}\b/.test(sample)) ru.push('телефон +7');
+  const tag = (s: string) => (where ? `${s} (${where})` : s);
+  const strongRu: string[] = [];
+  if (/\d[\d\s\u00a0.,]*\s?(₽|руб\.?|рублей|RUB\b)/iu.test(sample) || /(₽|RUB)\s?\d/u.test(sample)) strongRu.push(tag('цена в рублях'));
+  if (/(?:\+7|(?:^|[^\d])8)[\s(-]*\d{3}[\s)-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}(?!\d)/.test(sample)) strongRu.push(tag('телефон +7'));
   // (JS \b does not work next to Cyrillic letters — explicit non-letter guards)
-  if (/(?:^|[^\p{L}])(?:ИНН\s*\d{10,12}|ОГРН(?:ИП)?\s*\d{13,15})(?!\d)/u.test(sample)) ru.push('ИНН/ОГРН');
-  const ruLang = (lang ?? '').startsWith('ru') || cyrShare > 0.5;
+  if (/(?:^|[^\p{L}])(?:ИНН\s*\d{10,12}|ОГРН(?:ИП)?\s*\d{13,15})(?!\d)/u.test(sample)) strongRu.push(tag('ИНН/ОГРН'));
+  if (/(?:^|[^\p{L}])(?:СБП|карт[аыою]? «?Мир»?|ЮKassa|ЮMoney|ЮКасса)(?![\p{L}])/u.test(sample)) strongRu.push(tag('российские способы оплаты'));
+  const weakRu = RU_TLD.test(host) ? [tag(`домен ${host}`)] : [];
   const west: string[] = [];
-  if (/[$€£]\s?\d|\d\s?(USD|EUR|GBP)\b/.test(sample)) west.push('цена в $/€/£');
-  const westLang = (!!lang && /^(en|de|fr|es|it|pt|nl)/.test(lang)) || (letters > 50 && cyrShare < 0.1);
+  if (/[$€£]\s?\d|\d\s?(USD|EUR|GBP)\b/.test(sample)) west.push(tag('цена в $/€/£'));
+  return { strongRu, weakRu, west, ruLanguage: (lang ?? '').startsWith('ru') || (letters > 0 && cyr / letters > 0.5) };
+}
+
+function judge(r: RawSignals): MarketEvidence {
+  const signals = [...r.strongRu, ...r.weakRu, ...r.west, ...(r.ruLanguage && !r.strongRu.length && !r.weakRu.length ? ['русский язык страницы (локализация ≠ продажи в РФ)'] : [])];
   const conflicts: string[] = [];
-  if (ru.length && west.length) conflicts.push(`признаки РФ (${ru.join(', ')}) и Запада (${west.join(', ')}) одновременно`);
-  if (ru.length && !ruLang) conflicts.push(`признаки РФ (${ru.join(', ')}), но страница не на русском`);
-  if (ru.length && ruLang && west.length === 0) return { market: 'ru', signals: [...ru, 'русский язык страницы'], conflicts };
-  if (west.length && westLang && ru.length === 0) return { market: 'west', signals: [...west, `язык страницы ${lang ?? 'латиница'}`], conflicts };
-  return { market: null, signals: [...ru, ...west, ...(ruLang ? ['русский язык страницы (локализация ≠ продажи в РФ)'] : [])], conflicts };
+  if (r.strongRu.length) {
+    // Sold for roubles / Russian entity: available in Russia even if also sold abroad.
+    if (r.west.length) conflicts.push(`мультивалютная страница: ${[...r.strongRu, ...r.west].join(', ')} — доступен в РФ и за рубежом`);
+    return { status: 'verified', market: 'ru', signals, conflicts };
+  }
+  if (r.weakRu.length && r.west.length) return { status: 'conflicting', market: null, signals, conflicts: [`${r.weakRu.join(', ')}, но цены только в $/€/£ (${r.west.join(', ')})`] };
+  if (r.weakRu.length) return { status: 'verified', market: 'ru', signals, conflicts };
+  if (r.west.length) return { status: 'verified', market: 'west', signals, conflicts };
+  return { status: 'unknown', market: null, signals, conflicts };
+}
+
+export function marketEvidence(url: string, lang: string | null, text: string): MarketEvidence {
+  return judge(rawSignals(url, lang, text));
+}
+
+/**
+ * Product page + the site's home page. The home page may only FILL a gap (page status `unknown`);
+ * it never overrides a page that is verified or conflicting. All signals are pooled and re-judged, so a
+ * contradiction between the two pages is kept (e.g. the page only sells in $ but the home page shows ₽
+ * → the combined verdict records the conflict instead of silently picking one).
+ */
+export function combinedMarketEvidence(page: { url: string; lang: string | null; text: string }, home: { url: string; lang: string | null; text: string } | null): MarketEvidence & { via: 'страница' | 'страница + главная' } {
+  const p = rawSignals(page.url, page.lang, page.text);
+  const own = judge(p);
+  if (own.status !== 'unknown' || !home) return { ...own, via: 'страница' };
+  const h = rawSignals(home.url, home.lang, home.text, 'главная страница сайта');
+  const merged = judge({ strongRu: [...p.strongRu, ...h.strongRu], weakRu: [...p.weakRu, ...h.weakRu], west: [...p.west, ...h.west], ruLanguage: p.ruLanguage || h.ruLanguage });
+  return { ...merged, via: 'страница + главная' };
 }
 
 export interface ExtractedOffer {
@@ -144,28 +191,19 @@ export function groundOffer(
     if (/\d|бесплат|free/i.test(x.price) && containsLiteral(page.text, x.price)) price = x.price.trim();
     else uncertain.push(`цена «${x.price.slice(0, 60)}» не найдена на странице`);
   }
-  let ev = marketEvidence(page.url, page.lang, page.text);
-  let via = 'страница';
-  if (!ev.market && probe) {
-    // Automatic second check on the same site (home page): still only verifiable page signals.
-    const p = marketEvidence(probe.url, probe.lang, probe.text);
-    if (p.market) {
-      ev = { market: p.market, signals: p.signals.map((x) => `${x} (главная страница сайта)`), conflicts: [...ev.conflicts, ...p.conflicts] };
-      via = 'главная страница сайта';
-    }
-  }
+  const ev = combinedMarketEvidence(page, probe ?? null);
   let market: Region;
-  let marketVerified: boolean;
-  if (ev.market) {
-    if (x.market !== 'unknown' && x.market !== ev.market) uncertain.push(`рынок: модель указала ${x.market}, признаки (${via}) — ${ev.market}`);
-    market = ev.market;
-    marketVerified = true;
+  if (ev.status === 'verified') {
+    if (x.market !== 'unknown' && x.market !== ev.market) uncertain.push(`рынок: модель указала ${x.market}, признаки (${ev.via}) — ${ev.market}`);
+    market = ev.market!;
   } else {
-    // Not established: the model's guess is kept only as a label — the rival never counts as a proven RU/West competitor.
+    // Not established: the model's guess is kept only as a label — never a proven rival, never proof of absence.
     market = x.market === 'ru' ? 'ru' : 'west';
-    marketVerified = false;
-    uncertain.push(`рынок не подтверждён признаками страницы (модель: ${x.market})${ev.conflicts.length ? `; противоречия: ${ev.conflicts.join('; ')}` : ''}${ev.signals.length ? `; найдено: ${ev.signals.join(', ')}` : ''}`);
+    uncertain.push(
+      `рынок ${ev.status === 'conflicting' ? 'противоречив' : 'не подтверждён'} (${ev.via}; модель: ${x.market})${ev.conflicts.length ? `; противоречия: ${ev.conflicts.join('; ')}` : ''}${ev.signals.length ? `; найдено: ${ev.signals.join(', ')}` : ''}`,
+    );
   }
+  const marketVerified = ev.status === 'verified';
   const jobs = Object.keys(jobEvidence);
   return {
     offer: {
@@ -173,7 +211,7 @@ export function groundOffer(
       market,
       jobs,
       ...(price ? { price } : {}),
-      grounding: { level: uncertain.length ? 'partial' : 'grounded', jobEvidence, uncertain, extractor, marketVerified, marketSignals: ev.signals },
+      grounding: { level: uncertain.length ? 'partial' : 'grounded', jobEvidence, uncertain, extractor, marketVerified, marketStatus: ev.status, marketSignals: ev.signals, marketConflicts: ev.conflicts },
     },
     uncertain,
   };

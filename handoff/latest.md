@@ -1,7 +1,7 @@
 # Venture Lab — Latest handoff
 
 **Task:** VL-004B / Live Research Provider Adapters, Evidence Safety & Controlled Trial — **Phase A only** (`tasks/current-task.md` v1.0)
-**Status:** PHASE A IMPLEMENTED + AUDIT ROUND 1 FIXES (ChatGPT review 5884565239 on `9fe7bac`), offline only. **No paid API call was made, no cloud resource created, no deploy.** PR open, **not merged**. Phase B is blocked until the founder authorises it.
+**Status:** PHASE A IMPLEMENTED + AUDIT ROUNDS 1–2 FIXES (round 1 on `9fe7bac`, round 2 on `feb9a52`), offline only. **No paid API call was made, no cloud resource created, no deploy.** PR open, **not merged**. Phase B is blocked until the founder authorises it.
 **As of:** 2026-11-13 · **Implementer:** Claude Code
 
 ## Git
@@ -10,6 +10,23 @@
 | Base | `main` @ `c900fd6` (VL-004A merged; VL-004B docs activated) |
 | Branch | `claude/vl-004b-live-providers` |
 | PR | opened to `main` (see the PR list), not merged |
+
+## Audit round 2 — fixes (audit of `feb9a52`)
+| # | Finding | Fix | Tests |
+|---|---|---|---|
+| **P1** | `marketEvidence()` could drop a real Russian rival: an English page, several currencies or mixed signals made it «not proven», and an unproven rival then silently stopped limiting the RU dimensions. | **Three states** instead of a yes/no:<br>• `verified` — strong RU signals (₽/руб/RUB, +7, ИНН/ОГРН, СБП/«Мир»/ЮKassa) establish «ru» **whatever the page language**; a multi-currency page with ₽ is RU, with the mix recorded; an RU domain alone gives «ru» only without western prices; $/€/£ only gives «west»;<br>• `conflicting` — an RU domain with prices only in $/€/£;<br>• `unknown` — no availability signal (Russian localisation alone).<br>A rival in a conflicting or unknown market is a **possible competitor** — neither proof of competition nor of its absence:<br>• it never refutes a claim, never holds an idea and never adds to Russia validation;<br>• but it **caps the RU dimensions at 3** (no «4 with an independent RU source»);<br>• and it **blocks a «nobody in Russia does X» claim** from being supported (the verdict becomes `needs_more_evidence`).<br>Scoring weights and the formula are unchanged; only the existing cap and verdict gates use the new status. | Unit:<br>• an English-language Russian product (RUB, +7, ИНН) → ru;<br>• a multilingual multi-currency page ($/€/₽) → ru, with the mix recorded;<br>• `.ru` + $ only → conflicting;<br>• no prices: `.ru` → ru, Russian on `.com` → unknown, English `.com` → unknown;<br>• $ + € → west.<br>Pipeline (`live-market.test.ts`):<br>• baseline cap 4 is unchanged without rivals;<br>• a conflicting or unknown rival → cap 3, not 4, and no hold;<br>• a proven rival → cap ≤ 2;<br>• the skeptic «supporting» the absence claim while a possible direct rival exists → downgraded, score null;<br>• recorded Quote Compare with rivals moved to neutral `.com` pages without ₽ → rivals possible, the gap neither refuted nor counted (`ruUnmetJob` null, never 5). |
+| P2 | `siteOf()` took the last two labels: wrong for `co.uk`, `com.au` and similar. | Public Suffix List via `tldts` **7.4.22** (already in the tree through jsdom; now a direct, exact-pinned dependency). Private suffixes are respected, so `alice.github.io` ≠ `bob.github.io`. | `co.uk`, `com.au`, `github.io`, `.ru`, IP cases; two different owners under one compound suffix are not merged, while the product's own `blog.touchstay.co.uk` still counts as a self-report. |
+| P2 | The home-page re-check could confirm a market despite conflicting signals on the product page. | `combinedMarketEvidence()`: the home page is used **only when the product page is `unknown`**. Signals of both pages are pooled and re-judged; conflicts are kept; a conflicting or verified page is never overridden. | A conflicting page plus a ₽ home page stays conflicting (also through `groundOffer`); an unknown page plus a ₽ home page is verified via both; a pooled multi-currency mix is recorded. |
+| P2 | `market_verified boolean NOT NULL DEFAULT true` (005) marked historical rows as verified. | **Migration 006**:<br>• `market_status` is NULL for existing rows, read as «not assessed (historical row)», never verified, and counted as unverified in diagnostics;<br>• `market_verified` lost its default and NOT NULL;<br>• new rows must state the status, and the two columns must agree. Both rules are `NOT VALID` CHECKs, so append-only history is not rewritten;<br>• the worker writes the status explicitly (`declared` for the fixture emulation). | `migration-006.test.ts` runs a **real upgrade**: migrate 001–005, insert a historical competitor, apply 006. The old row keeps its values and is not counted as a proven direct rival. A new row without a status, with an inconsistent status or with an invalid value is refused; valid rows are accepted. The fresh schema is also checked. |
+
+### Effect on the three regression cases (same recorded corpus, compared with `feb9a52` by the same script)
+| Case | `feb9a52` | now | Why |
+|---|---|---|---|
+| Guest Guide | HOLD, 32, grade B, `ruUnmetJob` 0. RealtyCalendar and GuestCom proven direct; RYNTO not counted. | **Identical.** RYNTO's status is now `unknown`. | Two proven direct rivals (RU domain or ₽) already refute the gap and hold the idea. RYNTO's recorded page has Russian text and «Бесплатный тариф» but no RU availability signal, and its home page returns 404, so it stays a possible competitor. The fixture was not changed. |
+| VAG Report | PASSED, 25, grade C, `ruWeakness` 3; VAGLOGS adjacent and unverified. | **Identical.** VAGLOGS's status is now `unknown`. | Without proven rivals the cap was already 3: the RU claim is a vendor page, not an independent RU source. The new «possible rival → cap 3» rule therefore changes nothing here. |
+| Quote Compare | HOLD, 10, grade C, `ruUnmetJob` 0; ВНИКЛИ and Vortholm proven direct. | **Identical.** Both are `verified` (RU domain plus ₽ or «бесплатно» on a `.ru` page). | Unchanged evidence. |
+
+The fixture engine is also unchanged: 3/10 → 3/10 → 4/10 with the same scores (fixture rivals are `declared`). The benchmark numbers are unchanged.
 
 ## Audit round 1 — fixes
 | # | Finding | Fix | Tests |
@@ -84,7 +101,7 @@ Rivals with an unproven market are shown but not counted: 2 of 2. Independent pu
 | Check | Result |
 |---|---|
 | `npm run lint` / `typecheck` / `build` | ✔ / ✔ / ✔ |
-| `CI=true TEST_DATABASE_URL=… npm test` | ✔ **20 files, 350 tests** (round 1: 334): `live-net` 42, `live-providers` 38, `live-pipeline` 25, `live-worker` 13, UI test +2 assertions. All VL-001…VL-004A tests pass unchanged. |
+| `CI=true TEST_DATABASE_URL=… npm test` | ✔ **22 files, 375 tests** (round 2; round 1: 350; initial: 334). Round 2 added `live-market` 5, `migration-006` 3 and `live-providers` +17. Earlier per-file counts: `live-net` 42, `live-providers` 38, `live-pipeline` 25, `live-worker` 13, UI test +2 assertions. All VL-001…VL-004A tests pass unchanged. |
 | Fixture CLI 3 days (fresh DB) | ✔ 3/10 → 3/10 → 4/10, same scores as VL-004A |
 | `--live --once --dry-run` | ✔ no network. `--execute` is refused without config, in CI and for deprecated models; `tick --live` is refused. |
 | `npm run research:benchmark` | ✔ (table above) |
@@ -107,7 +124,8 @@ Rivals with an unproven market are shown but not counted: 2 of 2. Independent pu
 - **Coverage gaps.** No PDF parsing, no headless browser: JavaScript-only pages are `unsupported_content`.
 - **Reachability.** Foreign primary sites may be unreachable from a Russian host — to be measured in Phase B.
 - **Source type.** «independent» now requires verifiable provenance (see audit fixes). A well-marked-up **sponsored** article on a third-party site would still pass — a residual risk.
-- **Market signals.** These are page signals, not proof of legal registration or payment acceptance in Russia. Rivals without them are not counted, which can under-count real competition until a later rotation finds a signal (RYNTO and VAGLOGS in the corpus).
+- **Market signals.** These are page signals, not proof of legal registration or payment acceptance in Russia. A rival without a verified market is a «possible competitor»: it caps the RU dimensions at 3 and blocks absence claims, but it never refutes a claim or holds an idea. RYNTO and VAGLOGS are in this state in the corpus.
+- **Public Suffix List.** The list bundled in `tldts` 7.4.22 ages with the package; update the dependency periodically.
 - **Cost.** One run with the default bounds (3 new + 3 rechecks) cost about 55 ₽ on recorded data; the token counts are synthetic. Searches dominate (≈14 per candidate).
 - **Pre-existing layout issue.** On the 1440 dashboard, the evidence-grade column of the TOP table scrolls inside its card (unchanged since VL-004A).
 

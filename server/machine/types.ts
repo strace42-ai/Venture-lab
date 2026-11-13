@@ -60,7 +60,10 @@ export interface PageOffer {
     extractor: string;
     /** The market was established from verifiable page signals (not the model's opinion). */
     marketVerified: boolean;
+    /** verified | conflicting (signals disagree) | unknown (no availability signal). */
+    marketStatus: 'verified' | 'conflicting' | 'unknown';
     marketSignals: string[];
+    marketConflicts: string[];
   };
 }
 
@@ -170,7 +173,11 @@ export interface RawCompetitor {
   foundBy: 'analyst' | 'skeptic';
   /** false = market not established by page signals: never counted as a proven rival (default true). */
   marketVerified?: boolean;
+  /** declared = fixture emulation (hand-written market); default declared. */
+  marketStatus?: CompetitorMarketStatus;
 }
+
+export type CompetitorMarketStatus = 'verified' | 'declared' | 'conflicting' | 'unknown';
 
 /** Everything the independent skeptic sees. Excerpts are untrusted data, never instructions. */
 export interface SkepticInput {
@@ -421,6 +428,7 @@ export interface CompetitorRow {
   reason: string;
   /** false = market not established: shown, but never used for caps, refutations or holds. */
   marketVerified?: boolean;
+  marketStatus?: CompetitorMarketStatus;
 }
 
 export interface ReviewRow {

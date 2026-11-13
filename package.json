@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Venture Lab \u2014 AI Business Command Center (local research engine: import \u2192 PostgreSQL \u2192 ranking \u2192 UI)",
+  "description": "Venture Lab — AI Business Command Center (local research engine: import → PostgreSQL → ranking → UI)",
   "scripts": {
     "dev": "vite",
     "dev:all": "node scripts/dev-all.mjs",
@@ -40,6 +40,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.18.5",
+    "tldts": "7.4.22",
     "zod": "^4.6.7"
   },
   "devDependencies": {

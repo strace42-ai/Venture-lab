@@ -59,6 +59,10 @@ The architecture source of truth is `docs/no-vpn-automation-architecture.md` v2.
 - **Assessment date.** Assessments, sources and snapshots reference `(job_id, feed, as_of)`, so they cannot be backdated.
 - **Snapshot entries** reference `(snapshot_id, job_id, feed)` and `(assessment_id, job_id, candidate_id, title, market_score, confidence, evidence_grade, state)`. A frozen entry is therefore an exact copy of an `AUTOMATED_EVIDENCE_PASSED` assessment from the same job and candidate.
 - **Grade rule.** A passed assessment can never have grade D.
+- **Migration 006 (VL-004B audit round 2).** `mr_competitors.market_status`:
+  - historical rows are NULL, which reads as «not assessed», never verified (005 had defaulted them to `market_verified=true`);
+  - `market_verified` lost its default;
+  - new rows must state the status, and the two columns must agree. Both rules are enforced by `NOT VALID` checks, so history is not rewritten.
 - **Migration 005 (VL-004B).**
   - Source provenance: canonical URL, fetch time, title, content type, failure, grounded offer, extraction model.
   - Quote locations.
@@ -84,18 +88,23 @@ The architecture source of truth is `docs/no-vpn-automation-architecture.md` v2.
   - visible text only: scripts and hidden elements are dropped;
   - instruction-like content (also when hidden) → quarantine.
 - **Offers are grounded by code** (`server/live/grounding.ts`). The extraction model proposes name, market, jobs-with-quotes and price; code keeps only what is literally on the page. Anything else is stored as «uncertain» and never used.
-- **A rival's market must be established, not guessed** (audit P1).
-  - «ru» needs an RU availability signal and Russian content, with no western price:
-    - an RU domain;
-    - a price in ₽ or руб;
-    - a +7 phone;
-    - an ИНН or ОГРН.
-  - «west» needs a $, € or £ price on a western-language page.
-  - Russian localisation alone is not enough («локализация ≠ продажи в РФ»).
-  - If the page shows neither, the site's home page is checked once more, automatically and for free.
-  - If the market is still not established, the rival is stored with `market_verified = false` and shown as «рынок не подтверждён».
-  - Such a rival is **never** used for caps, refutations, holds or Russia validation; it is re-checked on the next rotation.
+- **A rival's market must be established, not guessed** (audits P1, round 2). `marketEvidence()` returns one of three states:
+  - **`verified`.**
+    - A **strong RU signal** establishes «ru» whatever the page language: a ₽/руб/RUB price, a +7 phone, ИНН/ОГРН, or Russian payment rails (СБП, «Мир», ЮKassa). An English page of a Russian product is Russian.
+    - A multi-currency page with ₽ is sold in Russia; the mix is recorded.
+    - An RU domain alone also gives «ru», but only without western prices.
+    - $/€/£ prices with no RU signal give «west».
+  - **`conflicting`** — an RU domain with prices only in $/€/£.
+  - **`unknown`** — no availability signal at all. Russian language alone is localisation, not sales.
+
+  How the home page is used, and what a rival without a verified market means:
+  - **Home page only fills a gap.** It is fetched automatically (free) only when the product page is `unknown`. The signals of both pages are pooled and re-judged, with conflicts kept. A `conflicting` or `verified` page is never overridden.
+  - **A rival whose market is not verified** is stored with `mr_competitors.market_status` (`verified` · `declared` for fixture emulation · `conflicting` · `unknown`). It is a **possible competitor**, neither proof of competition nor proof of its absence:
+    - it is not used for refutations, «≥2 direct / free» holds or Russia validation;
+    - but while it exists the Russian dimensions are capped at 3 («competition unclear», never the 4 from an independent RU source);
+    - and an «empty niche in Russia» claim cannot be supported.
   - These are page signals, not proof of legal registration or payment acceptance in Russia.
+- **Registrable domain** (`siteOf`) uses the Public Suffix List (`tldts`, including private suffixes): `a.b.co.uk` → `b.co.uk`, `alice.github.io` ≠ `bob.github.io`.
 - **«Independent» needs verifiable provenance** (`server/live/provenance.ts`, audit P1).
   - The model's «independent» is necessary but never sufficient. All of these are also required:
     - a site that does not belong to the product: not the seed source, not a site with a grounded offer this run, the brand not in the domain;

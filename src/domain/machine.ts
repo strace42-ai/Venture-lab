@@ -187,6 +187,8 @@ export interface MachineCompetitor {
   reason: string;
   /** false = market not established by page signals: shown, never counted (default true). */
   marketVerified?: boolean;
+  /** verified (page signals) · declared (fixture) · conflicting · unknown · not_assessed (historical row). */
+  marketStatus?: 'verified' | 'declared' | 'conflicting' | 'unknown' | 'not_assessed';
 }
 
 export interface MachineReview {

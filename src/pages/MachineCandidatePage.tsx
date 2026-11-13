@@ -39,6 +39,7 @@ const TYPE_LABEL: Record<string, string> = { independent: 'независимы�
 const REVIEWER_LABEL: Record<string, string> = { analyst: 'Аналитик (ИИ)', claim_checker: 'Проверка цитат (код)', skeptic: 'Скептик (ИИ, другая модель)', quality_gate: 'Фильтр качества (код)' };
 const SKEPTIC_LABEL: Record<string, string> = { supported: 'подтверждает', refuted: 'опровергает', needs_more_evidence: 'нужны доказательства', not_reviewed: 'не проверял' };
 const SKEPTIC_TONE: Record<string, 'success' | 'danger' | 'warn' | 'neutral'> = { supported: 'success', refuted: 'danger', needs_more_evidence: 'warn', not_reviewed: 'neutral' };
+const MARKET_STATUS_LABEL: Record<string, string> = { conflicting: 'рынок противоречив', unknown: 'рынок не подтверждён', not_assessed: 'рынок не проверялся', verified: 'рынок подтверждён', declared: 'эмуляция' };
 const KIND_LABEL: Record<string, string> = { direct: 'прямой', adjacent: 'смежный', substitute: 'заменитель' };
 
 export default function MachineCandidatePage() {
@@ -172,7 +173,7 @@ function Dossier({ d, feed }: { d: MachineCandidateDetail; feed: MachineFeed }) 
                 {d.competitors.map((c) => (
                   <li key={`${c.market}-${c.name}`} className="mcomp__item">
                     <Badge tone={c.marketVerified === false ? 'neutral' : c.kind === 'direct' ? 'danger' : 'neutral'}>
-                      {c.marketVerified === false ? 'рынок не подтверждён' : c.market === 'ru' ? 'РФ' : 'Запад'} · {KIND_LABEL[c.kind]}
+                      {c.marketVerified === false ? MARKET_STATUS_LABEL[c.marketStatus ?? 'unknown'] : c.market === 'ru' ? 'РФ' : 'Запад'} · {KIND_LABEL[c.kind]}
                     </Badge>
                     {c.url ? (
                       <a href={c.url} target="_blank" rel="noopener noreferrer nofollow" className="mcomp__name">
@@ -184,7 +185,13 @@ function Dossier({ d, feed }: { d: MachineCandidateDetail; feed: MachineFeed }) 
                     {c.foundBy === 'skeptic' && <span className="small tone-warn">найден скептиком</span>}
                     {c.note && <span className="muted small">{c.note}</span>}
                     <span className="muted small mcomp__reason">{c.reason}</span>
-                    {c.marketVerified === false && <span className="small tone-warn mcomp__reason">Рынок не установлен признаками страницы — в оценке конкуренции не учитывается; перепроверяется автоматически.</span>}
+                    {c.marketVerified === false && (
+                      <span className="small tone-warn mcomp__reason">
+                        {c.marketStatus === 'not_assessed'
+                          ? 'Историческая запись: рынок тогда не проверялся.'
+                          : 'Рынок не установлен признаками страницы — не учитывается как доказанный конкурент, но и не доказывает свободную нишу; перепроверяется автоматически.'}
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>

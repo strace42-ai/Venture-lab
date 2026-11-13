@@ -7,9 +7,9 @@
 import { describe, expect, it } from 'vitest';
 import { AIStudioChat, analystWire, offerWire, parseModelJson } from '../live/ai-studio';
 import { describeConfig, loadLiveConfig, modelFamily, readinessProblems } from '../live/config';
-import { groundOffer, marketEvidence, marketSignal } from '../live/grounding';
+import { combinedMarketEvidence, groundOffer, marketEvidence, marketSignal } from '../live/grounding';
 import { extractPage } from '../live/html';
-import { assessProvenance } from '../live/provenance';
+import { assessProvenance, siteOf } from '../live/provenance';
 import { llmCostKop, llmWorstCaseKop, searchCostKop, tariffFor } from '../live/prices';
 import { ProviderCaller } from '../live/provider-http';
 import { buildLiveProviders } from '../live/providers';
@@ -273,7 +273,8 @@ describe('offer grounding (Case B: never conflate vendors or jobs)', () => {
     expect(marketEvidence('https://touchstay.com/', 'en', 'Digital guidebooks for vacation rental hosts. Plans from $9 per month per guidebook.').market).toBe('west');
     const g = groundOffer({ isProductPage: true, name: 'VAGLOGS', market: 'ru', jobs: [], price: null, pageKind: 'vendor' }, page, SEEDS.vag!, 'm');
     expect(g.offer?.grounding?.marketVerified).toBe(false);
-    expect(g.uncertain.join(' ')).toMatch(/рынок не подтверждён признаками страницы \(модель: ru\)/);
+    expect(g.offer?.grounding?.marketStatus).toBe('unknown');
+    expect(g.uncertain.join(' ')).toMatch(/рынок не подтверждён \(страница; модель: ru\)/);
   });
 });
 
@@ -359,3 +360,93 @@ describe('audit P1 — «independent» needs verifiable provenance, never the mo
 function ARTICLE_HEAD(site: string, author: string) {
   return `<meta property="og:type" content="article"><meta property="og:site_name" content="${site}"><meta name="author" content="${author}">`;
 }
+
+describe('audit round 2 — market: verified vs conflicting vs unknown (never «absent»)', () => {
+  const ev = (url: string, lang: string | null, text: string) => marketEvidence(url, lang, text);
+
+  it('English-language Russian product: ₽ / RUB price, +7 or ИНН establish «ru» whatever the page language', () => {
+    expect(ev('https://quoteflow.example.com/', 'en', 'QuoteFlow compares supplier quotes. Price: 990 RUB per month. Call +7 (495) 123-45-67.')).toMatchObject({ status: 'verified', market: 'ru' });
+    expect(ev('https://quoteflow.example.com/', 'en', 'QuoteFlow LLC, ИНН 7701234567, compares supplier quotes.')).toMatchObject({ status: 'verified', market: 'ru' });
+  });
+
+  it('multi-currency / multilingual page with a ₽ price is sold in Russia (and abroad): verified ru, the mix recorded', () => {
+    const e = ev('https://quoteflow.example.com/', 'en', 'Plans: $19 per month · €18 per month · 1 490 ₽ в месяц. Доступно в России и Европе.');
+    expect(e).toMatchObject({ status: 'verified', market: 'ru' });
+    expect(e.conflicts.join(' ')).toMatch(/мультивалютная/);
+  });
+
+  it('RU domain but prices only in $/€ → CONFLICTING (not verified, not absent)', () => {
+    const e = ev('https://quoteflow.ru/', 'en', 'QuoteFlow compares supplier quotes. From $19 per month.');
+    expect(e).toMatchObject({ status: 'conflicting', market: null });
+    expect(e.conflicts.join(' ')).toMatch(/цены только в \$/);
+  });
+
+  it('no prices at all: RU domain alone → ru; Russian text on .com → UNKNOWN; English .com → UNKNOWN', () => {
+    expect(ev('https://quoteflow.ru/', 'en', 'QuoteFlow compares supplier quotes for procurement teams.')).toMatchObject({ status: 'verified', market: 'ru' });
+    expect(ev('https://quoteflow.example.com/ru', 'ru', 'QuoteFlow сравнивает коммерческие предложения поставщиков.')).toMatchObject({ status: 'unknown', market: null });
+    expect(ev('https://quoteflow.example.com/', 'en', 'QuoteFlow compares supplier quotes for procurement teams.')).toMatchObject({ status: 'unknown' });
+  });
+
+  it('western prices only ($ and €) → west', () => {
+    expect(ev('https://quoteflow.example.com/', 'en', 'From $19 or €18 per month.')).toMatchObject({ status: 'verified', market: 'west' });
+  });
+});
+
+describe('audit round 2 — product page + home page are merged, conflicts kept', () => {
+  const home = { url: 'https://quoteflow.example.com/', lang: 'ru', text: 'QuoteFlow. Тариф 1 490 ₽ в месяц.' };
+
+  it('the home page only FILLS an unknown page: unknown page + ₽ home → verified via both pages', () => {
+    const e = combinedMarketEvidence({ url: 'https://quoteflow.example.com/features', lang: 'en', text: 'Compare supplier quotes side by side.' }, home);
+    expect(e).toMatchObject({ status: 'verified', market: 'ru', via: 'страница + главная' });
+    expect(e.signals.join(' ')).toMatch(/главная страница сайта/);
+  });
+
+  it('a CONFLICTING product page is never «resolved» by the home page', () => {
+    const e = combinedMarketEvidence({ url: 'https://quoteflow.ru/pricing', lang: 'en', text: 'From $19 per month.' }, home);
+    expect(e).toMatchObject({ status: 'conflicting', via: 'страница' });
+  });
+
+  it('a page that is already verified is not re-checked; an unknown page takes the pooled verdict of both pages', () => {
+    const e = combinedMarketEvidence({ url: 'https://quoteflow.ru/features', lang: 'ru', text: 'Сравнение КП поставщиков.' }, { url: 'https://quoteflow.ru/', lang: 'en', text: 'Plans from $19 per month.' });
+    expect(e).toMatchObject({ status: 'verified', market: 'ru', via: 'страница' }); // RU domain, no price on the page itself
+    const e2 = combinedMarketEvidence({ url: 'https://quoteflow.example.com/features', lang: 'ru', text: 'Сравнение КП поставщиков.' }, { url: 'https://quoteflow.example.com/', lang: 'en', text: 'Plans from $19 per month.' });
+    expect(e2).toMatchObject({ status: 'verified', market: 'west', via: 'страница + главная' });
+    const e3 = combinedMarketEvidence({ url: 'https://quoteflow.example.com/features', lang: 'ru', text: 'Сравнение КП поставщиков.' }, { url: 'https://quoteflow.example.com/', lang: 'en', text: 'Plans from $19 per month or 1 490 ₽.' });
+    expect(e3).toMatchObject({ status: 'verified', market: 'ru' });
+    expect(e3.conflicts.join(' ')).toMatch(/мультивалютная/); // the mix is kept, not hidden
+  });
+
+  it('groundOffer: the home page cannot verify a conflicting page', () => {
+    const g = groundOffer(
+      { isProductPage: true, name: 'QuoteFlow', market: 'ru', jobs: [{ job: 'quote-comparison', quote: 'Compare supplier quotes side by side' }], price: null, pageKind: 'vendor' },
+      { url: 'https://quoteflow.ru/pricing', title: 'QuoteFlow', lang: 'en', text: 'QuoteFlow. Compare supplier quotes side by side. From $19 per month.' },
+      SEEDS.quotes!,
+      'm',
+      home,
+    );
+    expect(g.offer?.grounding).toMatchObject({ marketStatus: 'conflicting', marketVerified: false });
+  });
+});
+
+describe('audit round 2 — registrable domain uses the Public Suffix List', () => {
+  it.each([
+    ['https://shop.example.co.uk/a', 'example.co.uk'],
+    ['https://www.reviews.com.au/x', 'reviews.com.au'],
+    ['https://a.b.example.com.au/', 'example.com.au'],
+    ['https://alice.github.io/post', 'alice.github.io'],
+    ['https://new.realtycalendar.ru/products/autopilot', 'realtycalendar.ru'],
+    ['https://www.str-review.example.org/x', 'example.org'],
+    ['127.0.0.1', '127.0.0.1'],
+  ])('%s → %s', (u, d) => {
+    expect(siteOf(u)).toBe(d);
+  });
+
+  it('two different owners under one compound suffix are NOT merged (co.uk, github.io)', () => {
+    const meta = extractPage(`<html><head>${ARTICLE_HEAD('Guide Weekly', 'Ann')}</head><body><article><p>Independent review text that is long enough.</p></article></body></html>`).meta;
+    const base = { seed: { ...SEEDS.guest!, sourceUrl: 'https://touchstay.co.uk/' }, hasGroundedOffer: false, modelPageKind: 'independent' as const };
+    // old two-label rule would have called every *.co.uk page «the product's own site»
+    expect(assessProvenance({ ...base, url: 'https://guideweekly.co.uk/touch-stay-review', meta, productSites: new Set(['vendor.github.io']) }).sourceType).toBe('independent');
+    expect(assessProvenance({ ...base, url: 'https://reviewer.github.io/touch-stay', meta, productSites: new Set(['vendor.github.io']) }).sourceType).toBe('independent');
+    expect(assessProvenance({ ...base, url: 'https://blog.touchstay.co.uk/post', meta, productSites: new Set() }).sourceType).toBe('company_self_report');
+  });
+});

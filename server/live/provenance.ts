@@ -5,6 +5,7 @@
  * publication markup (article / review / news) plus an identifiable publisher or author distinct from
  * the product. Anything less is UNKNOWN («тип не установлен»), never independent.
  */
+import { getDomain } from 'tldts';
 import type { PageMeta } from './html';
 import type { DiscoverySeed, SourceType } from '../machine/types';
 
@@ -26,7 +27,11 @@ const hostOf = (u: string) => {
 };
 const letters = (s: string) => s.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 
-/** Registrable-ish domain: last two labels (www/sub-domains of one site are the same owner). */
+/**
+ * Registrable domain via the Public Suffix List (tldts): `a.b.co.uk` → `b.co.uk`, `shop.example.com.au` →
+ * `example.com.au`. Private suffixes count as public (`alice.github.io` ≠ `bob.github.io`), so unrelated
+ * tenants of a hosting platform are never merged into one «owner». IPs / unknown suffixes → the host itself.
+ */
 export function siteOf(urlOrHost: string): string {
   let h = urlOrHost;
   try {
@@ -34,7 +39,8 @@ export function siteOf(urlOrHost: string): string {
   } catch {
     /* already a host */
   }
-  return h.toLowerCase().replace(/\.$/, '').split('.').slice(-2).join('.');
+  h = h.toLowerCase().replace(/\.$/, '');
+  return getDomain(h, { allowPrivateDomains: true }) ?? h;
 }
 
 export function assessProvenance(i: {

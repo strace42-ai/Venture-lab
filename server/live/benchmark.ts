@@ -113,7 +113,7 @@ export function benchmarkMarkdown(b: Awaited<ReturnType<typeof runBenchmark>>): 
     `| Pipeline (code + models) | ${b.competitors.tp} | ${b.competitors.fp} | ${b.competitors.fn} | ${pct(b.competitors.precision)} | ${pct(b.competitors.recall)} |`,
     `| Recorded skeptic model alone | ${b.competitors.modelOnly.tp} | ${b.competitors.modelOnly.fp} (+${b.competitors.modelOnly.unproven} with unproven market) | — | ${pct(b.competitors.modelOnly.precision)} | — |`,
     '',
-    `Rivals invented by the model: ${b.competitors.phantoms}; dropped by code: ${b.competitors.phantomsDropped}. Rivals with an UNPROVEN market (no RU availability signal on the page or home page) shown but not counted: ${b.competitors.unprovenShown}/${b.competitors.unprovenExpected}.`,
+    `Rivals invented by the model: ${b.competitors.phantoms}; dropped by code: ${b.competitors.phantomsDropped}. Rivals with an UNPROVEN market (status conflicting/unknown on the page and home page): shown as POSSIBLE competitors — not counted as proven, but they block any benefit to the «empty Russian niche»: ${b.competitors.unprovenShown}/${b.competitors.unprovenExpected}.`,
     '',
     `Source provenance: independent publications verified by signals ${b.provenance.independentVerified}; «independent» claims by the extraction model rejected as unverified ${b.provenance.independentClaimRejected}.`,
     '',

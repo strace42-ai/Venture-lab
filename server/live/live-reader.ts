@@ -62,7 +62,7 @@ export class LiveSourceReader implements SourceReader {
           const x = await this.extractor.extract(ctx, { url: f.finalUrl, title: page.title, text: page.text }, hint.seed);
           // Market not established on this page → one automatic re-check on the site's home page (free, same safe fetcher).
           let probe: { url: string; lang: string | null; text: string } | null = null;
-          if (x.isProductPage && x.name && !marketEvidence(f.finalUrl, page.lang, page.text).market) probe = await this.homeProbe(ctx, f.finalUrl);
+          if (x.isProductPage && x.name && marketEvidence(f.finalUrl, page.lang, page.text).status === 'unknown') probe = await this.homeProbe(ctx, f.finalUrl);
           const g = groundOffer(x, { url: f.finalUrl, title: page.title, lang: page.lang, text: page.text }, hint.seed, this.extractor.model, probe);
           got = { x, offer: g.offer, uncertain: g.uncertain };
           this.extracted.set(ek, got);
