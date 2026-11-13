@@ -15,7 +15,7 @@
 import { z } from 'zod';
 import { modelFamily, type LiveConfig } from './config';
 import { llmCostKop, llmWorstCaseKop, tariffFor, YANDEX_PRICE_VERSION } from './prices';
-import type { ProviderCaller } from './provider-http';
+import { fromYandex, type ProviderCaller } from './provider-http';
 import { planReasoning, type LlmOperation, type ReasoningEffort, type ReasoningPlan } from './reasoning';
 import type { ExtractedOffer } from './grounding';
 import { analystProposalBase, skepticFindingsSchema } from '../machine/schemas';
@@ -169,7 +169,9 @@ export class AIStudioChat {
         const actual = llmCostKop(tariff, { input: u.prompt_tokens, cachedInput: u.prompt_tokens_details?.cached_tokens ?? 0, output: u.completion_tokens });
         return { outcome: 'reconciled', actualCost: actual, tokensIn: u.prompt_tokens, tokensOut: u.completion_tokens, providerRequestId: providerRequestId ?? parsed.data.id ?? null };
       },
-      notBilled: (s) => s === 401 || s === 403,
+      // Documented «not billed» applies only to a response that provably came from Yandex (its request-id header);
+      // an intermediate proxy's 401/403/5xx leaves the call UNKNOWN with the worst case kept.
+      notBilled: (s, headers) => fromYandex(headers) && (s === 401 || s === 403),
       rejected: (status, raw) => {
         if (!plan.effort) return null;
         const text = raw.toString('utf8').slice(0, 2_000);
@@ -187,7 +189,7 @@ export class AIStudioChat {
    * reasoning model may return empty content (`meta.contentGenerated` says which).
    */
   async ping(ctx: CallContext, model: string): Promise<{ content: string; meta: CompletionMeta }> {
-    const plan = { effort: null, maxTokens: 16 };
+    const plan = planReasoning(model, 'probe_transport', 16);
     const c = await this.send(ctx, model, [{ role: 'user', content: 'Ответь одним словом: ок' }], plan, {}, 'probe_transport');
     return { content: (c.choices[0]!.message.content ?? '').slice(0, 200), meta: completionMeta(c, 'probe_transport', plan) };
   }

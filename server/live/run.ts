@@ -11,7 +11,8 @@ import { discoverySeedSchema } from '../machine/schemas';
 import type { DiscoverySeed } from '../machine/types';
 import type { Pool } from '../db/pool';
 import { withPaidExecutionLock } from './paid-lock';
-import { PROBE_DIAGNOSTIC_CALLS, PROBE_REQUIRED_CHECKS, runProbe, type ProbeCheck } from './probe';
+import { PROBE_REQUIRED_CHECKS, probeRateLimits, runProbe, type ProbeCheck } from './probe';
+import { DEFAULT_RETRY } from './provider-http';
 import type { ISODate } from '../../src/domain/types';
 
 export interface LiveRunInput {
@@ -120,7 +121,8 @@ export async function runPaidStage(
         budget: gate.maxSpendKop,
         monthlyBudget: cfg.monthlyBudgetKop,
         maxAttempts: 3, // the first try + at most 2 explicit --retry, all within the same 5 ₽ stage budget
-        rateLimits: { search: 2, read: 0, llm: 4 + PROBE_DIAGNOSTIC_CALLS },
+        // logical calls × (1 + maxRetries) HTTP attempts — each attempt reserved in advance, budget unchanged
+        rateLimits: probeRateLimits({ analyst: cfg.analystModel, skeptic: cfg.skepticModel }, { ...DEFAULT_RETRY, ...deps.retry }),
         trial: gate.trial,
         independence: bundle.independence,
         now,

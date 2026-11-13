@@ -281,15 +281,13 @@ describeDb('trial ledger, probe, seeds, isolation, export (recorded HTTP + Postg
       'search:ru:true', 'search:world:true',
       'transport:analyst:qwen3.6-35b-a3b:true', 'mini-schema:analyst:qwen3.6-35b-a3b:true',
       'transport:skeptic:deepseek-v4.1-flash:true', 'mini-schema:skeptic:deepseek-v4.1-flash:true',
-      // non-required diagnostics of reasoning_effort=none (the recording has no reasoning → «disabled»)
-      'reasoning-off:analyst:qwen3.6-35b-a3b:true', 'reasoning-off:skeptic:deepseek-v4.1-flash:true',
     ]);
-    expect(r.probe!.filter((c) => c.required)).toHaveLength(6);
+    // «none» is verified for both models: no diagnostic calls, nothing paid twice
+    expect(r.probe!.every((c) => c.required)).toBe(true);
     expect(p.searchCalls).toHaveLength(2);
-    expect(p.llmCalls).toHaveLength(6);
-    // transport 16; mini-schema 60 + 1024 reasoning reserve (reasoning not switched off: unverified); diagnostic 60 with «none»
+    expect(p.llmCalls).toHaveLength(4);
     const sent = p.llmCalls.map((x) => x.body as { max_tokens: number; reasoning_effort?: string });
-    expect(sent.map((b) => [b.max_tokens, b.reasoning_effort ?? null])).toEqual([[16, null], [1084, null], [16, null], [1084, null], [60, 'none'], [60, 'none']]);
+    expect(sent.map((b) => [b.max_tokens, b.reasoning_effort ?? null])).toEqual([[16, 'none'], [60, 'none'], [16, 'none'], [60, 'none']]);
     expect(web.requests).toHaveLength(0);
     expect(r.spent!).toBeLessThanOrEqual(500);
     expect((await db.pool.query('SELECT count(*)::int AS n FROM mr_snapshots')).rows[0].n).toBe(0);
@@ -297,8 +295,8 @@ describeDb('trial ledger, probe, seeds, isolation, export (recorded HTTP + Postg
     expect(job).toEqual({ job_key: 'trial:phase-b-test:probe', as_of: TODAY, trial_stage: 'probe', status: 'succeeded' });
     // raw capture: <raw>/trial_phase-b-test_probe/attempt-1/<seq>-<host>-<status>.json
     const files = capture.files;
-    expect(files).toHaveLength(8);
-    expect(readdirSync(join(rawDir, 'trial_phase-b-test_probe', 'attempt-1'))).toHaveLength(8);
+    expect(files).toHaveLength(6);
+    expect(readdirSync(join(rawDir, 'trial_phase-b-test_probe', 'attempt-1'))).toHaveLength(6);
     for (const f of files) {
       const t = readFileSync(f, 'utf8');
       expect(t).not.toContain(ENV.YANDEX_API_KEY!);
@@ -307,6 +305,41 @@ describeDb('trial ledger, probe, seeds, isolation, export (recorded HTTP + Postg
       expect(JSON.parse(t)).toMatchObject({ jobKey: 'trial:phase-b-test:probe', attempt: 1 });
     }
     expect(readFileSync(files[0]!, 'utf8')).toMatch(/decodedRawData.*yandexsearch/s);
+  });
+
+  it('probe: RU → 502 from an intermediate proxy → retried 200, then World → 200: both logical searches pass; the proxy 502 stays UNKNOWN', async () => {
+    // the first search HTTP attempt gets a proxy-style 502 (no Yandex request id), everything else is normal
+    const p = new RecordedProviders({ search: (_q, n) => (n === 1 ? { status: 502 } : {}) });
+    const web = new RecordedWeb();
+    const clock = virtualClock();
+    const r = await runPaidStage(db.pool, cfg, gate('probe', 5, 300, 'phase-b-502'), { providerTransport: p, webTransport: web, resolver: web, sleep: clock.sleep, clock }, { lockFile: join(dir, 'l502'), now: NOW });
+    expect(r.status).toBe('succeeded');
+    expect(r.probe!.filter((c) => c.check.startsWith('search:')).map((c) => `${c.check}:${c.ok}`)).toEqual(['search:ru:true', 'search:world:true']);
+    // exactly two LOGICAL searches, three HTTP attempts (RU, RU retry, World)
+    expect(p.searchCalls.map((c) => (c.body as { query: { searchType: string } }).query.searchType)).toEqual(['SEARCH_TYPE_RU', 'SEARCH_TYPE_RU', 'SEARCH_TYPE_COM']);
+    const usage = (
+      await db.pool.query<{ http_status: number | null; reconciliation: string; cost: number; estimated_cost: number }>(
+        "SELECT u.http_status, u.reconciliation, u.cost, u.estimated_cost FROM mr_usage u JOIN mr_jobs j ON j.id = u.job_id WHERE j.trial_id = 'phase-b-502' AND u.operation = 'search' ORDER BY u.id",
+      )
+    ).rows;
+    // every attempt was reserved in advance; the proxy 502 keeps its worst case (not assumed free)
+    expect(usage).toEqual([
+      { http_status: 502, reconciliation: 'unknown', cost: 49, estimated_cost: 49 },
+      { http_status: 200, reconciliation: 'tariff', cost: 49, estimated_cost: 49 },
+      { http_status: 200, reconciliation: 'tariff', cost: 49, estimated_cost: 49 },
+    ]);
+    expect(r.spent!).toBeLessThanOrEqual(500);
+    // the Search API limiter (≥ 1100 ms between attempts) applied to the retry as well: 3 attempts → ≥ 2 gaps
+    expect(clock.now()).toBeGreaterThanOrEqual(2 * 1100);
+  });
+
+  it('a 5xx that provably came from Yandex (request id present) is documented as not billed', async () => {
+    const p = new RecordedProviders({ search: (_q, n) => (n === 1 ? { status: 503, headers: { 'x-request-id': 'yandex-req-1' } } : {}) });
+    const web = new RecordedWeb();
+    const r = await runPaidStage(db.pool, cfg, gate('probe', 5, 300, 'phase-b-503'), { providerTransport: p, webTransport: web, resolver: web, sleep: async () => {}, clock: virtualClock() }, { lockFile: join(dir, 'l503'), now: NOW });
+    expect(r.status).toBe('succeeded');
+    const first = (await db.pool.query("SELECT u.http_status, u.reconciliation, u.cost FROM mr_usage u JOIN mr_jobs j ON j.id = u.job_id WHERE j.trial_id = 'phase-b-503' ORDER BY u.id LIMIT 1")).rows[0];
+    expect(first).toEqual({ http_status: 503, reconciliation: 'not_billed', cost: 0 });
   });
 
   it('stage 2 with seeds: NO discovery at all (no discovery search, no discovery model call), real date, no snapshot', async () => {

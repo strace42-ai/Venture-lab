@@ -14,7 +14,7 @@
 import { z } from 'zod';
 import { decodeEntities } from './html';
 import { searchCostKop, YANDEX_PRICE_VERSION } from './prices';
-import type { ProviderCaller } from './provider-http';
+import { fromYandex, type ProviderCaller } from './provider-http';
 import { ProviderUnavailable, type CallContext, type Region, type SearchHit, type SearchProvider } from '../machine/types';
 
 export interface YandexSearchOptions {
@@ -110,7 +110,10 @@ export class YandexSearchProvider implements SearchProvider {
           maxBytes: 5_000_000,
         }),
         settle: (r) => ({ outcome: 'tariff', actualCost: searchCostKop(), providerRequestId: r.headers['x-request-id'] ?? r.headers['x-server-trace-id'] ?? null }),
-        notBilled: (s) => s >= 500 || s === 401 || s === 403,
+        // Search API docs: 5xx and authorization errors are not billed — but only when Yandex itself answered.
+        // A 502 from an intermediate proxy (e.g. «upstream request failed», no Yandex request id) may or may not
+        // have reached Yandex: it stays UNKNOWN with the worst case until reconciled with Billing.
+        notBilled: (s, headers) => fromYandex(headers) && (s >= 500 || s === 401 || s === 403),
       });
       let parsed: ParsedSearch;
       try {
