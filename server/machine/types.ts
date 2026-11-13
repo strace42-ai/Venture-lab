@@ -64,6 +64,8 @@ export interface PageOffer {
     marketStatus: 'verified' | 'conflicting' | 'unknown';
     marketSignals: string[];
     marketConflicts: string[];
+    /** Jobs whose quote is on the page but only weakly related (one term): neither proven nor refuted — UNKNOWN. */
+    uncertainJobs?: Record<string, string>;
   };
 }
 
@@ -175,6 +177,8 @@ export interface RawCompetitor {
   marketVerified?: boolean;
   /** declared = fixture emulation (hand-written market); default declared. */
   marketStatus?: CompetitorMarketStatus;
+  /** Jobs only weakly supported by the page (UNKNOWN), never counted as proven. */
+  uncertainJobs?: string[];
 }
 
 export type CompetitorMarketStatus = 'verified' | 'declared' | 'conflicting' | 'unknown';
@@ -429,6 +433,12 @@ export interface CompetitorRow {
   /** false = market not established: shown, but never used for caps, refutations or holds. */
   marketVerified?: boolean;
   marketStatus?: CompetitorMarketStatus;
+  /**
+   * Does the rival's page PROVE the idea's primary job? proven | unknown (quote on the page, meaning not
+   * established) | absent. `unknown` makes it a POSSIBLE rival (like an unproven market): never a proven
+   * direct competitor, never evidence of an empty niche.
+   */
+  primaryJobStatus?: 'proven' | 'unknown' | 'absent';
 }
 
 export interface ReviewRow {

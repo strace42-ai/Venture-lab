@@ -189,6 +189,8 @@ export interface MachineCompetitor {
   marketVerified?: boolean;
   /** verified (page signals) · declared (fixture) · conflicting · unknown · not_assessed (historical row). */
   marketStatus?: 'verified' | 'declared' | 'conflicting' | 'unknown' | 'not_assessed';
+  /** Does the rival's page prove the primary job? proven · unknown (meaning not established: a possible rival) · absent; absent field = historical. */
+  primaryJobStatus?: 'proven' | 'unknown' | 'absent';
 }
 
 export interface MachineReview {
@@ -218,6 +220,8 @@ export interface MachineAssessment {
   holdReasons: string[];
   rationale: string;
   dimensionNotes: string[];
+  /** Execution judgements counted from the model's opinion alone (no proven source) — for audit (derived from notes). */
+  unverifiedJudgements?: DimensionKey[];
   models: string[];
   pipelineVersion: string;
 }
@@ -236,4 +240,21 @@ export interface MachineCandidateDetail {
   searches: MachineSearch[];
   competitors: MachineCompetitor[];
   reviews: MachineReview[];
+}
+
+/**
+ * Technical debt of the scoring rubric, made visible (audit 13.11.2026). The six execution judgements
+ * (speedToPilot, mvpFeasible, fastTest, retention, defensibility, riskManageable) accept the model's score up
+ * to 4/5 without a proven source. The formula is unchanged; every such score is marked in the dimension notes
+ * with this exact phrase, and shown in the dossier and the CSV export.
+ */
+export const UNVERIFIED_JUDGEMENT_MARK = 'не подтверждено источником: экспертная оценка модели';
+
+export function unverifiedJudgementNote(d: DimensionKey, v: number): string {
+  return `${d}: ${v} — ${UNVERIFIED_JUDGEMENT_MARK}`;
+}
+
+/** Dimensions marked as unverified model judgements in an assessment's notes (historical rows: none marked). */
+export function unverifiedJudgements(notes: readonly string[]): DimensionKey[] {
+  return notes.filter((n) => n.includes(UNVERIFIED_JUDGEMENT_MARK)).map((n) => n.slice(0, n.indexOf(':')) as DimensionKey);
 }

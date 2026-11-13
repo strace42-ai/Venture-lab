@@ -1,5 +1,53 @@
 # Venture Lab — Latest handoff
 
+## VL-004B evidence quality — unverified judgements marked, semantic job check (2026-11-13)
+**Input:** founder's request, plus ChatGPT's review of PR #12 (`abd6819`). This is an offline PR. **Not changed:** the scoring formula, historical assessments, the budget ledger, statuses, and the recovery results in `vl_phase_b_probe`. Migration 010 has NOT been applied to it.
+
+**1. Unverified execution judgements** (speedToPilot, mvpFeasible, fastTest, retention, defensibility, riskManageable):
+- **Marked whenever counted from the model alone.** Every such score > 0 counted without a proven claim (and not refuted) gets the note `<dim>: <v> — не подтверждено источником: экспертная оценка модели`. This now applies to every such score, not only a capped 5 → 4.
+- **Where it shows:**
+  - dimension notes;
+  - the machine dossier: `MachineAssessment.unverifiedJudgements`, a badge «без источника» in the score breakdown, and a summary line;
+  - CSV: one `judgement` row per item (`unverified_model_judgement`), plus a list in the assessment row.
+- **Formula unchanged:** scores up to 4 are still counted. Historical assessments are not rewritten, so their marks are absent.
+
+**2. Semantic quote ↔ job check** (`grounding.ts: jobQuoteSupport`):
+- **proven** only if ≥ 2 distinct quote words match ONE description of the job: its slug, or one Russian keyword phrase of the candidate.
+- **UNKNOWN** — a single word, or words from different descriptions:
+  - «Подключите быструю идентификацию гостей» matches only «гостей»;
+  - «Электронная регистрация гостей» matches words from two phrases.
+- **none** — promotional copy, or no term at all.
+- **Effect:** the E-regcard known gap is closed.
+- **A rival with an UNKNOWN primary job:**
+  - kind comes from the PROVEN jobs only, so it is never a proven direct competitor;
+  - it is a **possible** rival, like an unproven market: the existing rules apply (it blocks support for an «empty RU niche», RU cap 3);
+  - it is stored as `primary_job_status` (migration **010**, NULL for history);
+  - a DB check (NOT VALID) requires `direct ⇒ proven` for new rows;
+  - it is shown in the dossier and in the CSV.
+
+**Benchmark** identical to PR #12: states, scores and rivals of the recorded corpus.
+
+**Tests:**
+- `live-evidence-quality.test.ts` (5): marks for 3/5, capped 5 and 0; evidence dimensions never marked; dossier and CSV; migration 010 refuses `direct + unknown`; history NULL kept.
+- `live-strict-extraction.test.ts` (+3 negative):
+  - E-regcard is UNKNOWN;
+  - entity-only and cross-phrase quotes never prove a job;
+  - in the pipeline, every direct rival has its primary job proven.
+- The migration-list test is updated.
+
+**Checks:**
+- `lint` ✔, `typecheck` ✔, `build` ✔.
+- `CI=true npm test` with PostgreSQL ✔: **499 tests in 28 files**.
+
+**Next (separate decisions):**
+- reconcile the 400/502 with Billing;
+- apply 010 to `vl_phase_b_probe`;
+- the paid `--retry` of Touch Stay (r2, 48.12 ₽).
+
+No paid request, no merge, `VL_LIVE_EXECUTE` off.
+
+---
+
 ## VL-004B-stage2-resume — strict analyst schema, «incomplete» status, safe resume, evidence kept, extraction regressions (2026-11-13)
 **Input.** Stage2 of `phase-b-pilot-01` (Touch Stay) on 13.11.2026.
 - The analyst got HTTP 400 «Invalid JSON Schema: all fields must be required, 'highImpact' is optional».

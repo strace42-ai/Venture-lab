@@ -174,6 +174,48 @@ const stem = (w: string) => (w.length <= 3 ? w : w.length <= 5 ? w.slice(0, 4) :
 /** A quote word matches a vocabulary stem by prefix (guidebook ↔ guid, гостей ↔ гост); 3-letter stems exactly. */
 const matches = (word: string, st: string) => (st.length <= 3 ? word === st : word.startsWith(st));
 
+const STOP = new Set(['по', 'на', 'в', 'во', 'и', 'с', 'со', 'к', 'о', 'об', 'от', 'до', 'за', 'из', 'для', 'не', 'the', 'of', 'to', 'for', 'and', 'in', 'on', 'by', 'a', 'an', 'or', 'is']);
+/** Quote tokens: words split at hyphens AND hyphen-joined compounds (check-in → check, in, checkin). */
+const quoteTokens = (x: string) => [...new Set([...x.toLowerCase().split(/[^\p{L}\p{N}]+/u), ...words(x)].filter((w) => w.length >= 2 && !STOP.has(w)))];
+/** Descriptions of the job: its slug, and each Russian keyword phrase of the candidate — as groups of stems. */
+const jobDescriptions = (job: string, seed: Pick<DiscoverySeed, 'ruKeywords'>): string[][] =>
+  [job.replace(/-/g, ' '), ...(seed.ruKeywords ?? [])]
+    .map((d) => [...new Set([...words(d), ...d.toLowerCase().split(/[^\p{L}\p{N}]+/u)].filter((w) => w.length >= 2 && !STOP.has(w)).map(stem))])
+    .filter((g) => g.length > 0);
+
+export interface JobSupport {
+  level: 'proven' | 'uncertain' | 'none';
+  /** Distinct quote words that matched a term of the job. */
+  matched: string[];
+  reason: string | null;
+}
+
+/**
+ * Does a verbatim quote describe THIS job? A deterministic, fail-closed check of meaning (audit 13.11.2026):
+ *  - promotional copy never proves a function → none;
+ *  - the quote must match ONE description of the job — its slug, or one Russian keyword phrase of the
+ *    candidate — by prefix stem:
+ *      ≥ 2 distinct quote words of the SAME description → proven («The guidebook your guests…»: guidebook +
+ *      guests; «Инструкции по заселению»: инструкции + заселению);
+ *      words from different descriptions only, or a single word → UNKNOWN: E-regcard «Подключите быструю
+ *      идентификацию гостей» matches only «гостей» (the user of the product, not the guide); «Электронная
+ *      регистрация гостей» matches «электронная» and «гостей» from two different phrases;
+ *      nothing → none.
+ * UNKNOWN is never upgraded to proven and never counts as a refutation.
+ */
+export function jobQuoteSupport(quote: string, job: string, seed: Pick<DiscoverySeed, 'ruKeywords'>): JobSupport {
+  if (PROMO.test(quote)) return { level: 'none', matched: [], reason: 'рекламный текст (акция/скидка) не подтверждает функцию продукта' };
+  const tokens = quoteTokens(quote);
+  // the same concept matched twice through a joined compound (check-in → check + checkin) counts once
+  const distinct = (ws: string[]) => ws.filter((w) => !ws.some((o) => o !== w && o.length > w.length && o.startsWith(w)));
+  const groups = jobDescriptions(job, seed).map((g) => distinct(tokens.filter((w) => g.some((v) => matches(w, v)))));
+  const best = groups.reduce<string[]>((a, g) => (g.length > a.length ? g : a), []);
+  if (best.length >= 2) return { level: 'proven', matched: best, reason: null };
+  const any = distinct([...new Set(groups.flat())]);
+  if (any.length >= 1) return { level: 'uncertain', matched: any, reason: `смысловое соответствие не доказано: совпало ${any.length === 1 ? `одно слово («${any[0]}»)` : `по одному слову из разных описаний («${any.join('», «')}»)`} — UNKNOWN` };
+  return { level: 'none', matched: [], reason: 'цитата не содержит ни одного термина задачи — не подтверждает именно эту работу' };
+}
+
 /**
  * Does a verbatim quote plausibly describe THIS job? (VL-004B-strict, P2 regression of 13.11.2026)
  *  - promotional copy (Black Friday, % off, скидка…) never proves a function;
@@ -184,11 +226,7 @@ const matches = (word: string, st: string) => (st.length <= 3 ? word === st : wo
  * identification still passes (a known gap; a semantic check is separate work).
  */
 export function jobQuoteProblem(quote: string, job: string, seed: Pick<DiscoverySeed, 'ruKeywords'>): string | null {
-  if (PROMO.test(quote)) return 'рекламный текст (акция/скидка) не подтверждает функцию продукта';
-  const vocab = new Set([...words(job.replace(/-/g, ' ')), ...(seed.ruKeywords ?? []).flatMap(words)].filter((w) => w.length >= 3).map(stem));
-  const q = words(quote);
-  for (const v of vocab) if (q.some((w) => matches(w, v))) return null;
-  return 'цитата не содержит ни одного термина задачи — не подтверждает именно эту работу';
+  return jobQuoteSupport(quote, job, seed).reason;
 }
 
 /** A price must state an amount with a currency, or a free tier — not any sentence that contains a digit. */
@@ -218,15 +256,24 @@ export function groundOffer(
     return { offer: null, uncertain: [`название «${name.slice(0, 80)}» не найдено на странице — предложение не принято`] };
   }
   const jobEvidence: Record<string, string> = {};
+  const uncertainJobs: Record<string, string> = {};
   for (const j of x.jobs) {
     if (!seed.jobs.includes(j.job)) {
       uncertain.push(`работа ${j.job}: не из списка работ идеи`);
       continue;
     }
-    const qp = quoteProblem(j.quote) ?? jobQuoteProblem(j.quote, j.job, seed);
+    const qp = quoteProblem(j.quote);
+    const sup = qp ? null : jobQuoteSupport(j.quote, j.job, seed);
     if (qp) uncertain.push(`работа ${j.job}: ${qp}`);
+    else if (sup!.level === 'none') uncertain.push(`работа ${j.job}: ${sup!.reason}`);
     else if (!containsLiteral(page.text, j.quote)) uncertain.push(`работа ${j.job}: цитата «${j.quote.slice(0, 80)}» не найдена на странице`);
-    else jobEvidence[j.job] ??= j.quote.trim();
+    else if (sup!.level === 'uncertain') {
+      if (!(j.job in jobEvidence)) uncertainJobs[j.job] ??= j.quote.trim();
+      uncertain.push(`работа ${j.job}: ${sup!.reason}`);
+    } else {
+      jobEvidence[j.job] ??= j.quote.trim();
+      delete uncertainJobs[j.job];
+    }
   }
   let price: string | undefined;
   if (x.price) {
@@ -261,7 +308,7 @@ export function groundOffer(
       market,
       jobs,
       ...(price ? { price } : {}),
-      grounding: { level: uncertain.length ? 'partial' : 'grounded', jobEvidence, uncertain, extractor, marketVerified, marketStatus: ev.status, marketSignals: ev.signals, marketConflicts: ev.conflicts },
+      grounding: { level: uncertain.length ? 'partial' : 'grounded', jobEvidence, uncertain, extractor, marketVerified, marketStatus: ev.status, marketSignals: ev.signals, marketConflicts: ev.conflicts, ...(Object.keys(uncertainJobs).length ? { uncertainJobs } : {}) },
     },
     uncertain,
   };
