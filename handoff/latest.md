@@ -1,5 +1,60 @@
 # Venture Lab — Latest handoff
 
+## VL-004B-reasoning-verified — «none» verified, probe search retries, proxy-error accounting (2026-11-13)
+**Input:** the third real probe on 13.11.2026.
+- The trial `phase-b-probe-20261113` is closed: 3/3 attempts used, 2.24 ₽ spent by the ledger.
+- Both models returned valid JSON with `reasoning_effort=none`.
+- Qwen with reasoning ON spent 1084/1084 tokens.
+- The proxy returned a 502 and the retry succeeded, but the retry used up the probe's 2-search HTTP limit, so the World search was refused locally.
+
+**Change** (branch `claude/vl-004b-reasoning-verified`, base `claude/vl-004b-reasoning-policy` @ `8be4a88`):
+- **Reasoning policy (`reasoning.ts`)**, a table per (model, operation):
+  - Qwen: `none` in all pilot operations, including the 16-token ping;
+  - DeepSeek: `none` for the simple ones (probe, extract); `skeptic_challenge` keeps reasoning with a 4096 reserve;
+  - `none` is allowed only for a `verified` profile. Both profiles are now `verified`, with the 13.11 attempt-3 request ids as evidence;
+  - unknown models/pairs: reasoning ON + default reserve.
+- **Probe:**
+  - the `none` diagnostic runs only for models that are not verified, so no money is spent twice. Now there are 4 LLM calls;
+  - the HTTP limits per run are logical calls × (1 + maxRetries): search 2 × 3 = 6, llm 4 × 3 = 12;
+  - there are still exactly 2 logical searches;
+  - the limiter (≥ 1.1 s) and the pre-reservation apply to every attempt.
+- **Proxy errors (`fromYandex()` in `provider-http.ts`):**
+  - documented «not billed» (Search 5xx/401/403, AI Studio 401/403) applies only to a response carrying a Yandex `x-request-id` / `x-server-trace-id`;
+  - a proxy 502 («upstream request failed», no id) stays `unknown` with the worst case kept;
+  - retries are unchanged.
+- **Unchanged:** scoring, budgets, research criteria.
+- **New `docs/vl-004b-pilot-runbook.md`:** new trial `phase-b-pilot-01`, budget 300 ₽, first run `--probe` ≤ 5 ₽.
+
+**Tests:**
+- `live-reasoning.test.ts` (26 tests):
+  - real «none» responses of both models;
+  - the real 1084 exhaustion;
+  - «none» + length rejected;
+  - the schema stays strict;
+  - the policy per pair, including the verified → unverified/unsupported fallback;
+  - pipeline requests;
+  - the reservation, billing anomaly and budget cap;
+  - the verified probe: 4 calls with none, no diagnostics, limits 6/12;
+  - the pre-verification replay.
+- `live-prep.test.ts` (PostgreSQL):
+  - **RU → proxy 502 → retry 200 → World 200**: both logical searches pass, the 502 is ledgered `unknown` 49 kop, every attempt is reserved, and limiter spacing is ≥ 2 × 1100 ms;
+  - a Yandex 503 (with request id) is `not_billed`.
+- Existing tests now mark which error responses come from Yandex. New: a proxy 5xx is not assumed free.
+
+**Checks:**
+- `lint` ✔, `typecheck` ✔, `build` ✔.
+- `CI=true npm test` with PostgreSQL ✔: **466 tests in 25 files**.
+- Dry-run for `phase-b-pilot-01` ✔.
+- Gate refusal without `VL_LIVE_EXECUTE`: exit 2.
+
+**Ledger note:** row 8 of `phase-b-probe-20261113` (the proxy 502, recorded as `not_billed` 0) was written before this rule. History is not rewritten. Treat it as «unknown, ≤ 0.49 ₽» until it is reconciled with Billing.
+
+**Container note:** the container restarted twice today. PostgreSQL is stopped after each restart, but `/var/tmp` survived so far.
+
+No paid request, no merge, no cloud resource.
+
+---
+
 ## VL-004B-reasoning — reasoning-aware AI Studio adapter (2026-11-13)
 **Why.** Probe attempt 2, the authorised `--retry`, passed 5 of 6 checks:
 - the secret was substituted through HTTPS_PROXY;

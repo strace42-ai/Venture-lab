@@ -75,7 +75,7 @@ beforeAll(async () => {
     req.on('end', () => {
       seen.push({ method: req.method ?? '', path: req.url ?? '', host: req.headers.host, authorization: req.headers.authorization, body });
       if (backendMode === 'auth401') {
-        res.writeHead(401, { 'content-type': 'application/json' });
+        res.writeHead(401, { 'content-type': 'application/json', 'x-request-id': 'yandex-like-401' });
         res.end(JSON.stringify({ code: 16, message: 'Unknown api key' }));
       } else if (backendMode === 'redirect') {
         res.writeHead(302, { location: 'https://attacker.example/steal' });

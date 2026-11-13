@@ -178,7 +178,7 @@ describeDb('VL-004B live worker on recorded HTTP (Case G)', () => {
   it('auth failure (401) is not retried and fails the run without publishing', async () => {
     const t = await createTestDb();
     try {
-      const d = deps({ search: () => ({ status: 401 }) });
+      const d = deps({ search: () => ({ status: 401, headers: { 'x-request-id': 'yandex-401' } }) }); // Yandex itself answered
       const r = await runWorkerJob(t.pool, liveRunOptions(cfg, d.deps, { asOf: '2026-11-12', budgetKop: 20_000, now: NOW }));
       expect(r.status).toBe('failed');
       expect(r.message).toMatch(/доступ отклонён/);

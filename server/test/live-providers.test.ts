@@ -87,8 +87,15 @@ describe('retries, backoff and the circuit breaker (Case G)', () => {
     expect(c.spent).toBe(98);
   });
 
-  it('5xx on Search is documented as not billed; retries are bounded; then the circuit opens', async () => {
-    const t = new RecordedProviders({ search: () => ({ status: 503 }) });
+  it('a proxy-style 5xx (no Yandex request id) is NOT assumed free: unknown, worst case kept', async () => {
+    const t = new RecordedProviders({ search: () => ({ status: 502 }) });
+    const c = ctx();
+    await expect(search(t).search('a', 'ru', c)).rejects.toBeInstanceOf(ProviderUnavailable);
+    expect(c.usage.every((u) => u.reconciliation === 'unknown' && u.cost === 49)).toBe(true);
+  });
+
+  it('5xx on Search from Yandex (request id present) is documented as not billed; retries are bounded; then the circuit opens', async () => {
+    const t = new RecordedProviders({ search: () => ({ status: 503, headers: { 'x-request-id': 'yandex-503' } }) });
     const cl = caller(t, { maxRetries: 2, circuitThreshold: 2 });
     const p = new YandexSearchProvider(cl, { url: cfg.searchUrl, folderId: 'f', authHeader: () => 'Api-Key k', pages: 1, groupsOnPage: 10 });
     const c = ctx();

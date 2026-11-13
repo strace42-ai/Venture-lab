@@ -94,22 +94,22 @@ Every paid action, `--probe` included, passes one gate (`server/live/gate.ts`):
 
 `--max-spend-rub N` is the hard ceiling for that job, in kopecks in the ledger. `VL_LIVE_MONTHLY_BUDGET_KOP` caps the month. There is no scheduled live run: `tick --live` is refused in Phase A.
 
-## Reasoning models (VL-004B-reasoning)
-Both trial models reason by default. They return `message.reasoning_content`, and the reasoning tokens are part of `completion_tokens` and of `max_tokens`. The probe of 13.11.2026 showed the risk: Qwen3.6 spent the whole `max_tokens` on reasoning, so `content` was empty.
+## Reasoning models (VL-004B-reasoning, verified 13.11.2026)
+Both trial models reason by default. Reasoning tokens are part of `completion_tokens` and of `max_tokens`.
 
-The policy is in `server/live/reasoning.ts`:
-- **Simple JSON operations** (`probe_schema`, `extract_offer`):
-  - use `reasoning_effort: "none"`, but **only** once the model's profile says the mode is `verified`;
-  - until then, `max_tokens` = answer + a reasoning reserve: 1024 for the probe, 2048 for extraction.
-- **Reasoned operations** (`discover_seeds`, `analyse_candidate`, `skeptic_challenge`) keep the model default and get a 4096-token reserve.
-- **The worst-case reservation** uses the `max_tokens` actually sent, including the reserve, so the spending bound covers reasoning.
-- **Only `content` counts.** An answer is accepted only as JSON in `content` that passes the schema. `finish_reason=length`, empty content or JSON found only in `reasoning_content` are rejected and reported.
-- **What is verified, as of 2026-11-13:**
-  - the Yandex docs say the Qwen family can turn reasoning off, but they do not name the value;
-  - the official SDK (`yandex-ai-studio-sdk` 0.22.1) sends `reasoning_effort` with low / medium / high only;
-  - DeepSeek reasoning control is not documented by Yandex.
+On 13.11.2026, with reasoning ON, Qwen3.6 spent all of 16, 60 and 1084 tokens on reasoning, so `content` was empty. With `reasoning_effort: "none"`, both models returned valid JSON without reasoning, and both are now **verified**: Qwen used 12/60 tokens, DeepSeek 10/60 with `reasoning_tokens` 0.
 
-  `none` is therefore **unverified** for both models. The probe checks it with one non-required diagnostic call per model. The result is `disabled`, `ignored`, `rejected` or `inconclusive`. Production does not use `none` until a separate change marks it `verified`.
+The policy is set **per (model, operation)** in `server/live/reasoning.ts`. There is no global switch.
+
+| | probe_transport | probe_schema | extract_offer | discover_seeds | analyse_candidate | skeptic_challenge |
+|---|---|---|---|---|---|---|
+| Qwen3.6 35B | none | none | none | none | none | (default: on + 4096) |
+| DeepSeek V4.1 Flash | none | none | none | (default: on + 4096) | (default: on + 4096) | **on + 4096** |
+
+- **`none` needs a verified profile.** A pair is sent `none` only if the model's profile is `verified`; otherwise it falls back to reasoning ON with a reserve. Unknown models never get `none`.
+- **The reservation follows `max_tokens`.** It uses the `max_tokens` actually sent, reserve included.
+- **Only `content` counts.** It must hold JSON that passes the schema. `finish_reason=length`, empty content and JSON found only in `reasoning_content` are refused. Turning reasoning off does not relax schema or evidence checks.
+- **The probe no longer re-tests verified models.** Its `none` diagnostic runs only for models that are not verified.
 
 ## Bounds and costs of one run
 

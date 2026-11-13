@@ -7,15 +7,19 @@
  *      or finish_reason=length is reported as «no content generated», never as a generated answer.
  *    - MINIMAL SCHEMA: the operation `probe_schema` with the production reasoning policy (reasoning.ts).
  *      It passes only with JSON in `content` that matches the schema; reasoning_content never counts.
- *  - Per model, 1 diagnostic (NOT required): `reasoning_effort: "none"`. It reports whether the mode is
- *    rejected, ignored or works. Its outcome never fails the probe, and production does not use the mode
- *    until it is marked verified in reasoning.ts.
+ *  - Per model whose `none` is NOT yet verified, 1 diagnostic (NOT required): `reasoning_effort: "none"`.
+ *    Verified models are not re-tested (no money spent twice). Its outcome never fails the probe.
+ *  - Search: exactly two LOGICAL searches (RU, World). Each may use up to 1 + maxRetries HTTP attempts
+ *    (a 5xx is retried), so the per-run HTTP limit is 2 × (1 + maxRetries); every attempt is still reserved
+ *    in advance and spaced ≥ 1.1 s by the limiter.
  * Checks never stop each other (except auth failures): the report says exactly what passed.
  */
 import { z } from 'zod';
 import { InvalidModelOutput, ProviderAuthError, RateLimited, type CallContext } from '../machine/types';
 import { describeMeta, ReasoningModeUnsupported } from './ai-studio';
+import { maxHttpAttempts, type RetryPolicy } from './provider-http';
 import type { LiveBundle } from './providers';
+import { needsReasoningOffDiagnostic } from './reasoning';
 
 export const PROBE_QUERIES = [
   { query: 'цифровой гид гостя', region: 'ru' as const },
@@ -24,8 +28,20 @@ export const PROBE_QUERIES = [
 
 /** 2 searches + (transport + minimal schema) × 2 models — every one is required for a passed probe. */
 export const PROBE_REQUIRED_CHECKS = PROBE_QUERIES.length + 2 * 2;
-/** Diagnostic (non-required) calls: reasoning_effort=none × 2 models. */
-export const PROBE_DIAGNOSTIC_CALLS = 2;
+
+/** Models that still need the (non-required) `none` diagnostic: only those not yet verified. */
+export function probeDiagnosticModels(models: { analyst: string; skeptic: string }): string[] {
+  return [...new Set([models.analyst, models.skeptic])].filter(needsReasoningOffDiagnostic);
+}
+
+/**
+ * Per-run HTTP limits of the probe: logical calls × maximum HTTP attempts per call (retry policy). Finite, and
+ * a retried 5xx can no longer starve the second logical search.
+ */
+export function probeRateLimits(models: { analyst: string; skeptic: string }, policy: Pick<RetryPolicy, 'maxRetries'>): { search: number; read: number; llm: number } {
+  const per = maxHttpAttempts(policy);
+  return { search: PROBE_QUERIES.length * per, read: 0, llm: (4 + probeDiagnosticModels(models).length) * per };
+}
 
 const miniSchema = z.strictObject({ ok: z.boolean(), word: z.string().max(40) });
 const MINI_PROMPT = 'Верни JSON-объект: ok=true и word — одно любое слово.';
@@ -74,6 +90,7 @@ export async function runProbe(bundle: Pick<LiveBundle, 'providers' | 'chat'>, m
     });
   }
   for (const [role, model] of [['analyst', models.analyst], ['skeptic', models.skeptic]] as const) {
+    if (!needsReasoningOffDiagnostic(model)) continue; // already verified: never pay for it again
     const check = `reasoning-off:${role}:${model}`;
     try {
       const outcome = await reasoningOffDiagnostic(bundle, model, ctx);

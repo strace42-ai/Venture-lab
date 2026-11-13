@@ -35,13 +35,30 @@ export interface PaidCall {
   build(ledgerId: string): TransportRequest;
   /** Cost evidence from a 2xx response. */
   settle(res: TransportResponse): Omit<ReconcileInput, 'httpStatus'>;
-  /** Is an error status documented as not billed? (Search API: 5xx and auth errors.) */
-  notBilled(status: number): boolean;
+  /**
+   * Is this error response documented as not billed? (Search API: 5xx and auth errors.) Implementations must
+   * check `fromYandex(headers)`: a proxy's error says nothing about whether Yandex billed the request.
+   */
+  notBilled(status: number, headers: Record<string, string>): boolean;
   /**
    * Optional: explain a non-retryable 4xx (not 401/403/429) from its body, e.g. an unsupported parameter.
    * Returning an error throws it instead of the generic «HTTP <status>»; it is never retried.
    */
   rejected?(status: number, body: Buffer): Error | null;
+}
+
+/**
+ * Did this response provably come from Yandex? Every Yandex response observed in the 13.11.2026 probes
+ * (200, 401) carried `x-request-id` or `x-server-trace-id`; the agent-proxy 502 («upstream request failed»)
+ * carried neither. Without the header we cannot know whether the request reached Yandex.
+ */
+export function fromYandex(headers: Record<string, string>): boolean {
+  return !!(headers['x-request-id']?.trim() || headers['x-server-trace-id']?.trim());
+}
+
+/** Upper bound of HTTP attempts for one logical call under a retry policy (first try + retries). */
+export function maxHttpAttempts(policy: Pick<RetryPolicy, 'maxRetries'>): number {
+  return 1 + policy.maxRetries;
 }
 
 export interface CallerDeps {
@@ -117,7 +134,7 @@ export class ProviderCaller {
         this.consecutiveFailures = 0;
         return res;
       }
-      ctx.reconcile(id, pc.notBilled(s) ? { outcome: 'not_billed', actualCost: 0, httpStatus: s } : { outcome: 'unknown', actualCost: null, httpStatus: s });
+      ctx.reconcile(id, pc.notBilled(s, res.headers) ? { outcome: 'not_billed', actualCost: 0, httpStatus: s } : { outcome: 'unknown', actualCost: null, httpStatus: s });
       if (s === 401 || s === 403) {
         this.open = `HTTP ${s}`;
         throw new ProviderAuthError(`${pc.provider}: доступ отклонён (HTTP ${s}) — проверьте ключ/роль сервисного аккаунта; повторов не будет`);
