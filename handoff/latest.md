@@ -153,6 +153,11 @@ Rivals with an unproven market are shown but not counted: 2 of 2. Independent pu
 - **Cost.** One run with the default bounds (3 new + 3 rechecks) cost about 55 ₽ on recorded data; the token counts are synthetic. Searches dominate (≈14 per candidate).
 - **Pre-existing layout issue.** On the 1440 dashboard, the evidence-grade column of the TOP table scrolls inside its card (unchanged since VL-004A).
 
+## Phase B plan (2026-11-13)
+- The plan for a bounded real-data trial is `docs/vl-004b-phase-b-trial-plan.md`; the manual review template is `research/reviews/phase-b-review-template.csv`.
+- **No paid call is authorised.**
+- Found while planning: the synchronous Search API quota is **1 request/s**, and the Phase A adapter does not rate-limit. A small prep PR (rate limiter, `--probe`, `--seeds`/`--no-discovery`, export) is a GO precondition and is not implemented yet.
+
 ## Next
 1. ChatGPT independent audit of this PR.
 2. **Phase B** only after explicit founder authorisation of a provider account, a host and a one-time ceiling (proposed ≤ 500 ₽, **not authorised**). Steps: real search + model smoke on 3–5 candidates, capture real responses, compare with the 9-idea corpus, measure reachability from the host, reconcile with Yandex Billing.

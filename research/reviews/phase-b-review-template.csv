@@ -1,0 +1,5 @@
+kind,candidate_id,item,url,machine_kind_or_status,machine_market_status,in_control_corpus,reviewer_real_product,reviewer_does_primary_job,reviewer_sold_in_ru,reviewer_quote_on_page,reviewer_quote_supports_claim,reviewer_source_independent,reviewer_notes
+competitor,str-guest-guide,<name>,<url>,direct|adjacent|substitute,verified|conflicting|unknown,yes|no,yes|no,direct|adjacent|none,yes|no|unclear,,,,
+claim,str-guest-guide,<claim key>,<source url>,<claim status>,,,,,,yes|no,yes|no,yes|no|n/a,
+independent_source,str-guest-guide,<publisher>,<url>,independent,,,,,,,,yes|no,
+missed_rival,str-guest-guide,<corpus rival not found>,<corpus url>,not found,,yes,,,,,,,why: no query / not fetched / market unproven / extraction rejected
