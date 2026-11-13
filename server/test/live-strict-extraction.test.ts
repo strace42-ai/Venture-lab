@@ -146,9 +146,8 @@ describe('strict analyst wire → internal proposal (explicit conversion)', () =
     expect(analystStrictWire.safeParse({ ...base, claims: [noHigh] }).success).toBe(false);
     expect(analystStrictWire.safeParse({ ...base, scores: { westernNeed: { value: 4, claims: [] } } }).success).toBe(false);
     expect(analystStrictWire.safeParse({ ...base, scores: { ...base.scores, westernNeed: { value: 7, claims: [] } } }).success).toBe(false);
-    // a claim key that does not exist is still refused by the unchanged proposal rules
-    const bad = analystFromWire(analystStrictWire.parse({ ...base, scores: { ...base.scores, westernNeed: { value: 4, claims: ['nope'] } } }), 'm');
-    expect(analystProposalSchema.safeParse(bad).success).toBe(false);
+    // a score citing a claim key that does not exist is refused explicitly (never repaired)
+    expect(() => analystFromWire(analystStrictWire.parse({ ...base, scores: { ...base.scores, westernNeed: { value: 4, claims: ['nope'] } } }), 'm')).toThrow(/ссылается на несуществующее утверждение/);
   });
 
   it('the recorded proposals replayed through the strict wire give the same proposal as before', () => {

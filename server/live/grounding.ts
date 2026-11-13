@@ -171,8 +171,24 @@ const words = (x: string) =>
     .filter(Boolean);
 /** A crude, language-agnostic stem: 3-letter words exact, otherwise the first 5 letters (4 for 4–5 letter words). */
 const stem = (w: string) => (w.length <= 3 ? w : w.length <= 5 ? w.slice(0, 4) : w.slice(0, 5));
-/** A quote word matches a vocabulary stem by prefix (guidebook ↔ guid, гостей ↔ гост); 3-letter stems exactly. */
-const matches = (word: string, st: string) => (st.length <= 3 ? word === st : word.startsWith(st));
+/**
+ * Inflection endings allowed after a SHORT (≤ 3 letters) term — a closed list, never «any continuation»:
+ * Russian noun case/number endings (гид → гида, гиду, гидом, гиде, гиды, гидов, гидам, гидами, гидах) and the
+ * English plural (log → logs). «гидравлика» is not «гид» + an ending, so it never matches.
+ */
+const RU_NOUN_ENDINGS = new Set(['а', 'у', 'ом', 'е', 'ы', 'ов', 'ам', 'ами', 'ах', 'и', 'ей', 'я', 'ю', 'ем', 'ям', 'ями', 'ях', 'ой', 'ою']);
+const EN_PLURAL = new Set(['s', 'es']);
+/**
+ * A quote word matches a vocabulary stem: longer stems by prefix (guidebook ↔ guid, гостей ↔ гост); a short
+ * stem (≤ 3 letters) only as the same word or the same word plus an allowed inflection ending.
+ */
+const matches = (word: string, st: string) => {
+  if (st.length > 3) return word.startsWith(st);
+  if (word === st) return true;
+  if (!word.startsWith(st)) return false;
+  const rest = word.slice(st.length);
+  return /[а-яё]/.test(st) ? RU_NOUN_ENDINGS.has(rest) : EN_PLURAL.has(rest);
+};
 
 const STOP = new Set(['по', 'на', 'в', 'во', 'и', 'с', 'со', 'к', 'о', 'об', 'от', 'до', 'за', 'из', 'для', 'не', 'the', 'of', 'to', 'for', 'and', 'in', 'on', 'by', 'a', 'an', 'or', 'is']);
 /** Quote tokens: words split at hyphens AND hyphen-joined compounds (check-in → check, in, checkin). */

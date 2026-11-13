@@ -317,15 +317,68 @@ export type AnalystStrictWire = z.infer<typeof analystStrictWire>;
  * The result is still validated by `analystProposalSchema` in the pipeline: ranges, URL formats, duplicate
  * keys and references to claims.
  */
+/** The internal claim-key format (unchanged): `^[a-z0-9][a-z0-9._-]{0,79}$`. */
+export const CLAIM_KEY = /^[a-z0-9][a-z0-9._-]{0,79}$/;
+
+/**
+ * Deterministic normalisation of a model's claim key into the internal format (stage2 r2, 13.11.2026: Qwen used
+ * the dimension names as keys, `westernNeed`, `ruUnmetJob`…). Only the IDENTIFIER changes — never the dimension,
+ * text, quote, URLs or scores:
+ *  - camelCase → kebab (westernNeed → western-need), lower case;
+ *  - spaces and «/», «:», «+» … → «-»; repeated «-» collapsed; leading/trailing separators trimmed.
+ * Refused (null) when the mapping would be ambiguous: non-Latin letters (no transliteration is guessed), an
+ * empty result, or a result longer than 80 characters.
+ */
+export function normalizeClaimKey(key: string): string | null {
+  const k = key.trim();
+  if (!k || /[^ -~]/.test(k)) return null; // printable ASCII only: no transliteration is guessed
+  const n = k
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^[^a-z0-9]+|[-._]+$/g, '');
+  return n && CLAIM_KEY.test(n) ? n : null;
+}
+
+/**
+ * Explicit conversion of the strict wire into the internal proposal (the scoring formula and the evidence rules are
+ * unchanged):
+ *  - claim keys are normalised (`normalizeClaimKey`) and every reference in `scores[*].claims` goes through the
+ *    SAME mapping;
+ *  - refused, never repaired: a key that cannot be normalised, two keys mapping to the same identifier, a score
+ *    citing a key that no claim has;
+ *  - `absence: null` → no absence; a dimension with `value: null` → no score (unscored, never 0);
+ *  - `highImpact` is kept as given.
+ * The result is still validated by `analystProposalSchema` in the pipeline (ranges, URL formats, references).
+ */
 export function analystFromWire(w: AnalystStrictWire, model: string): Omit<AnalystProposal, 'ruQueries'> & { ruQueries: string[] } {
+  const map = new Map<string, string>();
+  const owner = new Map<string, string>();
+  for (const c of w.claims) {
+    const n = normalizeClaimKey(c.key);
+    if (n === null) throw new InvalidModelOutput(`analyse_candidate: ключ утверждения «${c.key.slice(0, 40)}» нельзя однозначно привести к формату ${CLAIM_KEY.source}`);
+    if (map.has(c.key)) throw new InvalidModelOutput(`analyse_candidate: повтор ключа утверждения «${c.key}»`);
+    const prev = owner.get(n);
+    if (prev !== undefined) throw new InvalidModelOutput(`analyse_candidate: ключи «${prev}» и «${c.key}» после нормализации совпадают («${n}») — неоднозначно`);
+    map.set(c.key, n);
+    owner.set(n, c.key);
+  }
   const scores: Record<string, { value: number; claims: string[] }> = {};
   for (const d of DIMENSION_KEYS) {
     const s = w.scores[d];
-    if (s && s.value !== null) scores[d] = { value: s.value, claims: s.claims };
+    if (!s || s.value === null) continue;
+    const refs = s.claims.map((r) => {
+      const n = map.get(r);
+      if (n === undefined) throw new InvalidModelOutput(`analyse_candidate: оценка ${d} ссылается на несуществующее утверждение «${r.slice(0, 40)}»`);
+      return n;
+    });
+    scores[d] = { value: s.value, claims: refs };
   }
   return {
     model,
-    claims: w.claims.map((c) => ({ key: c.key, dimension: c.dimension, text: c.text, quote: c.quote, sourceUrls: c.sourceUrls, highImpact: c.highImpact, ...(c.absence ? { absence: c.absence } : {}) })),
+    claims: w.claims.map((c) => ({ key: map.get(c.key)!, dimension: c.dimension, text: c.text, quote: c.quote, sourceUrls: c.sourceUrls, highImpact: c.highImpact, ...(c.absence ? { absence: c.absence } : {}) })),
     scores,
     founderFit: w.founderFit,
     ruQueries: w.ruQueries,
@@ -394,6 +447,7 @@ export class YandexAnalyst implements LLMProvider {
       system:
         'Ты — аналитик №1. По загруженным страницам (DATA.evidence) сформируй утверждения по рубрике v1.0 (dimension из списка), каждое с ДОСЛОВНОЙ цитатой (12+ символов) из excerpt и sourceUrls только из DATA.evidence. ' +
         'Не путай популярность (пользователи, установки) с оплатой (платящие клиенты, выручка): оплату утверждай только цитатой о цене/оплате. ' +
+        'key утверждения — латиница в нижнем регистре, цифры и дефис, уникальный: например "western-need-1", "western-pay-1", "ru-gap-1" (не название измерения). ' +
         'Утверждение «в РФ нет конкурента» помечай absence {market:"ru", job}. ruQueries — 5–8 запросов на русском и английском (синонимы, бренды, цены, заменители) для поиска конкурентов в РФ. Оценки 0–5 только со ссылками на ключи утверждений.',
       data: { asOf, seed, rubricDimensions: ['westernNeed', 'westernPay', 'ruWeakness', 'ruUnmetJob', 'monetization', 'speedToPilot', 'mvpFeasible', 'fastTest', 'distribution', 'retention', 'defensibility', 'riskManageable'], evidence },
       schema: analystStrictWire,

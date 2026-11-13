@@ -1,0 +1,446 @@
+{
+ "_source": "REAL Yandex responses of the authorised stage2 r2 (trial phase-b-pilot-01, 13.11.2026, job trial:phase-b-pilot-01:stage2:r2): Search API results (redacted XML), extract_offer page texts as sent to Qwen + Qwen replies, and the analyse_candidate reply (rejected locally for its claim keys). Redacted raw records; a lone backslash left by phone redaction is repaired as \\n. No secrets, no folder id.",
+ "searches": [
+  {
+   "type": "SEARCH_TYPE_COM",
+   "text": "Touch Stay",
+   "requestId": "d38b0a56-17fb-489c-b8c8-7a4c8b3d9037",
+   "docs": [
+    {
+     "url": "https://touchstay.com/",
+     "title": "Digital Guidebooks to Reduce Guest Questions | Touch Stay",
+     "passage": "Touch Stay connects with your PMS and tools to send guidebooks automatically at the right moment. No manual work, no missed messages, just a smoother experience for every guest."
+    },
+    {
+     "url": "https://touchstay.com/about",
+     "title": "About Touch Stay - The Makers Of The Digital Welcome Book",
+     "passage": "Touch Stay digital guidebooks are the brainchild of Andy McNulty and Joe Jones – two serial travellers who kept on encountering the same issue over and over again: an absence of clear..."
+    },
+    {
+     "url": "https://www.youtube.com/channel/UCKgowcDVvJR3_q95JXBSAlQ",
+     "title": "Touch Stay - YouTube",
+     "passage": "Want to get to know Touch Stay a bit better? Good news! There are plenty of ways you can do just that. It’s as easy as one, two, three. 1. Watch this demo video."
+    },
+    {
+     "url": "https://www.g2.com/products/touch-stay/reviews",
+     "title": "Touch Stay Reviews 2026: Details, Pricing, & Features | G2",
+     "passage": "At its core, Touch Stay enables hosts and property managers to deliver everything guests need in one simple, mobile-friendly place, from check-in instructions and..."
+    },
+    {
+     "url": "https://www.spotsaas.com/product/touch-stay",
+     "title": "Touch Stay 2026: Ideal for SMBs",
+     "passage": "Touch Stay is the perfect package for businesses striving to provide their customers with a convenient and connected stay. With this quick, zero-download mobile app, delight your guests with..."
+    },
+    {
+     "url": "https://linktr.ee/touchstay",
+     "title": "Touch Stay | Instagram, Facebook | Linktree",
+     "passage": "Watch our demo of a Touch Stay Digital Guidebook - Discover how they look, how they work, and how they support your short stay rental business."
+    },
+    {
+     "url": "https://www.stayntouch.com/integrations/touch-stay",
+     "title": "Touch Stay - Stayntouch",
+     "passage": "Touch Stay also allows hotels to customize content with branding, images, and videos, and provides multilingual support to cater to international guests."
+    },
+    {
+     "url": "https://www.capterra.com/p/10017696/Touch-Stay/",
+     "title": "Touch Stay Software Pricing, Alternatives & More 2026 | Capterra",
+     "passage": "Touch Stay Logo Touch Stay Software Review 2026: Features, Reviews, Integrations, Pros & Cons. 5.0 (2)."
+    },
+    {
+     "url": "https://ecologi.com/touchstay",
+     "title": "Check out Touch Stay's Ecologi profile: 6,152 trees funded and 407.23...",
+     "passage": "Climate projects Touch Stay has supported."
+    },
+    {
+     "url": "https://www.saasworthy.com/product/touch-stay",
+     "title": "Touch Stay - Features & Pricing (September 2026)",
+     "passage": "Touch Stay is the perfect solution for businesses interested in making their customers’ stay more comfortable and connected. With its zero-download mobile app, Touch Stay swiftly..."
+    }
+   ]
+  },
+  {
+   "type": "SEARCH_TYPE_COM",
+   "text": "Touch Stay pricing",
+   "requestId": "63a0def5-b8b4-4064-89c1-2624cdc5d36e",
+   "docs": [
+    {
+     "url": "https://touchstay.com/pricing",
+     "title": "Calculate your pricing | Touch Stay digital guidebooks | Touchstay",
+     "passage": "Discover how much your Touch Stay Digital Guidebook will cost, depending on the size and type of your business - Start your free trial today!"
+    },
+    {
+     "url": "https://www.g2.com/products/touch-stay/pricing",
+     "title": "Touch Stay Pricing 2026",
+     "passage": "Touch Stay offers 2 pricing editions, starting from $0 to $99. Touch Stay pricing tiers are designed to support different usage levels and team sizes."
+    },
+    {
+     "url": "https://www.spotsaas.com/product/touch-stay/pricing",
+     "title": "How Much Does Touch Stay Cost in 2026? Buyer Reports",
+     "passage": "Touch Stay utilizes quote-based pricing and requires potential buyers to contact sales. No public price list is available."
+    },
+    {
+     "url": "https://strstack.co/tools/touch-stay/pricing",
+     "title": "Touch Stay pricing — plans, fees, and stack fit | STRStack",
+     "passage": "Touch Stay Pricing. Pricing tiers, booking fees, and what is included at each level. This is source-linked pricing, not a promise the vendor page is unchanged. From $8.25/listing • Free trial."
+    },
+    {
+     "url": "https://www.staytap.app/en/us/touch-stay-pricing-explained",
+     "title": "Touch Stay pricing explained (2026) — how the per-property cost works",
+     "passage": "Touch Stay prices its digital guidebooks from the number of properties you add, using a calculator on its own pricing page, and offers a 14-day free trial with no credit card required."
+    },
+    {
+     "url": "https://checkinguide.app/vs/touch-stay-pricing",
+     "title": "Touch Stay Pricing Explained: What Does It Cost? (2026)",
+     "passage": "A transparent breakdown of Touch Stay's pricing structure, additional costs to consider, and how CheckinGuide gives you more features for less money."
+    },
+    {
+     "url": "https://helpytravel.com/en/vs/touch-stay",
+     "title": "Helpy Travel vs Touch Stay: Free, Multilingual Guest Guide Compared...",
+     "passage": "Touch Stay's public pricing offers a trial but no free plan."
+    },
+    {
+     "url": "https://guestintro.com/guestintro-vs-touch-stay",
+     "title": "GuestIntro vs. Touch Stay: Which Digital Guidebook Is Right for You?",
+     "passage": "GuestIntro vs. Touch Stay. Two digital guidebooks, two very different philosophies. An honest, side-by-side look at pricing, AI features, languages, and integrations..."
+    },
+    {
+     "url": "https://travelaistack.com/compare/touchstay-vs-yourwelcome/",
+     "title": "Touch Stay vs YourWelcome: Host guest experience... | Travel AI Stack",
+     "passage": "Touch Stay. YourWelcome. Pricing model."
+    },
+    {
+     "url": "https://www.saasworthy.com/product/touch-stay/pricing",
+     "title": "Touch Stay Pricing: Cost and Pricing plans",
+     "passage": "Check out the detailed pricing information for Touch Stay. Explore pricing tiers and compare pricing against other New SaaS Software."
+    }
+   ]
+  },
+  {
+   "type": "SEARCH_TYPE_COM",
+   "text": "Touch Stay review customers",
+   "requestId": "a43c2489-93ed-45a0-ae19-839206524d33",
+   "docs": [
+    {
+     "url": "https://www.g2.com/sellers/touch-stay",
+     "title": "Touch Stay Products | Read 18 Reviews on G2",
+     "passage": "Touch Stay has been rated 4.9 stars by 18 verified reviews on G2. Explore all Touch Stay solutions based on real user feedback."
+    },
+    {
+     "url": "https://touchstay.com/",
+     "title": "Digital Guidebooks to Reduce Guest Questions | Touch Stay",
+     "passage": "Most Touch Stay customers automate delivery so guests receive the guidebook automatically before check-in."
+    },
+    {
+     "url": "https://www.trustpilot.com/review/touchstay.com",
+     "title": "Link to trustpilot.com",
+     "passage": "The site owner hides the web page description."
+    },
+    {
+     "url": "https://www.softwareworld.co/software/touch-stay-reviews/",
+     "title": "Touch Stay Reviews Sep 2026: Pricing & Features | SoftwareWorld",
+     "passage": "Touch Stay Reviews 2026: Understand its offerings, pricing, & features. Compare and select with confidence."
+    },
+    {
+     "url": "https://tellacity.com/b/touchstayunitedstates",
+     "title": "Touch Stay Reviews | Ratings, Photos & TrustScore | Tellacity",
+     "passage": "Review summary. Reviews are written by real customers and moderated for authenticity."
+    },
+    {
+     "url": "https://www.youtube.com/watch?v=2t6C6NY8K1c",
+     "title": "Touch Stay Customer Stories - W/ Bob Garner from Casal... - YouTube",
+     "passage": "In this Customer Story video, Bob Garner from Casal Dei Fichi talks about how Touch Stay has helped him and his husband enhance their VR rental business over..."
+    },
+    {
+     "url": "https://www.capterra.com/p/10017696/Touch-Stay/",
+     "title": "Touch Stay Software Pricing, Alternatives & More 2026 | Capterra",
+     "passage": "Touch Stay Logo Touch Stay Software Review 2026: Features, Reviews, Integrations, Pros & Cons. 5.0 (2)."
+    },
+    {
+     "url": "https://www.spotsaas.com/product/touch-stay",
+     "title": "Touch Stay 2026: Ideal for SMBs",
+     "passage": "Touch Stay is the perfect package for businesses striving to provide their customers with a convenient and connected stay. With this quick, zero-download mobile app, delight your guests with an interactive guidebook available off and online - no unnecessary downloads needed."
+    },
+    {
+     "url": "https://operto.com/blog/touchstay-reviews/",
+     "title": "TouchStay Reviews: Features, Pricing, What Else Is Out There? | Operto",
+     "passage": "Touch Stay reviews."
+    },
+    {
+     "url": "https://checkinguide.app/vs/touch-stay-review",
+     "title": "Touch Stay Review 2026: Honest Pros, Cons & Alternatives",
+     "passage": "An honest Touch Stay review for 2026. See the pros, cons, pricing reality, and how cheaper alternatives like CheckinGuide compare for Airbnb hosts."
+    }
+   ]
+  },
+  {
+   "type": "SEARCH_TYPE_RU",
+   "text": "цифровой гид гостя",
+   "requestId": "23f203c5-250f-4b31-91a8-c6393396e466",
+   "docs": [
+    {
+     "url": "https://eregcard-id.ru/",
+     "title": "Идентификация гостей отеля через Цифровой ID MAX — E-regcard",
+     "passage": "Идентификация гостей отеля по требованиям Постановления Правительства РФ № 674. QR-сессия, считывание паспорта через Цифровой ID MAX и подтверждённые данные..."
+    },
+    {
+     "url": "https://new.realtycalendar.ru/products/autopilot",
+     "title": "Система автоматизации для посуточной аренды с функциями CRM",
+     "passage": "Автоматизация для гостей, менеджеров и горничных. Три инструмента в одной системе для автоматизации посуточной бизнеса, которые включают функции CRM."
+    },
+    {
+     "url": "https://perchance-ai.net/ru/free-ai-tools/bnbuddy",
+     "title": "BnBuddy: Улучшите впечатления гостей с бесплатными...",
+     "passage": "Ключевые особенности BnBuddy: Повышайте уровень обслуживания гостей с помощью цифровых гидов, управляемых ИИ."
+    },
+    {
+     "url": "https://likevr.ru/ar/primery/navigaciya/ar-navigatsiya-v-otelyakh/",
+     "title": "AR навигация в отелях",
+     "passage": "Ключевые тезисы"
+    },
+    {
+     "url": "https://katerinarodina.ru/gid-dlya-gostey-otelya-na-kitayskom",
+     "title": "Цифровой гид для гостей отеля на китайском | Катерина Родина",
+     "passage": "Создам цифровой гид отеля на китайском по QR-коду: заселение, завтрак, Wi-Fi, услуги и контакты. Адаптация инструкций для гостей, пример и состав работ."
+    },
+    {
+     "url": "https://guidly.site/",
+     "title": "Guidly — бронирование, продажи и учёт для тех, кто продаёт...",
+     "passage": "Кому полезно Лёгкий старт Сеть гидов В телефоне Цена Подойдёт ли вам. Бронирование, продажи и учёт для тех, кто продаёт впечатления."
+    },
+    {
+     "url": "https://agency.nota.media/blog/tsifrovoygidarigraimillionyvizitovkakmobilnyeprilozheniyamenyayutturisticheskiyopyt/",
+     "title": "Мобильные приложения в туризме 2026: цифровые гиды...",
+     "passage": "Что такое мобильный гид и AR-навигация в туризме, какие тренды актуальны в 2026 году и как это работает на практике — разбираем на кейсах Notamedia..."
+    },
+    {
+     "url": "https://www.prohost.ai/ru/guidebooks",
+     "title": "AI Путеводители - Создание цифровых приветственных гидов",
+     "passage": "AI-путеводитель — это цифровой гид для ваших гостей с шагами заезда, Wi-Fi, правилами дома и местными рекомендациями."
+    },
+    {
+     "url": "https://smarteq.ru/hoteza-platform/guest-app",
+     "title": "Hoteza Guest App",
+     "passage": "Hoteza Guest App — интерактивное приложение, предоставляющее информацию, доступ к услугам и развлечениям отеля. Оно дополняет идеальное путешествие гостя всем..."
+    },
+    {
+     "url": "https://wegosty.ru/",
+     "title": "ИИ-агенты для автоматизации гостеприимства",
+     "passage": "Привлечение гостей. Встраиваем форму бронирования на сайты партнёров с автоматической комиссией."
+    }
+   ]
+  }
+ ],
+ "extractions": [
+  {
+   "url": "https://touchstay.com/",
+   "title": "Digital Guidebooks to Reduce Guest Questions | Touch Stay",
+   "text": "Skip to content\nCelebrate Black Friday with 30% OFF\nTouch Stay\nGuidebooks\nGuidebooks\nShort term rental\nHosts / Owners\nProperty managers\nCleaning & changeovers\nFor your owners\nOutdoors\nGlamping\nCamping & caravanning\nRVs & campervans\nTraditional\nBed & breakfast\nBoutique hotels\nDestination marketing\nHotels & resorts\nOther\nEvent app\nWedding app\nSOPs\nEmployee onboarding\nNon-profits\nPet sitting\nHome swap\nMore ideas\nThe guest experience platform\nFeatures\nFeatures\nDigital Guidebook\nAI chatbot\nUpsell widget\nCRM\nMessage hub\nContact collection\nAI content assistant\nData dashboard\nPMS integration\nExperience integrations\nCollect 5-star reviews\nDemo\nWatch a demo\nBook a Demo\nExample guides\nDemo guide\nPricing\nIntegrations\nResources\nAcademy\nGuidebook basics\nWatch a demo\nExample guides\nBlog\nKnowledge Base\nVacation rental glossary\nCommunity\nCase studies\nTouch Stay Rock Stars\nMake a difference\nTouch Stay newsletter\nGuidebook creators\nTools\nAirbnb calculator\nAirbnb listing audit\nGuest review reply generator\nAirbnb title generator\nGuest comms planner\nGuest comms toolkit\nQR code templates\nAirbnb Description Generator\nIndustry\nWebinars\nComparisons\nAs featured in\n2026 Vacation rental events calendar\nGuest comms study\nThe Hoteliers playbook Ebook\n2026 Host Report\n2026 Guest Insights Report\n2026 STR Industry Report & Checklist\nLogin\nGet started free\nEnglish\nEspañol\nFrançais\nGet started free\nDigital guidebooks that\nDigital guidebooks that\nreduce questions\nFeatured: 🛒 Upsells • 💬 AI chat agent • 📲 Messaging • 👨 Guests management • 🛠️ Operational tasks and more\nFeatured: 🛒 Upsells • 💬 AI chat agent • 📲 Messaging • 👨 Guests management • 🛠️ Operational tasks and more\nCreate your FREE guidebook\nCreate your guidebook now\nBook a demo\nBook a demo\nFree forever · Unlimited guidebooks · No credit card · Live in under 3 minutes.\n14-day free trial · No credit card · Live in under 3 minutes\nMinimized viator\nThanks\nclick me\nEmail\nStart\nTrusted by thousands of hosts worldwide\n4.9★ average rating from millions of guest stays\ncapterra-stars\ng2-stars\ntrustpilot-stars\nCUSTOMER STORIES\nReal hosts.\nReal outcomes.\nFrom scaling a portfolio in days to eliminating operational calls, see the real impact Touch Stay delivers across vacation rentals, property managers, and boutique hotels.\nproperty-manager-UK\nProperty Manager\nUK\nLiquid Life\n550\nguidebooks built in 7 days\n\"We rolled out Touch Stay across the entire portfolio in a single week. The templates and bulk-edit tools made what could have been months of work feel effortless.\"\nConnor Hall\nLiquid Life Vacation Rentals\nproperty-manager-Florida\nProperty Manager\nFlorida Keys, USA\nKeysCations\n+15%\ndirect bookings\n\"Touch Stay has transformed our guest journey from a largely manual, message-heavy process into a streamlined, elevated experience that benefits both guests and our business. We've saved up to 10 hours a week on repetitive inquiries and grown direct bookings by 15%.\"\nBert Perez\nKeysCations\nboutique-villa-Europe\nBoutique Villa\nEurope\nVilla Ausblick\n0\noperational calls\n\"Since using Touch Stay, I have had zero calls for operational reasons, or operational questions – because it's all on the app. I can only say I wish I had done it years earlier, for various reasons.\"\nSibllye Kim\nVilla Ausblick\nGlamping & Eco-tourism\nGlamping & Eco-tourism\naltCamp\n99%\nof guest questions answered\n\"Touch Stay has been a game-changer for us, saving money and keeping our guests happy at every step. Their beautifully designed guidebooks perfectly complement our premium experience, giving guests peace of mind with answers to 99% of their questions right at their fingertips.\"\nAdam Bosch\naltCamp\nHoliday Lettings\nHoliday Lettings\nAnchor Bay Holidays\n0\npaper guides left\n\"Touch Stay has completely replaced our paper guides and made it easy to keep 135 guidebooks up to date across our entire portfolio. The SMS integration alone has transformed how we communicate with guests.\"\nAnthony Smith\nAnchor Bay Holidays\nHospitality · Tromsø, Norway\nHospitality · Tromsø\nNorway\nBjörk Tromsø\n+$$$\npassive revenue from upsells\n\"The guidebooks give guests the opportunity to plan their stays and book activities before arrival. Guests get all the information they need, and we get a nice revenue boost from tour company kickbacks!\"\nIngrid Bruun\nHospitality & Marketing Manager, Björk Tromsø\nHoliday Letting Agency · Padstow, UK\nHoliday Letting Agency\nPadstow, UK\nHarbour Holidays\n↑\nmore direct bookings\n\"Touch Stay has helped us minimise emails and phone calls, giving us more time for the work that matters. The increased reviews have helped to drive bookings too.\"\nAimee Preston\nOwner Liaison Manager, Harbour Holidays\nVacation Rental · Kanab, Utah, USA\nVacation Rental\nKanab Utah, USA\nKanab Cottage\n40+\nmore 5-star reviews\n\"I have 40+ reviews and all of them are 5 stars. Nearly every guest has commented on how helpful our digital guide was. They loved that the mobile app provided answers at their finger tips.\"\nScott Rasmussen\nOwner · Kanab Cottage\nCreate your FREE guidebook now\nCreate your guidebook now\nFree forever · Unlimited guidebooks · No credit card\n14-day free trial · No credit card · Live in under 3 minutes\nGUIDEBOOK OVERVIEW\nEverything you need to run a\nbetter guest experience.\nFrom first message to checkout, simplify guest communication, reduce manual work, and unlock more revenue from every stay.\nDigital Guidebook\nDigital Guidebook\nThe guidebook your guests actually use.\nShare everything your guests need before and during the stay, from check-in instructions to local recommendations. Beautiful, branded, and mobile-first, with no app required. Keep information up to date and reduce repetitive questions without extra effort.\nLearn more\nTHE GUEST JOURNEY\nOne guidebook.\nEvery step\nof the guest journey.\nFrom booking to long after checkout, Touch Stay gives guests everything they need, exactly when they need it.\nAuto-sent digital guidebook\nShared automatically via your PMS, email or SMS, so guests get check-in details and house ru",
+   "reply": {
+    "isProductPage": true,
+    "name": "Touch Stay",
+    "market": "ru",
+    "jobs": [
+     {
+      "job": "guest-guide",
+      "quote": "Digital Guidebook\nThe guidebook your guests actually use.\nShare everything your guests need before and during the stay, from check-in instructions to local recommendations."
+     },
+     {
+      "job": "checkin-instructions",
+      "quote": "Share everything your guests need before and during the stay, from check-in instructions to local recommendations."
+     }
+    ],
+    "price": "Free forever · Unlimited guidebooks · No credit card",
+    "pageKind": "marketplace"
+   },
+   "requestId": "94a5fc7ef5f3b1a6:30cc4fee826144dc:d06d66b037eba255:1"
+  },
+  {
+   "url": "https://touchstay.com/about",
+   "title": "About Touch Stay - The Makers Of The Digital Welcome Book | Touchstay",
+   "text": "Celebrate Black Friday with 30% OFF\nTouch Stay\nGuidebooks\nGuidebooks\nShort term rental\nHosts / Owners\nProperty managers\nCleaning & changeovers\nFor your owners\nOutdoors\nGlamping\nCamping & caravanning\nRVs & campervans\nTraditional\nBed & breakfast\nBoutique hotels\nDestination marketing\nHotels & resorts\nOther\nEvent app\nWedding app\nSOPs\nEmployee onboarding\nNon-profits\nPet sitting\nHome swap\nMore ideas\nThe guest experience platform\nFeatures\nFeatures\nDigital Guidebook\nAI chatbot\nUpsell widget\nCRM\nMessage hub\nContact collection\nAI content assistant\nData dashboard\nPMS integration\nExperience integrations\nCollect 5-star reviews\nDemo\nWatch a demo\nBook a Demo\nExample guides\nDemo guide\nPricing\nIntegrations\nResources\nAcademy\nGuidebook basics\nWatch a demo\nExample guides\nBlog\nKnowledge Base\nVacation rental glossary\nCommunity\nCase studies\nTouch Stay Rock Stars\nMake a difference\nTouch Stay newsletter\nGuidebook creators\nTools\nAirbnb calculator\nAirbnb listing audit\nGuest review reply generator\nAirbnb title generator\nGuest comms planner\nGuest comms toolkit\nQR code templates\nAirbnb Description Generator\nIndustry\nWebinars\nComparisons\nAs featured in\n2026 Vacation rental events calendar\nGuest comms study\nThe Hoteliers playbook Ebook\n2026 Host Report\n2026 Guest Insights Report\n2026 STR Industry Report & Checklist\nLogin\nGet started free\nEnglish\nEspañol\nFrançais\nGet started free\nHotel Ebook\nFree Ebook\nCreate moments, not just stays.\nUnlock a curated collection of unique hospitality concepts from rooftop cinemas to handwritten notes. Discover how to craft memories that earn 5-star reviews.\nAbout hero (1200 x 1080 px)-1\nAbout Touch Stay\nWe're a cheery, optimistic team here at Touch Stay that believes in the human spirit and the power of communication. Find out more about us, our values and our people right here.\nWhy we launched Touch Stay?\nTouch Stay digital guidebooks are the brainchild of Andy McNulty and Joe Jones – two serial travellers who kept on encountering the same issue over and over again: an absence of clear communication with their rental accommodation hosts.\nAfter realising that they shared the same frustrations, they vowed to solve the problem together – and in 2014 Touch Stay was born.\nDesigned to help any type of hospitality professional better communicate with their guests, Touch Stay has gone on to become the highlight of guest reviews worldwide. It’s been cited as a reason for repeat bookings, longer stays and most importantly – happier guests.\nHere to help you excel\nAndy and Joe vowed to create a product that helps – a principle demonstrated by our close knit community and our user-focused approach to product development.\nThe aim was to create an easy-to-self-serve tool backed by a friendly, knowledgeable team should you need them.\nNow an award winning SaaS company, Touch Stay is continuously working to create efficiencies for its users that enables them to focus on growing their businesses.\nWelcome to Touch Stay\nStill have questions about how Touch Stay works?\nDon’t worry! We’ve created a video to help you understand everything there is to know about Touch Stay digital guidebooks.\nStill have questions about how Touch Stay works?\nDon't worry! We've created a video to help you understand everything there is to know about Touch Stay digital guidebooks.\nMeet the Touch Stay team\nOur close knit team is dotted around the globe, working remotely. We each play a really important role in making Touch Stay what it is. And we're really proud to say that in 2024 we were awarded the Shortyz Team of the Year Award 😊\nJoe-May-22-circle-1-800x800\nJoe Jones\nCo-founder\nInspired to start Touch Stay after a 21 month travelling trip across 3 continents, Joe is a firm believer that the best way to experience any destination is to ask the locals. Joe is a CIMA qualified finance professional who, prior to Touch Stay, specialised in finance IT projects.\nSivan\nSivan Kadosh\nGeneral Manager\nAs General Manager of Touch Stay, Sivan leverages his 18 years of executive experience leading technology companies to innovate in the vacation rental industry through advanced digital guidebooks. Drawing insights from his professional background and family life, he focuses on enhancing guest communication and streamlining operational efficiency. Sivan is passionate about harnessing technology to drive growth, empower hosts, and create memorable guest experiences.\nDiana-May-22-circle-800x800\nDiana Fuentes\nAccount Manager\nWith a background in hospitality and management, Diana values the importance of listening intently and advocating for clients’ best interests. She’s as passionate about processes as she is adventures and, originally from Colombia, she’s now lived abroad for over 12 years- first in London, UK, and now in Valencia, Spain.\nKiril\nKiril Bunin\nChief Marketing Officer\nKiril is a seasoned CMO with a wealth of experience across multiple industries, bringing a strategic and data-driven approach to marketing. His career has spanned diverse sectors, shaping his expertise in brand growth and customer engagement. A lifelong basketball fan, he enjoys hitting the court whenever he gets the chance, balancing his competitive spirit with a passion for innovative marketing.\nTyler Michalek\nTyler Michalek\nHead of Content\nWith a diverse background that includes travel writing and video production, Tyler approaches content with an audience-first mentality. His passion extends beyond digital realms to analog photography, adding depth to his multimedia projects with an authentic, classic aesthetic that enriches his storytelling and digital community building efforts. Additionally, Tyler is an avid snowboarder, and hiker, with the goal of one day carving on all 7 continents.\nJakub Belobrad\nJakub Belobrad\nHead of Operations\nAs the Head of Operations at Touch Stay, Jakub combines his professional expertise with a passion for travel and cultural exploration. His experience managing multicultural environments and optimizing operations makes him a key asse",
+   "reply": {
+    "isProductPage": true,
+    "name": "Touch Stay",
+    "market": "ru",
+    "jobs": [
+     {
+      "job": "guest-guide",
+      "quote": "Touch Stay digital guidebooks are the brainchild of Andy McNulty and Joe Jones – two serial travellers who kept on encountering the same issue over and over again: an absence of clear communication with their rental accommodation hosts."
+     },
+     {
+      "job": "checkin-instructions",
+      "quote": "Designed to help any type of hospitality professional better communicate with their guests, Touch Stay has gone on to become the highlight of guest reviews worldwide. It’s been cited as a reason for repeat bookings, longer stays and most importantly – happier guests."
+     }
+    ],
+    "price": "Get started free",
+    "pageKind": "marketplace"
+   },
+   "requestId": "1432b1c63485d72e:334c7eb6344f7a86:0860a047ac465867:1"
+  },
+  {
+   "url": "https://touchstay.com/pricing",
+   "title": "Calculate your pricing | Touch Stay digital guidebooks | Touchstay",
+   "text": "Celebrate Black Friday with 30% OFF\nTouch Stay\nGuidebooks\nGuidebooks\nShort term rental\nHosts / Owners\nProperty managers\nCleaning & changeovers\nFor your owners\nOutdoors\nGlamping\nCamping & caravanning\nRVs & campervans\nTraditional\nBed & breakfast\nBoutique hotels\nDestination marketing\nHotels & resorts\nOther\nEvent app\nWedding app\nSOPs\nEmployee onboarding\nNon-profits\nPet sitting\nHome swap\nMore ideas\nThe guest experience platform\nFeatures\nFeatures\nDigital Guidebook\nAI chatbot\nUpsell widget\nCRM\nMessage hub\nContact collection\nAI content assistant\nData dashboard\nPMS integration\nExperience integrations\nCollect 5-star reviews\nDemo\nWatch a demo\nBook a Demo\nExample guides\nDemo guide\nPricing\nIntegrations\nResources\nAcademy\nGuidebook basics\nWatch a demo\nExample guides\nBlog\nKnowledge Base\nVacation rental glossary\nCommunity\nCase studies\nTouch Stay Rock Stars\nMake a difference\nTouch Stay newsletter\nGuidebook creators\nTools\nAirbnb calculator\nAirbnb listing audit\nGuest review reply generator\nAirbnb title generator\nGuest comms planner\nGuest comms toolkit\nQR code templates\nAirbnb Description Generator\nIndustry\nWebinars\nComparisons\nAs featured in\n2026 Vacation rental events calendar\nGuest comms study\nThe Hoteliers playbook Ebook\n2026 Host Report\n2026 Guest Insights Report\n2026 STR Industry Report & Checklist\nLogin\nGet started free\nEnglish\nEspañol\nFrançais\nGet started free\nHotel Ebook\nFree Ebook\nCreate moments, not just stays.\nUnlock a curated collection of unique hospitality concepts from rooftop cinemas to handwritten notes. Discover how to craft memories that earn 5-star reviews.\nTell us a bit more about the size of your event on this form and we'll get you a price within 24 hours. (Relax though, it's rarely thousands!)\" data-msg-size=\"Tell us a bit more about the size of your business using this form . We'll get you a price within 24 hours\">\nCalculate your price\nFollow the prompts below to find the exact pricing for your needs.\nWhat kind of guidebook are you looking for?\nNumber of homes\ne.g. 2 apartments in a building is 2, 10 cottages on a single site is 10, etc\nReset pricing\nUSD\nGBP\nAUD\nEUR\nAnnually\nMonthly\nReady to get started?\nStart your free trial\nNeed help or have a question?\nWe’re here to help if you have any questions, queries, or comments about Touch Stay.\nSimply complete the contact form and we’ll get right back to you.\nTake a closer look\nLet us introduce you to our Touch Stay guides. We’ll show you how to create your own or even handle the creation for you.\nBook a Demo\nShortyz 2024 winner\nTheShortyz_2023_best_app_white_500_tall_copy\nTheShortyz_2023_consumer_champion_white_500_tall_copy\nTheShortyz_2022_white\nTouch Stay\nJoin our newsletter to stay up to date on features and releases\nAbout Touch Stay\nWhy choose Touch Stay?\nCustomer stories\nMaking a difference\nKnowledge Base\nFeatures\nIntegrations\nPartnerships\nPodcasts\nReferral programme\nUptime Status\nFacebook\nInstagram\nTwitter\nLinkedIn\nYouTube\nThe Who's Who of the Vacation Rental World 2020\nThe Green Web Foundation\n© Touch Stay 2026\nPrivacy Policy\nTerms and Conditions\nCookie Policy",
+   "reply": {
+    "isProductPage": true,
+    "name": "Touch Stay",
+    "market": "ru",
+    "jobs": [
+     {
+      "job": "guest-guide",
+      "quote": "Celebrate Black Friday with 30% OFF\nTouch Stay\nGuidebooks"
+     },
+     {
+      "job": "checkin-instructions",
+      "quote": "Create moments, not just stays.\nUnlock a curated collection of unique hospitality concepts from rooftop cinemas to handwritten notes. Discover how to craft memories that earn 5-star reviews."
+     }
+    ],
+    "price": "Tell us a bit more about the size of your event on this form and we'll get you a price within 24 hours. (Relax though, a",
+    "pageKind": "marketplace"
+   },
+   "requestId": "b5ceb2d7339ff9fd:75f06b765291fa78:944ea2e1c07772a5:1"
+  },
+  {
+   "url": "https://www.spotsaas.com/product/touch-stay/pricing",
+   "title": "How Much Does Touch Stay Cost in 2026? Buyer Reports",
+   "text": "NEWJoin 2M+ software buyers|Get Weekly Insights, Trends & Expert PicksSubscribe free →\nSpotsaas logo\nBrowse Categories\nFor Vendors\nResourcesBlog\n⌘K\nAI Visibility\nSign in\nList your product\nLast updated: October 23, 2026\nTouch Stay - New SaaS Software\nTouch Stay Pricing Plans in 2026\nEnhance your guests' stay with Touch Stay.\nStart Free Trial\nTrusted by 2M+ software buyers annually.\nAffiliate Disclosure\nMain Features\nEmail Scheduling\nEvent Scheduling\nFeedback Collection\nGuest Experience (GEM)\nPricing\nStarts from $8.25 /Month when Billed Yearly\nFree Trial available\nStart Free Trial\nTouch Stay Pricing\n\" Convenient guest guidebooks \"\nFree Trial\n✓ Available\nStarting Price\n$8.25 / /Month\nwhen Billed Yearly\nPricing Model\nFree TrialSubscription\nNo credit card required · Cancel anytime · Free trial included\nHow much does Touch Stay cost?\nTouch Stay\nIndividuals & small teams\nFor Number of Properties: 1, Pricing varies based on number of properties\nSupport your direct booking strategy\nUse your words - or ours\nSend internal messages too\nLink to your entire guide, or just one section for quick access to specific info\nSend internal notifications, too (like alerts for your cleaners)\nCustomise messages with your own words - or use a Touch Stay template\nNeed a plan for 50+ users?\nGet volume pricing, dedicated onboarding, and a custom contract. Switching from another tool? Touch Stay supports data import to get you set up quickly.\nPricing read from Touch Stay's official website as of Oct 2026. List prices change and published plans rarely match what a team of your size actually pays, so treat these figures as a reference rather than a quote.\nSpotsaas advisor\nSee if Touch Stay fits your team\nGet a custom Touch Stay demo\nReal pricing, no sales pressure\nMatched to your team size & needs\nStep 1 of 4\nHow big is your team?\nWe tailor recommendations to companies your size.\nTrusted by teams at\nFrequently Asked Questions (FAQs)\nStuck on something? We're here to help with all the questions and answers in one place.\nYes, Touch Stay offers a free trial — no credit card required. You can test core features before committing to a paid plan. Start your free trial →\nTouch Stay offers Free Trial, Subscription pricing. Plans start from $8.25 /Month . View all Touch Stay pricing plans →\nThe starting price of Touch Stay is $8.25 /Month when Billed Yearly\nTouch Stay does not have a permanently free plan, but it does offer a free trial so you can evaluate the product before committing to a paid subscription.\nMost subscription-based tools including Touch Stay offer a discount when you choose annual billing over monthly. Annual plans typically save 15–40% compared to paying month-to-month. Check Touch Stay 's pricing page for exact savings.\nMost SaaS products including Touch Stay allow you to cancel your subscription at any time. For monthly plans, cancellation typically takes effect at the end of the current billing cycle. For annual plans, refund policies vary — check Touch Stay 's terms or contact their support team for details.\nTouch Stay offers a free tier or trial that works well for small teams and startups just getting started. As you grow, paid plans provide more capacity and advanced features. See all plans to find the best fit.\nHelp & Contact\nTouch Stay Support Options\nCustomer ServiceOnline\nLocationBurgess Hill, West Sussex\nConnect with Touch Stay\nTwitterInstagramFacebookYouTubeLinkedIn\nDisclaimer: This research has been collated from a variety of authoritative sources. We welcome your feedback at [email protected].\nlogo-tagline\n9931 Corporate Campus Dr\nLouisville, Kentucky 40223, USA\nSpotsaas\nList your product\nTechnology Glossary\nBlogs\nCompare Software\nFind Alternative\nFind Integration\nPricing\nCalculators\nFree Resources\nCommunity Discussions\nCompany\nHome\nWrite a Review\nAbout us\nHow we make money\nContact us\nCareers\nVendor Login\nTop Categories\nProject Management Software\nCRM Software\nAI Chatbots Software\nTask Management Software\nERP Software\nAccounting Software\nAI Video Generator Software\nAI Image Generators\nAI Writing Assistant Software\nAll Software Categories\nSaaS Calculators\nARR Calculator\nMRR Calculator\nChurn Rate Calculator\nCLV Calculator\nCAC Calculator\nLTV:CAC Ratio\nBurn Rate Calculator\nView All Calculators\nTrending Software\nUber for Business\nPipedrive\nClickup\nSlack\nHubspot\nJira\nSynthesia\nBambooHR\nPaycor\n© 2026 Revoyant, Inc — the company behind Spotsaas\n9931 Corporate Campus Dr\nLouisville, Kentucky 40223, USA\nTerms\nPrivacy\nCookies\nllms.txt\nRajat, founder of Spotsaas\nAsk Rajat — free software advice",
+   "reply": {
+    "isProductPage": true,
+    "name": "Touch Stay",
+    "market": "unknown",
+    "jobs": [
+     {
+      "job": "guest-guide",
+      "quote": "Convenient guest guidebooks"
+     },
+     {
+      "job": "checkin-instructions",
+      "quote": "Enhance your guests' stay with Touch Stay."
+     }
+    ],
+    "price": "$8.25 /Month when Billed Yearly",
+    "pageKind": "marketplace"
+   },
+   "requestId": "3780010801897786:d1b748cd448f01a4:2983027c83555d86:1"
+  },
+  {
+   "url": "https://eregcard-id.ru/",
+   "title": "Идентификация гостей отеля через Цифровой ID MAX — E-regcard",
+   "text": "Возможности\nБезопасность\nТарифы\nЛичный кабинет\nE-regcard\n12 возможностей · 3 уровня системы\nДальнейшая оплата\nПодключите быструю идентификацию гостей\nПройдите проверку объекта размещения и получите доступ к E-regcard на официальную электронную почту.\nПодключить отель\nЗащищённая идентификация гостей для отелей через Цифровой ID MAX.\n [phone]Наш телефон\nПродукт\nВозможности\nТарифы\nБезопасность\nКомпания\nПодключить отель\nЛичный кабинет\nПравовая информация\nПользовательское соглашение\nПолитика конфиденциальности\nПолитика обработки файлов cookie\nСкачать прайс-лист\nДоговор-оферта\nМобильное приложение\nДля сотрудников отеля: идентификация, история, уведомления.\nСкоро вGoogle Play\nСкачать вRuStore\nСкороСкачать APK\nСкоро вApp Store\n© 2026 E-regcard .\nКомпания: E-regcard . ИП Елизаров А.В. ИНН: 402001095930 . ОГРНИП: 323774600591608 . Юридический адрес: 125008, Россия, город Москва, улица Большая Академическая, дом 25 - 8 .\nКонтакты:  [phone] . Электронная почта: [email] .",
+   "reply": {
+    "isProductPage": true,
+    "name": "E-regcard",
+    "market": "ru",
+    "jobs": [
+     {
+      "job": "guest-guide",
+      "quote": "Подключите быструю идентификацию гостей"
+     },
+     {
+      "job": "checkin-instructions",
+      "quote": "Для сотрудников отеля: идентификация, история, уведомления."
+     }
+    ],
+    "price": null,
+    "pageKind": "marketplace"
+   },
+   "requestId": "a5296141432daadd:fcf37ac01f0235f7:2ce5529287d90c67:1"
+  },
+  {
+   "url": "https://new.realtycalendar.ru/products/autopilot",
+   "title": "Система автоматизации для посуточной аренды с функциями CRM",
+   "text": "Инструменты\nТарифы\nБлог\nВойти\nЗарегистрироваться\n [phone]\nОтзывы\nМероприятия\nПолезное\nМузыка, используемая в качестве заставки на указанном номере, является композицией автора Кевина Маклауда\nШахматка бронирования\nЕдиный онлайн-календарь для управления объектами посуточной аренды с ПК или смартфона.\nМенеджер каналов\nИнструмент для синхронизации данных на всех площадках.\nМодуль бронирования\nПомогает клиентам внести свои данные и предоплату напрямую с сайта или из соцсетей.\nЗалоги\nПринимайте залоги по ссылке — защищайте жилье без риска блокировок карты.\nАвтопилот\nУправляйте посуточной арендой без лишней работы: автоматизация для гостей, менеджеров и горничных.\nПрием платежей\nЭто решение закрывает весь процесс оплаты и фискализации под ключ и экономит ваше время.\nАвтоматические сообщения\nСэкономьте до 80% времени на переписке с гостями.\nВсе инструменты\nИзучите возможности остальных инструментов на этой странице.\nБлог\nПолезные статьи\nМероприятия\nУзнайте о наших мероприятиях\nНаши партнеры\nПолный список наших партнеров\nИнструменты\nШахматка бронирования\nМодуль бронирования\nАвтоматические сообщения\nChannel Manager\nЗалоги\nАвтопилот\nВсе инструменты\nТарифы\nПолезное\nБлог\nМероприятия\nНаши партнеры\nОтзывы\n [phone]\nВойти\nРегистрация\nпереводите бизнес на автопилот\nАвтоматизация\nдля гостей, менеджеров\nи горничных\nСнижайте затраты, исключайте ошибки и увеличивайте прибыль, пока система работает за вас.\nПопробовать\nОставьте заявку\nОставьте заявку\nНаши менеджеры свяжутся с вами и продемонстрируют, как работает Автопилот\nНет, но хочу им стать\nДа\nВы являетесь пользователем RealtyCalendar?\nТри взаимосвязанных инструмента, которые закрывают значительную часть задач вашего бизнеса\nВсё — в одной системе\nПростой и понятный инструмент для горничных.\nПриложение для горничных\nГорничные:\nполучают задания на уборку;\nвидят расписание на неделю вперед;\nотмечают выполнение уборки;\nуказывают состояние квартиры после гостя;\nотмечают, что нужно купить или что сломалось;\nвидят инструкцию по уборке квартиры;\nуказывают новый код от сейфа с ключами.\nУдобный онлайн-гид для каждого постояльца.\nСтраница брони для гостя\nНа странице доступны:\nинформация о брони: даты/время заезда и выезда;\nинформация по объекту: парковка, вайфай, правила проживания;\nинструкции по заселению и выезду;\nвнесение данных паспорта, оплата проживания и залога, подписание онлайн-договора, сбор количества гостей, планируемое время заезда и выезда, оценка уборки;\nзаказ допуслуг.\nСистема сама подсказывает, что нужно сделать, чтобы ничего не упустить.\nВаш командный центр.\nПанель администратора\nЗдесь менеджер видит:\nброни со всей информацией;\nзадачи для гостей: оплата, паспорт, залог;\nзадачи от гостей: проверить оплату, оказать допуслугу, вернуть залог;\nуборки с актуальными статусами;\nрейтинг горничных с заработной платой;\nчто нужно купить и что нужно починить;\nинформацию по показаниям счетчиков;\nПопробовать\nПосмотрите, какой наш Автопилот красавчик!\nВсе умеет, все успевает\nАвтопилот + Автосообщения =\nСПЕЦИАЛЬНОЕ ПРЕДЛОЖЕНИЕ\nЗабрать\nАвтоматизация на каждом этапе\nСоздается задача на возврат залога.\n1.\n2.\nМенеджер увидит, что объект готов к заселению, и сможет заселить следующего гостя раньше стандартного времени.\nПосле уборки\nГорничной придет уведомление, что квартира освободилась.\n1.\n2.\nКогда горничная проведет уборку, статус объекта изменится.\n3.\nЕсли настроена интеграция с мессенджерами, гостю придет сообщение с просьбой оставить отзыв и информацией, как бронировать напрямую, чтобы было выгоднее.\nПосле выезда\nКогда гость оценит качество уборки в квартире, менеджер и горничная получат уведомления.\nОткроются блоки с информацией о доступе к вайфаю и технике.\n1.\n2.\nПосле заезда\nЕсли выполнены необходимые действия, то у гостя появится блок «Как попасть в квартиру» с подробной информацией.\nГость через свою страницу вносит паспортные данные, оплачивает проживание и залог, указывает планируемое время приезда.\nПеред заездом\n1.\n2.\nМенеджер видит новое бронирование, а горничная получает уведомление о будущей уборке.\nКак только бронь появляется в RealtyCalendar, система генерирует ссылку на страницу для гостя. Если настроена интеграция с мессенджерами, то ссылка на страницу отправится автоматически.\nПосле бронирования\n1.\n2.\nЧестно? Я в полном восторге. Это не просто CRM — это незаменимый инструмент для любого, кто занимается посуточной арендой. Я сама когда-то пыталась с нуля строить таблицы, на коленке, как говорится. И только когда мы начали пользоваться CRM от RealtyCalendar, я поняла, насколько это может быть удобно,\nМария Тарасенко\nМосква\nАвтопилот — это лучшее наше решение и вложение) Изначально стоит внести максимум информации, чтобы потом свести общение с гостем на минимум.\nОтвалилось много рутинной работы. С некоторыми гостями вообще не приходится\nМарина Даниева\nПетрозаводск\nотзывы\nЧто говорят пользователи Автопилота\nПоказать весь отзыв >\nПоказать весь отзыв >\nАвтоматизируем все ключевые процессы посуточной аренды\nАвтопилот упрощает большинство бизнес-процессов, чтобы снизить число ошибок и время на выполнение каждого действия\nГость: загружает фото паспорта через безопасную страницу.\nМенеджер: получает уведомление о новых данных и подтверждает их в один клик.\nСистема: автоматически передает данные в RealtyCalendar и открывает гостю следующий шаг.\nЗабудьте о рутине\nСистема следит за юридически верным сбором согласий на обработку персональных данных и напоминает сотрудникам о непроверенных документах.\nСбор паспортов\nПАСПОРТА\nОПЛАТЫ\nГость: видит точную сумму и реквизиты карты или счета, прикладывает чек об оплате.\nМенеджер: проверяет банковский счет и подтверждает оплату.\nСистема: автоматически зачисляет платеж в RealtyCalendar и прикрепляет чек к брони.\nБольше не нужно\nБояться ошибок в реквизитах, сверять поступления вручную и напоминать гостям о долгах — они сами видят баланс.\nВарианты\nМожно полностью автоматизировать оплату, используя эквайринг от платежной системы «Монета» для физических или юридических лиц.\nМожно разделить финансовые потоки по объ",
+   "reply": {
+    "isProductPage": true,
+    "name": "Автопилот",
+    "market": "ru",
+    "jobs": [
+     {
+      "job": "guest-guide",
+      "quote": "Страница брони для гостя"
+     },
+     {
+      "job": "checkin-instructions",
+      "quote": "инструкции по заселению и выезду"
+     }
+    ],
+    "price": null,
+    "pageKind": "marketplace"
+   },
+   "requestId": "41184ebda2ce1699:41d6eb34402a0036:19b72ef3ebbf57c4:1"
+  },
+  {
+   "url": "https://perchance-ai.net/ru/free-ai-tools/bnbuddy",
+   "title": "BnBuddy: AI Генератор Презентаций — Возможности и стоимость — Perchance AI",
+   "text": "К содержимому\n✳perchanceai\nОбзорКатегорииПодборкиНовинки\nИзбранноеДобавить сервис\nК инструментам\nBnBuddy\nBnBuddy — передовая платформа для создания цифровых гидов, предназначенная для объектов краткосрочной аренды, с инструментами на основе ИИ, повышающими уровень обслуживания гостей, снижающими количество запросов к хозяину и укрепляющими репутацию недвижимости.\nБесплатно + платноСтоимость проверена: 20 сент. 2026 г.\nAI Генератор ПрезентацийAI Инструменты Продуктивности\nНа сайт\nДля чего\nПользователи, которым требуются инструменты в категории «AI Генератор Презентаций».\nЧто учесть\nЛимиты использования и расширенные возможности определяются условиями сервиса.\nОбзорНачало работыПохожие инструменты\nОб инструменте\nОбзор\nBnBuddy — революционная платформа для объектов краткосрочной аренды, позволяющая хозяинам создавать всесторонние цифровые гиды с функциями, основанными на ИИ, для повышения уровня обслуживания гостей и оптимизации коммуникаций.\nAI-Driven Guidebook Creation: Без труда собирайте и представляйте важную информацию об объекте, местные достопримечательности и правила дома в интерактивном и визуально привлекательном формате с помощью интуитивного интерфейса BnBuddy.\nMultilingual Support: Автоматически переводите гиды на несколько языков, чтобы обслуживать международных гостей и устранять языковые барьеры.\nFlexible Sharing Options: Распространяйте гиды через ссылку, QR‑code, email или WhatsApp и экспортируйте их в виде печатных PDF, чтобы удовлетворить различные предпочтения гостей.\nНачало работы\nОткройте официальный сайт и проверьте доступность сервиса в вашей стране.\nПроверьте текущий тариф, лимиты и условия использования.\nПопробуйте небольшую задачу с тестовыми данными, прежде чем переходить на платный план.\nОт редакции\nСтоимость проверена: 20 сент. 2026 г..\nЗапись обновлена : 20 сент. 2026 г.\nПредложить исправление\nГлавное\nСтоимость\nБесплатно + платно\nПлатформа\nНе проверено\nДоступ к API\nНе проверено\nНужен аккаунт\nНе проверено\nДобавлен в каталог\n23 сент. 2024 г.\nСтоимость проверена\n20 сент. 2026 г.\nДоступен бесплатный тариф; расширенные функции и увеличенные лимиты требуют платной подписки.\nОфициальный источник\nПохожие инструменты\nВсе инструменты\nИнструменты из тех же категорий. Возможности и условия могут различаться.\nNotion\nВедите заметки, спецификации проектов и базу знаний команды со встроенным ИИ-ассистентом.\nБесплатно + платноAI Инструменты Продуктивности\nChatronix.ai\nChatronix.ai предлагает помощника ИИ с 550+ готовыми шаблонами для бизнес-стратегии, маркетинга в социальных сетях, копирайтинга и образования.\nПробный периодAI Инструменты Продуктивности\nПользовательский портал ScreenConnect\nБезопасный, мгновенный удаленный доступ к рабочему столу через полностью брендированный пользовательский портал ScreenConnect. Демонстрируйте удаленные сеансы мгновенно.\nЦена не проверенаAI Замена Лиц\nStravo AI\nУвеличьте производительность маркетинга с помощью Stravo AI – AI‑писателя, переписчика и чат‑бота, который быстро создаёт блоги, рекламу, социальные публикации и настраиваемых агентов.\nПробный периодAI Инструменты Продуктивности\n✳perchanceai\nНезависимый каталог полезных ИИ-инструментов.\nВсе инструментыПодборкиРуководстваКак мы отбираемДобавить сервисContact ↗\n© 2026 Perchance AIНезависимый каталог. Наличие записи не является рекомендацией. Уточняйте условия у разработчика.КонфиденциальностьУсловия",
+   "reply": {
+    "isProductPage": true,
+    "name": "BnBuddy",
+    "market": "ru",
+    "jobs": [
+     {
+      "job": "guest-guide",
+      "quote": "BnBuddy — передовая платформа для создания цифровых гидов, предназначенная для объектов краткосрочной аренды, с инструментами на основе ИИ, повышающими уровень обслуживания гостей, снижающими количество запросов к хозяину и укрепляющими репутацию недвижимости."
+     },
+     {
+      "job": "checkin-instructions",
+      "quote": "AI-Driven Guidebook Creation: Без труда собирайте и представляйте важную информацию об объекте, местные достопримечательности и правила дома в интерактивном и визуально привлекательном формате с помощью интуитивного интерфейса BnBuddy."
+     }
+    ],
+    "price": "Бесплатно + платно",
+    "pageKind": "marketplace"
+   },
+   "requestId": "2982483c996870a5:589607119c219538:6976d2c12527ac84:1"
+  }
+ ],
+ "analyst": {
+  "requestId": "607189829e6a54e7:0876ff39bc505d70:8bcc86a216cb9d94:1",
+  "finish_reason": "stop",
+  "usage": {
+   "prompt_tokens": 6925,
+   "total_tokens": 8358,
+   "completion_tokens": 1433,
+   "prompt_tokens_details": {
+    "cached_tokens": 0
+   }
+  },
+  "evidence": [
+   {
+    "url": "https://touchstay.com/",
+    "title": "Digital Guidebooks to Reduce Guest Questions | Touch Stay",
+    "excerpt": "Skip to content\nCelebrate Black Friday with 30% OFF\nTouch Stay\nGuidebooks\nGuidebooks\nShort term rental\nHosts / Owners\nProperty managers\nCleaning & changeovers\nFor your owners\nOutdoors\nGlamping\nCamping & caravanning\nRVs & campervans\nTraditional\nBed & breakfast\nBoutique hotels\nDestination marketing\nHotels & resorts\nOther\nEvent app\nWedding app\nSOPs\nEmployee onboarding\nNon-profits\nPet sitting\nHome swap\nMore ideas\nThe guest experience platform\nFeatures\nFeatures\nDigital Guidebook\nAI chatbot\nUpsell widget\nCRM\nMessage hub\nContact collection\nAI content assistant\nData dashboard\nPMS integration\nExperience integrations\nCollect 5-star reviews\nDemo\nWatch a demo\nBook a Demo\nExample guides\nDemo guide\nPricing\nIntegrations\nResources\nAcademy\nGuidebook basics\nWatch a demo\nExample guides\nBlog\nKnowledge Base\nVacation rental glossary\nCommunity\nCase studies\nTouch Stay Rock Stars\nMake a difference\nTouch Stay newsletter\nGuidebook creators\nTools\nAirbnb calculator\nAirbnb listing audit\nGuest review reply generator\nAirbnb title generator\nGuest comms planner\nGuest comms toolkit\nQR code templates\nAirbnb Description Generator\nIndustry\nWebinars\nComparisons\nAs featured in\n2026 Vacation rental events calendar\nGuest comms study\nThe Hoteliers playbook Ebook\n2026 Host Report\n2026 Guest Insights Report\n2026 STR Industry Report & Checklist\nLogin\nGet started free\nEnglish\nEspañol\nFrançais\nGet started free\nDigital guidebooks that\nDigital guidebooks that\nreduce questions\nFeatured: 🛒 Upsells • 💬 AI chat agent • 📲 Messaging • 👨 Guests management • 🛠️ Operational tasks and more\nFeatured: 🛒 Upsells • 💬 AI chat agent • 📲 Messaging • 👨 Guests management • 🛠️ Operational tasks and more\nCreate your FREE guidebook\nCreate your guidebook now\nBook a demo\nBook a demo\nFree forever · Unlimited guidebooks · No credit card · Live in under 3 minutes.\n14-day free trial · No credit card · Live in under 3 minutes\nMinimized viator\nThanks\nclick me\nEmail\nStart\nTrusted by thousands of hosts worldwide\n4.9★ average rating from millions of guest stays\ncapterra-stars\ng2-stars\ntrustpilot-stars\nCUSTOMER STORIES\nReal hosts.\nReal outcomes.\nFrom scaling a portfolio in days to eliminating operational calls, see the real impact Touch Stay delivers across vacation rentals, property managers, and boutique hotels.\nproperty-manager-UK\nProperty Manager\nUK\nLiquid Life\n550\nguidebooks built in 7 days\n\"We rolled out Touch Stay across the entire portfolio in a single week. The templates and bulk-edit tools made what could have been months of work feel effortless.\"\nConnor Hall\nLiquid Life Vacation Rentals\nproperty-manager-Florida\nProperty Manager\nFlorida Keys, USA\nKeysCations\n+15%\ndirect bookings\n\"Touch Stay has transformed our guest journey from a largely manual, message-heavy process into a streamlined, elevated experience that benefits both guests and our business. We've saved up to 10 hours a week on repetitive inquiries and grown direct bookings by 15%.\"\nBert Perez\nKeysCations\nboutique-villa-Europe\nBoutique Villa\nEurope\nVilla Ausblick\n0\noperational calls\n\"Since using Touch Stay, I have had zero calls for operational reasons, or operational questions – because it's all on the app. I can only say I wish I had done it years earlier, for various reasons.\"\nSibllye Kim\nVilla Ausblick\nGlamping & Eco-tourism\nGlamping & Eco-tourism\naltCamp\n99%\nof guest questions answered\n\"Touch Stay has been a game-changer for us, saving money and keeping our guests happy at every step. Their beautifully designed guidebooks perfectly complement our premium experience, giving guests peace of mind with answers to 99% of their questions right at their fingertips.\"\nAdam Bosch\naltCamp\nHoliday Lettings\nHoliday Lettings\nAnchor Bay Holidays\n0\npaper guides left\n\"Touch Stay has completely replaced our paper guides and made it easy to keep 135 guidebooks up to date across our entire portfolio. The SMS integration alone has transformed how we communicate with guests.\"\nAnthony Smith\nAnchor Bay Holidays\nHospitality · Tromsø, Norway\nHospitali"
+   },
+   {
+    "url": "https://touchstay.com/about",
+    "title": "About Touch Stay - The Makers Of The Digital Welcome Book | Touchstay",
+    "excerpt": "Celebrate Black Friday with 30% OFF\nTouch Stay\nGuidebooks\nGuidebooks\nShort term rental\nHosts / Owners\nProperty managers\nCleaning & changeovers\nFor your owners\nOutdoors\nGlamping\nCamping & caravanning\nRVs & campervans\nTraditional\nBed & breakfast\nBoutique hotels\nDestination marketing\nHotels & resorts\nOther\nEvent app\nWedding app\nSOPs\nEmployee onboarding\nNon-profits\nPet sitting\nHome swap\nMore ideas\nThe guest experience platform\nFeatures\nFeatures\nDigital Guidebook\nAI chatbot\nUpsell widget\nCRM\nMessage hub\nContact collection\nAI content assistant\nData dashboard\nPMS integration\nExperience integrations\nCollect 5-star reviews\nDemo\nWatch a demo\nBook a Demo\nExample guides\nDemo guide\nPricing\nIntegrations\nResources\nAcademy\nGuidebook basics\nWatch a demo\nExample guides\nBlog\nKnowledge Base\nVacation rental glossary\nCommunity\nCase studies\nTouch Stay Rock Stars\nMake a difference\nTouch Stay newsletter\nGuidebook creators\nTools\nAirbnb calculator\nAirbnb listing audit\nGuest review reply generator\nAirbnb title generator\nGuest comms planner\nGuest comms toolkit\nQR code templates\nAirbnb Description Generator\nIndustry\nWebinars\nComparisons\nAs featured in\n2026 Vacation rental events calendar\nGuest comms study\nThe Hoteliers playbook Ebook\n2026 Host Report\n2026 Guest Insights Report\n2026 STR Industry Report & Checklist\nLogin\nGet started free\nEnglish\nEspañol\nFrançais\nGet started free\nHotel Ebook\nFree Ebook\nCreate moments, not just stays.\nUnlock a curated collection of unique hospitality concepts from rooftop cinemas to handwritten notes. Discover how to craft memories that earn 5-star reviews.\nAbout hero (1200 x 1080 px)-1\nAbout Touch Stay\nWe're a cheery, optimistic team here at Touch Stay that believes in the human spirit and the power of communication. Find out more about us, our values and our people right here.\nWhy we launched Touch Stay?\nTouch Stay digital guidebooks are the brainchild of Andy McNulty and Joe Jones – two serial travellers who kept on encountering the same issue over and over again: an absence of clear communication with their rental accommodation hosts.\nAfter realising that they shared the same frustrations, they vowed to solve the problem together – and in 2014 Touch Stay was born.\nDesigned to help any type of hospitality professional better communicate with their guests, Touch Stay has gone on to become the highlight of guest reviews worldwide. It’s been cited as a reason for repeat bookings, longer stays and most importantly – happier guests.\nHere to help you excel\nAndy and Joe vowed to create a product that helps – a principle demonstrated by our close knit community and our user-focused approach to product development.\nThe aim was to create an easy-to-self-serve tool backed by a friendly, knowledgeable team should you need them.\nNow an award winning SaaS company, Touch Stay is continuously working to create efficiencies for its users that enables them to focus on growing their businesses.\nWelcome to Touch Stay\nStill have questions about how Touch Stay works?\nDon’t worry! We’ve created a video to help you understand everything there is to know about Touch Stay digital guidebooks.\nStill have questions about how Touch Stay works?\nDon't worry! We've created a video to help you understand everything there is to know about Touch Stay digital guidebooks.\nMeet the Touch Stay team\nOur close knit team is dotted around the globe, working remotely. We each play a really important role in making Touch Stay what it is. And we're really proud to say that in 2024 we were awarded the Shortyz Team of the Year Award 😊\nJoe-May-22-circle-1-800x800\nJoe Jones\nCo-founder\nInspired to start Touch Stay after a 21 month travelling trip across 3 continents, Joe is a firm believer that the best way to experience any destination is to ask the locals. Joe is a CIMA qualified finance professional who, prior to Touch Stay, specialised in finance IT projects.\nSivan\nSivan Kadosh\nGeneral Manager\nAs General Manager of Touch Stay, Sivan leverages his 18 years of executive e"
+   },
+   {
+    "url": "https://touchstay.com/pricing",
+    "title": "Calculate your pricing | Touch Stay digital guidebooks | Touchstay",
+    "excerpt": "Celebrate Black Friday with 30% OFF\nTouch Stay\nGuidebooks\nGuidebooks\nShort term rental\nHosts / Owners\nProperty managers\nCleaning & changeovers\nFor your owners\nOutdoors\nGlamping\nCamping & caravanning\nRVs & campervans\nTraditional\nBed & breakfast\nBoutique hotels\nDestination marketing\nHotels & resorts\nOther\nEvent app\nWedding app\nSOPs\nEmployee onboarding\nNon-profits\nPet sitting\nHome swap\nMore ideas\nThe guest experience platform\nFeatures\nFeatures\nDigital Guidebook\nAI chatbot\nUpsell widget\nCRM\nMessage hub\nContact collection\nAI content assistant\nData dashboard\nPMS integration\nExperience integrations\nCollect 5-star reviews\nDemo\nWatch a demo\nBook a Demo\nExample guides\nDemo guide\nPricing\nIntegrations\nResources\nAcademy\nGuidebook basics\nWatch a demo\nExample guides\nBlog\nKnowledge Base\nVacation rental glossary\nCommunity\nCase studies\nTouch Stay Rock Stars\nMake a difference\nTouch Stay newsletter\nGuidebook creators\nTools\nAirbnb calculator\nAirbnb listing audit\nGuest review reply generator\nAirbnb title generator\nGuest comms planner\nGuest comms toolkit\nQR code templates\nAirbnb Description Generator\nIndustry\nWebinars\nComparisons\nAs featured in\n2026 Vacation rental events calendar\nGuest comms study\nThe Hoteliers playbook Ebook\n2026 Host Report\n2026 Guest Insights Report\n2026 STR Industry Report & Checklist\nLogin\nGet started free\nEnglish\nEspañol\nFrançais\nGet started free\nHotel Ebook\nFree Ebook\nCreate moments, not just stays.\nUnlock a curated collection of unique hospitality concepts from rooftop cinemas to handwritten notes. Discover how to craft memories that earn 5-star reviews.\nTell us a bit more about the size of your event on this form and we'll get you a price within 24 hours. (Relax though, it's rarely thousands!)\" data-msg-size=\"Tell us a bit more about the size of your business using this form . We'll get you a price within 24 hours\">\nCalculate your price\nFollow the prompts below to find the exact pricing for your needs.\nWhat kind of guidebook are you looking for?\nNumber of homes\ne.g. 2 apartments in a building is 2, 10 cottages on a single site is 10, etc\nReset pricing\nUSD\nGBP\nAUD\nEUR\nAnnually\nMonthly\nReady to get started?\nStart your free trial\nNeed help or have a question?\nWe’re here to help if you have any questions, queries, or comments about Touch Stay.\nSimply complete the contact form and we’ll get right back to you.\nTake a closer look\nLet us introduce you to our Touch Stay guides. We’ll show you how to create your own or even handle the creation for you.\nBook a Demo\nShortyz 2024 winner\nTheShortyz_2023_best_app_white_500_tall_copy\nTheShortyz_2023_consumer_champion_white_500_tall_copy\nTheShortyz_2022_white\nTouch Stay\nJoin our newsletter to stay up to date on features and releases\nAbout Touch Stay\nWhy choose Touch Stay?\nCustomer stories\nMaking a difference\nKnowledge Base\nFeatures\nIntegrations\nPartnerships\nPodcasts\nReferral programme\nUptime Status\nFacebook\nInstagram\nTwitter\nLinkedIn\nYouTube\nThe Who's Who of the Vacation Rental World 2020\nThe Green Web Foundation\n© Touch Stay 2026\nPrivacy Policy\nTerms and Conditions\nCookie Policy"
+   },
+   {
+    "url": "https://www.spotsaas.com/product/touch-stay/pricing",
+    "title": "How Much Does Touch Stay Cost in 2026? Buyer Reports",
+    "excerpt": "NEWJoin 2M+ software buyers|Get Weekly Insights, Trends & Expert PicksSubscribe free →\nSpotsaas logo\nBrowse Categories\nFor Vendors\nResourcesBlog\n⌘K\nAI Visibility\nSign in\nList your product\nLast updated: October 23, 2026\nTouch Stay - New SaaS Software\nTouch Stay Pricing Plans in 2026\nEnhance your guests' stay with Touch Stay.\nStart Free Trial\nTrusted by 2M+ software buyers annually.\nAffiliate Disclosure\nMain Features\nEmail Scheduling\nEvent Scheduling\nFeedback Collection\nGuest Experience (GEM)\nPricing\nStarts from $8.25 /Month when Billed Yearly\nFree Trial available\nStart Free Trial\nTouch Stay Pricing\n\" Convenient guest guidebooks \"\nFree Trial\n✓ Available\nStarting Price\n$8.25 / /Month\nwhen Billed Yearly\nPricing Model\nFree TrialSubscription\nNo credit card required · Cancel anytime · Free trial included\nHow much does Touch Stay cost?\nTouch Stay\nIndividuals & small teams\nFor Number of Properties: 1, Pricing varies based on number of properties\nSupport your direct booking strategy\nUse your words - or ours\nSend internal messages too\nLink to your entire guide, or just one section for quick access to specific info\nSend internal notifications, too (like alerts for your cleaners)\nCustomise messages with your own words - or use a Touch Stay template\nNeed a plan for 50+ users?\nGet volume pricing, dedicated onboarding, and a custom contract. Switching from another tool? Touch Stay supports data import to get you set up quickly.\nPricing read from Touch Stay's official website as of Oct 2026. List prices change and published plans rarely match what a team of your size actually pays, so treat these figures as a reference rather than a quote.\nSpotsaas advisor\nSee if Touch Stay fits your team\nGet a custom Touch Stay demo\nReal pricing, no sales pressure\nMatched to your team size & needs\nStep 1 of 4\nHow big is your team?\nWe tailor recommendations to companies your size.\nTrusted by teams at\nFrequently Asked Questions (FAQs)\nStuck on something? We're here to help with all the questions and answers in one place.\nYes, Touch Stay offers a free trial — no credit card required. You can test core features before committing to a paid plan. Start your free trial →\nTouch Stay offers Free Trial, Subscription pricing. Plans start from $8.25 /Month . View all Touch Stay pricing plans →\nThe starting price of Touch Stay is $8.25 /Month when Billed Yearly\nTouch Stay does not have a permanently free plan, but it does offer a free trial so you can evaluate the product before committing to a paid subscription.\nMost subscription-based tools including Touch Stay offer a discount when you choose annual billing over monthly. Annual plans typically save 15–40% compared to paying month-to-month. Check Touch Stay 's pricing page for exact savings.\nMost SaaS products including Touch Stay allow you to cancel your subscription at any time. For monthly plans, cancellation typically takes effect at the end of the current billing cycle. For annual plans, refund policies vary — check Touch Stay 's terms or contact their support team for details.\nTouch Stay offers a free tier or trial that works well for small teams and startups just getting started. As you grow, paid plans provide more capacity and advanced features. See all plans to find the best fit.\nHelp & Contact\nTouch Stay Support Options\nCustomer ServiceOnline\nLocationBurgess Hill, West Sussex\nConnect with Touch Stay\nTwitterInstagramFacebookYouTubeLinkedIn\nDisclaimer: This research has been collated from a variety of authoritative sources. We welcome your feedback at [email protected].\nlogo-tagline\n9931 Corporate Campus Dr\nLouisville, Kentucky 40223, USA\nSpotsaas\nList your product\nTechnology Glossary\nBlogs\nCompare Software\nFind Alternative\nFind Integration\nPricing\nCalculators\nFree Resources\nCommunity Discussions\nCompany\nHome\nWrite a Review\nAbout us\nHow we make money\nContact us\nCareers\nVendor Login\nTop Categories\nProject Management Software\nCRM Software\nAI Chatbots Software\nTask Management Software\nERP Software\nAccounting Softw"
+   },
+   {
+    "url": "https://eregcard-id.ru/",
+    "title": "Идентификация гостей отеля через Цифровой ID MAX — E-regcard",
+    "excerpt": "Возможности\nБезопасность\nТарифы\nЛичный кабинет\nE-regcard\n12 возможностей · 3 уровня системы\nДальнейшая оплата\nПодключите быструю идентификацию гостей\nПройдите проверку объекта размещения и получите доступ к E-regcard на официальную электронную почту.\nПодключить отель\nЗащищённая идентификация гостей для отелей через Цифровой ID MAX.\n [phone]Наш телефон\nПродукт\nВозможности\nТарифы\nБезопасность\nКомпания\nПодключить отель\nЛичный кабинет\nПравовая информация\nПользовательское соглашение\nПолитика конфиденциальности\nПолитика обработки файлов cookie\nСкачать прайс-лист\nДоговор-оферта\nМобильное приложение\nДля сотрудников отеля: идентификация, история, уведомления.\nСкоро вGoogle Play\nСкачать вRuStore\nСкороСкачать APK\nСкоро вApp Store\n© 2026 E-regcard .\nКомпания: E-regcard . ИП Елизаров А.В. ИНН: 402001095930 . ОГРНИП: 323774600591608 . Юридический адрес: 125008, Россия, город Москва, улица Большая Академическая, дом 25 - 8 .\nКонтакты:  [phone] . Электронная почта: [email] ."
+   },
+   {
+    "url": "https://new.realtycalendar.ru/products/autopilot",
+    "title": "Система автоматизации для посуточной аренды с функциями CRM",
+    "excerpt": "Инструменты\nТарифы\nБлог\nВойти\nЗарегистрироваться\n [phone]\nОтзывы\nМероприятия\nПолезное\nМузыка, используемая в качестве заставки на указанном номере, является композицией автора Кевина Маклауда\nШахматка бронирования\nЕдиный онлайн-календарь для управления объектами посуточной аренды с ПК или смартфона.\nМенеджер каналов\nИнструмент для синхронизации данных на всех площадках.\nМодуль бронирования\nПомогает клиентам внести свои данные и предоплату напрямую с сайта или из соцсетей.\nЗалоги\nПринимайте залоги по ссылке — защищайте жилье без риска блокировок карты.\nАвтопилот\nУправляйте посуточной арендой без лишней работы: автоматизация для гостей, менеджеров и горничных.\nПрием платежей\nЭто решение закрывает весь процесс оплаты и фискализации под ключ и экономит ваше время.\nАвтоматические сообщения\nСэкономьте до 80% времени на переписке с гостями.\nВсе инструменты\nИзучите возможности остальных инструментов на этой странице.\nБлог\nПолезные статьи\nМероприятия\nУзнайте о наших мероприятиях\nНаши партнеры\nПолный список наших партнеров\nИнструменты\nШахматка бронирования\nМодуль бронирования\nАвтоматические сообщения\nChannel Manager\nЗалоги\nАвтопилот\nВсе инструменты\nТарифы\nПолезное\nБлог\nМероприятия\nНаши партнеры\nОтзывы\n [phone]\nВойти\nРегистрация\nпереводите бизнес на автопилот\nАвтоматизация\nдля гостей, менеджеров\nи горничных\nСнижайте затраты, исключайте ошибки и увеличивайте прибыль, пока система работает за вас.\nПопробовать\nОставьте заявку\nОставьте заявку\nНаши менеджеры свяжутся с вами и продемонстрируют, как работает Автопилот\nНет, но хочу им стать\nДа\nВы являетесь пользователем RealtyCalendar?\nТри взаимосвязанных инструмента, которые закрывают значительную часть задач вашего бизнеса\nВсё — в одной системе\nПростой и понятный инструмент для горничных.\nПриложение для горничных\nГорничные:\nполучают задания на уборку;\nвидят расписание на неделю вперед;\nотмечают выполнение уборки;\nуказывают состояние квартиры после гостя;\nотмечают, что нужно купить или что сломалось;\nвидят инструкцию по уборке квартиры;\nуказывают новый код от сейфа с ключами.\nУдобный онлайн-гид для каждого постояльца.\nСтраница брони для гостя\nНа странице доступны:\nинформация о брони: даты/время заезда и выезда;\nинформация по объекту: парковка, вайфай, правила проживания;\nинструкции по заселению и выезду;\nвнесение данных паспорта, оплата проживания и залога, подписание онлайн-договора, сбор количества гостей, планируемое время заезда и выезда, оценка уборки;\nзаказ допуслуг.\nСистема сама подсказывает, что нужно сделать, чтобы ничего не упустить.\nВаш командный центр.\nПанель администратора\nЗдесь менеджер видит:\nброни со всей информацией;\nзадачи для гостей: оплата, паспорт, залог;\nзадачи от гостей: проверить оплату, оказать допуслугу, вернуть залог;\nуборки с актуальными статусами;\nрейтинг горничных с заработной платой;\nчто нужно купить и что нужно починить;\nинформацию по показаниям счетчиков;\nПопробовать\nПосмотрите, какой наш Автопилот красавчик!\nВсе умеет, все успевает\nАвтопилот + Автосообщения =\nСПЕЦИАЛЬНОЕ ПРЕДЛОЖЕНИЕ\nЗабрать\nАвтоматизация на каждом этапе\nСоздается задача на возврат залога.\n1.\n2.\nМенеджер увидит, что объект готов к заселению, и сможет заселить следующего гостя раньше стандартного времени.\nПосле уборки\nГорничной придет уведомление, что квартира освободилась.\n1.\n2.\nКогда горничная проведет уборку, статус объекта изменится.\n3.\nЕсли настроена интеграция с мессенджерами, гостю придет сообщение с просьбой оставить отзыв и информацией, как бронировать напрямую, чтобы было выгоднее.\nПосле выезда\nКогда гость оценит качество уборки в квартире, менеджер и горничная получат уведомления.\nОткроются блоки с информацией о доступе к вайфаю и технике.\n1.\n2.\nПосле заезда\nЕсли выполнены необходимые действия, то у гостя появится блок «Как попасть в квартиру» с подробной информацией.\nГость через свою страницу вносит паспортные данные, оплачивает проживание и залог, указывает планируемое время приезда.\nПеред заездом\n1.\n2.\nМенеджер видит новое бронирование, а горничная получает уведомлен"
+   },
+   {
+    "url": "https://perchance-ai.net/ru/free-ai-tools/bnbuddy",
+    "title": "BnBuddy: AI Генератор Презентаций — Возможности и стоимость — Perchance AI",
+    "excerpt": "К содержимому\n✳perchanceai\nОбзорКатегорииПодборкиНовинки\nИзбранноеДобавить сервис\nК инструментам\nBnBuddy\nBnBuddy — передовая платформа для создания цифровых гидов, предназначенная для объектов краткосрочной аренды, с инструментами на основе ИИ, повышающими уровень обслуживания гостей, снижающими количество запросов к хозяину и укрепляющими репутацию недвижимости.\nБесплатно + платноСтоимость проверена: 20 сент. 2026 г.\nAI Генератор ПрезентацийAI Инструменты Продуктивности\nНа сайт\nДля чего\nПользователи, которым требуются инструменты в категории «AI Генератор Презентаций».\nЧто учесть\nЛимиты использования и расширенные возможности определяются условиями сервиса.\nОбзорНачало работыПохожие инструменты\nОб инструменте\nОбзор\nBnBuddy — революционная платформа для объектов краткосрочной аренды, позволяющая хозяинам создавать всесторонние цифровые гиды с функциями, основанными на ИИ, для повышения уровня обслуживания гостей и оптимизации коммуникаций.\nAI-Driven Guidebook Creation: Без труда собирайте и представляйте важную информацию об объекте, местные достопримечательности и правила дома в интерактивном и визуально привлекательном формате с помощью интуитивного интерфейса BnBuddy.\nMultilingual Support: Автоматически переводите гиды на несколько языков, чтобы обслуживать международных гостей и устранять языковые барьеры.\nFlexible Sharing Options: Распространяйте гиды через ссылку, QR‑code, email или WhatsApp и экспортируйте их в виде печатных PDF, чтобы удовлетворить различные предпочтения гостей.\nНачало работы\nОткройте официальный сайт и проверьте доступность сервиса в вашей стране.\nПроверьте текущий тариф, лимиты и условия использования.\nПопробуйте небольшую задачу с тестовыми данными, прежде чем переходить на платный план.\nОт редакции\nСтоимость проверена: 20 сент. 2026 г..\nЗапись обновлена : 20 сент. 2026 г.\nПредложить исправление\nГлавное\nСтоимость\nБесплатно + платно\nПлатформа\nНе проверено\nДоступ к API\nНе проверено\nНужен аккаунт\nНе проверено\nДобавлен в каталог\n23 сент. 2024 г.\nСтоимость проверена\n20 сент. 2026 г.\nДоступен бесплатный тариф; расширенные функции и увеличенные лимиты требуют платной подписки.\nОфициальный источник\nПохожие инструменты\nВсе инструменты\nИнструменты из тех же категорий. Возможности и условия могут различаться.\nNotion\nВедите заметки, спецификации проектов и базу знаний команды со встроенным ИИ-ассистентом.\nБесплатно + платноAI Инструменты Продуктивности\nChatronix.ai\nChatronix.ai предлагает помощника ИИ с 550+ готовыми шаблонами для бизнес-стратегии, маркетинга в социальных сетях, копирайтинга и образования.\nПробный периодAI Инструменты Продуктивности\nПользовательский портал ScreenConnect\nБезопасный, мгновенный удаленный доступ к рабочему столу через полностью брендированный пользовательский портал ScreenConnect. Демонстрируйте удаленные сеансы мгновенно.\nЦена не проверенаAI Замена Лиц\nStravo AI\nУвеличьте производительность маркетинга с помощью Stravo AI – AI‑писателя, переписчика и чат‑бота, который быстро создаёт блоги, рекламу, социальные публикации и настраиваемых агентов.\nПробный периодAI Инструменты Продуктивности\n✳perchanceai\nНезависимый каталог полезных ИИ-инструментов.\nВсе инструментыПодборкиРуководстваКак мы отбираемДобавить сервисContact ↗\n© 2026 Perchance AIНезависимый каталог. Наличие записи не является рекомендацией. Уточняйте условия у разработчика.КонфиденциальностьУсловия"
+   }
+  ],
+  "content": "{\"claims\": [{\"key\": \"westernNeed\", \"dimension\": \"westernNeed\", \"text\": \"Touch Stay digital guidebooks are the brainchild of Andy McNulty and Joe Jones – two serial travellers who kept on encountering the same issue over and over again: an absence of clear communication with their rental accommodation hosts.\", \"quote\": \"an absence of clear communication with their rental accommodation hosts\", \"sourceUrls\": [\"https://touchstay.com/about\"], \"highImpact\": true, \"absence\": null}, {\"key\": \"westernPay\", \"dimension\": \"westernPay\", \"text\": \"Touch Stay pricing plans start from $8.25 per month when billed annually.\", \"quote\": \"Starts from $8.25 /Month when Billed Yearly\", \"sourceUrls\": [\"https://www.spotsaas.com/product/touch-stay/pricing\"], \"highImpact\": true, \"absence\": null}, {\"key\": \"ruWeakness\", \"dimension\": \"ruWeakness\", \"text\": \"RealtyCalendar Autopilot provides a guest booking page with check-in instructions, Wi-Fi info, and rules, addressing the same job as a digital guide.\", \"quote\": \"инструкции по заселению и выезду; информация по объекту: парковка, вайфай, правила проживания\", \"sourceUrls\": [\"https://new.realtycalendar.ru/products/autopilot\"], \"highImpact\": true, \"absence\": null}, {\"key\": \"ruUnmetJob\", \"dimension\": \"ruUnmetJob\", \"text\": \"No evidence found in DATA.evidence of a standalone Russian digital guest guide product with comparable features (AI, upsells, multi-language) to Touch Stay.\", \"quote\": \"\", \"sourceUrls\": [], \"highImpact\": false, \"absence\": null}, {\"key\": \"monetization\", \"dimension\": \"monetization\", \"text\": \"Touch Stay uses a subscription model with a free trial and tiered pricing based on the number of properties.\", \"quote\": \"Subscription pricing. Plans start from $8.25 /Month\", \"sourceUrls\": [\"https://www.spotsaas.com/product/touch-stay/pricing\"], \"highImpact\": true, \"absence\": null}, {\"key\": \"speedToPilot\", \"dimension\": \"speedToPilot\", \"text\": \"Touch Stay allows users to create a guidebook and go live very quickly without technical setup.\", \"quote\": \"Live in under 3 minutes\", \"sourceUrls\": [\"https://touchstay.com/\"], \"highImpact\": true, \"absence\": null}, {\"key\": \"mvpFeasible\", \"dimension\": \"mvpFeasible\", \"text\": \"The core MVP of a digital guide (QR/link, instructions, Wi-Fi, rules) is technically simple and can be built as a static or dynamic web page.\", \"quote\": \"Ссылка или QR на гид квартиры: заселение, Wi-Fi, правила, район\", \"sourceUrls\": [], \"highImpact\": false, \"absence\": null}, {\"key\": \"fastTest\", \"dimension\": \"fastTest\", \"text\": \"Touch Stay offers a free trial with no credit card required, allowing immediate validation of the value proposition.\", \"quote\": \"Free Trial available\", \"sourceUrls\": [\"https://www.spotsaas.com/product/touch-stay/pricing\"], \"highImpact\": true, \"absence\": null}, {\"key\": \"distribution\", \"dimension\": \"distribution\", \"text\": \"Touch Stay distributes via integrations with PMS and experience platforms, and through a community of hosts.\", \"quote\": \"PMS integration\", \"sourceUrls\": [\"https://touchstay.com/\"], \"highImpact\": true, \"absence\": null}, {\"key\": \"retention\", \"dimension\": \"retention\", \"text\": \"Touch Stay drives retention by reducing operational calls and improving guest experience, leading to repeat bookings.\", \"quote\": \"zero calls for operational reasons\", \"sourceUrls\": [\"https://touchstay.com/\"], \"highImpact\": true, \"absence\": null}, {\"key\": \"defensibility\", \"dimension\": \"defensibility\", \"text\": \"Touch Stay builds defensibility through AI features, integrations, and network effects from user-generated content and reviews.\", \"quote\": \"AI chatbot\", \"sourceUrls\": [\"https://touchstay.com/\"], \"highImpact\": true, \"absence\": null}, {\"key\": \"riskManageable\", \"dimension\": \"riskManageable\", \"text\": \"Touch Stay mitigates risk by offering a free tier/trial and scalable pricing, lowering the barrier to entry for hosts.\", \"quote\": \"Free forever · Unlimited guidebooks · No credit card\", \"sourceUrls\": [\"https://touchstay.com/\"], \"highImpact\": true, \"absence\": null}], \"scores\": {\"westernNeed\": {\"value\": 5, \"claims\": [\"westernNeed\"]}, \"westernPay\": {\"value\": 5, \"claims\": [\"westernPay\"]}, \"ruWeakness\": {\"value\": 4, \"claims\": [\"ruWeakness\"]}, \"ruUnmetJob\": {\"value\": 2, \"claims\": [\"ruUnmetJob\"]}, \"monetization\": {\"value\": 5, \"claims\": [\"monetization\"]}, \"speedToPilot\": {\"value\": 5, \"claims\": [\"speedToPilot\"]}, \"mvpFeasible\": {\"value\": 5, \"claims\": [\"mvpFeasible\"]}, \"fastTest\": {\"value\": 5, \"claims\": [\"fastTest\"]}, \"distribution\": {\"value\": 4, \"claims\": [\"distribution\"]}, \"retention\": {\"value\": 5, \"claims\": [\"retention\"]}, \"defensibility\": {\"value\": 4, \"claims\": [\"defensibility\"]}, \"riskManageable\": {\"value\": 5, \"claims\": [\"riskManageable\"]}}, \"founderFit\": null, \"ruQueries\": [\"цифровой гид гостя посуточная аренда\", \"электронная инструкция заселения квартира\", \"app для хозяев квартир краткосрочная аренда\", \"аналоги touch stay в россии\", \"сервис гидов для гостей аренда\", \"qr код инструкция для гостей аренда\", \"платформа для управления посуточной арендой гид\", \"ai гид для гостей аренда\"], \"rationale\": \"Анализ данных показывает, что западный продукт Touch Stay решает четкую проблему (communication gap) и имеет прозрачную монетизацию. В РФ есть конкуренты (RealtyCalendar), предлагающие схожий функционал в составе комплексной системы, но нет явного лидера в нише именно 'цифровых гидов' как отдельного продукта с AI-фичами. MVP реализуем, тестирование быстрое.\"}"
+ }
+}
