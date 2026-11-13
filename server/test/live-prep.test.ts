@@ -20,10 +20,10 @@ import { MinIntervalLimiter } from '../live/net/rate-limit';
 import { acquireLockFile, PaidExecutionBusy, withPaidExecutionLock } from '../live/paid-lock';
 import { ProviderCaller } from '../live/provider-http';
 import { assertOutsideRepo, CapturingTransport, redact, repoRootOf } from '../live/raw-capture';
-import { RecordedProviders, RecordedWeb, TEST_ENV, virtualClock } from '../live/recordings/mock';
+import { RecordedProviders, RecordedWeb, searchXml, TEST_ENV, virtualClock } from '../live/recordings/mock';
 import { SEEDS } from '../live/recordings/world';
 import { parseSeeds, runPaidStage } from '../live/run';
-import { YandexSearchProvider } from '../live/yandex-search';
+import { parseYandexXml, YandexSearchProvider } from '../live/yandex-search';
 import { csvCell, exportReviewCsv } from '../machine/export';
 import { CallContext, type DiscoverySeed } from '../machine/types';
 import { runWorkerJob, workerToday, type TrialSpec } from '../machine/worker';
@@ -178,7 +178,7 @@ describe('raw responses: outside git, redacted', () => {
   it('redacts keys, IAM tokens, folder ids, Authorization values, e-mails and phones', () => {
     const t = redact('Api-Key AQVNabcdefghijklmnopqrstu t1.abcdefghijklmnopqrstuvwxyz gpt://b1gtestfolder000000/qwen key=test-key-not-a-secret-000 mail a.b@example.ru tel +7 (495) 123-45-67', ['test-key-not-a-secret-000', 'b1gtestfolder000000']);
     expect(t).not.toMatch(/AQVN|t1\.abc|b1gtestfolder|test-key-not|a\.b@example|123-45-67/);
-    expect(t).toMatch(/Api-Key <redacted>/);
+    expect(t).toMatch(/Api-Key \[redacted\]/);
   });
 
   it('refuses any directory inside the git working tree', () => {
@@ -197,6 +197,42 @@ describe('raw responses: outside git, redacted', () => {
     symlinkSync(root, join(base, 'repo-link'));
     expect(() => new CapturingTransport(new RecordedProviders(), join(base, 'repo-link', 'tmp-raw'), [])).toThrow(/внутри репозитория/);
     expect(existsSync(join(root, 'tmp-raw'))).toBe(false); // refused BEFORE anything was created
+  });
+
+  it('Search API rawData: e-mails and phones inside the base64 XML cannot be recovered; the clean response still replays', async () => {
+    const xml = searchXml([{ url: 'https://contacts.example.ru/', title: 'Контакты', passage: 'Пишите sales@secret-vendor.ru или звоните +7 (495) 765-43-21; ключ test-key-not-a-secret-000' }]);
+    const original = Buffer.from(xml, 'utf8').toString('base64');
+    const inner = { request: async () => ({ status: 200, headers: { 'content-type': 'application/json' }, body: Buffer.from(JSON.stringify({ rawData: original })), truncated: false }) };
+    const d = tmp();
+    const t = new CapturingTransport(inner, d, ['test-key-not-a-secret-000']);
+    const req = { method: 'POST' as const, url: new URL('https://searchapi.api.cloud.yandex.net/v2/web/search'), address: null, headers: { 'x-client-request-id': 'trial:t2:probe#1#1' }, body: '{}', timeoutMs: 1000, maxBytes: 1e6 };
+    await t.request(req);
+    const text = readFileSync(t.files[0]!, 'utf8');
+    const rec = JSON.parse(text);
+    // the original base64 is gone from the file …
+    expect(text).not.toContain(original);
+    // no base64-looking token anywhere in the saved JSON decodes back to a secret
+    const tokens = text.match(/[A-Za-z0-9+/=]{24,}/g) ?? [];
+    expect(tokens.length).toBeGreaterThan(0);
+    for (const tok of tokens) {
+      const dec = Buffer.from(tok, 'base64').toString('utf8');
+      for (const secret of ['sales@secret-vendor.ru', '765-43-21', 'test-key-not-a-secret']) expect(dec).not.toContain(secret);
+    }
+    // … and NOTHING in the file decodes back to the secrets: neither the plain text, nor any base64 field
+    const savedRaw = JSON.parse(rec.responseBody).rawData as string;
+    const decodedSaved = Buffer.from(savedRaw, 'base64').toString('utf8');
+    for (const secret of ['sales@secret-vendor.ru', '765-43-21', '+7 (495)', 'test-key-not-a-secret-000']) {
+      expect(text).not.toContain(secret);
+      expect(decodedSaved).not.toContain(secret);
+      expect(rec.decodedRawData).not.toContain(secret);
+    }
+    expect(decodedSaved).toBe(rec.decodedRawData);
+    expect(rec.rawDataRedacted).toBe(true);
+    // the cleaned record still has the official shape and replays through the real parser
+    const parsed = parseYandexXml(decodedSaved);
+    expect(parsed.docs).toHaveLength(1);
+    expect(parsed.docs[0]).toMatchObject({ url: 'https://contacts.example.ru/', title: 'Контакты' });
+    expect(parsed.docs[0]!.passages.join(' ')).toMatch(/\[email\].*\[phone\].*\[redacted\]/);
   });
 
   it('a record is never overwritten: the same ledger id twice → the original stays, the clash is kept separately', async () => {

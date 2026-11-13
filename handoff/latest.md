@@ -153,6 +153,21 @@ Rivals with an unproven market are shown but not counted: 2 of 2. Independent pu
 - **Cost.** One run with the default bounds (3 new + 3 rechecks) cost about 55 ₽ on recorded data; the token counts are synthetic. Searches dominate (≈14 per candidate).
 - **Pre-existing layout issue.** On the 1440 dashboard, the evidence-grade column of the TOP table scrolls inside its card (unchanged since VL-004A).
 
+## VL-004B-prep — final P2 (audit of `0c84b21`): Search API `rawData` redaction
+- **Problem.** The saved `responseBody` kept the provider's original base64 `rawData`. Only the decoded copy was redacted, so e-mails and phones could be recovered from the base64.
+- **Fix** (`server/live/raw-capture.ts` only):
+  - the XML is decoded, redacted, **re-encoded**, and stored as `{ rawData: base64(clean XML) }`, so the official response shape still replays through the parser;
+  - the original base64 never reaches the disk;
+  - `decodedRawData` equals the decoded clean copy;
+  - placeholders became `[email]`, `[phone]` and `[redacted]`, so a redacted XML stays well-formed (`<email>` would have been parsed as a tag).
+- **Test.** XML with an e-mail, a +7 phone and the key, inside `rawData`:
+  - the original base64 is absent from the file;
+  - **no** base64-looking token in the saved JSON decodes back to a secret;
+  - the saved `rawData` decodes to the redacted XML;
+  - `parseYandexXml` still returns the document with `[email]`, `[phone]` and `[redacted]` in its passage.
+- **Checks.** 420 tests ✔. No change to scoring, trial architecture or API adapters.
+- **The prep PR is frozen after this fix;** next is organisational preparation for Phase B.
+
 ## VL-004B-prep — audit fixes (audit of `d49a831`)
 | # | Finding | Fix | Tests (`server/test/live-prep.test.ts`) |
 |---|---|---|---|

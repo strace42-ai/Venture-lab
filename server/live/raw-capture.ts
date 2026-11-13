@@ -4,7 +4,7 @@
  *  - directory 0700, files 0600;
  *  - secrets and sensitive data removed before anything touches the disk: the API key / IAM token
  *    (exact values and patterns), the folder id, `Authorization` values, e-mails and phone numbers.
- * Request headers are never written.
+ * Request headers are never written. Placeholders use [brackets] so a redacted XML stays well-formed.
  */
 import { randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
@@ -14,14 +14,14 @@ import type { Transport, TransportRequest, TransportResponse } from './net/trans
 
 export function redact(text: string, secrets: (string | null | undefined)[]): string {
   let s = text;
-  for (const v of secrets) if (v && v.length >= 6) s = s.split(v).join('<redacted>');
+  for (const v of secrets) if (v && v.length >= 6) s = s.split(v).join('[redacted]');
   return s
-    .replace(/(Api-Key|Bearer)\s+[A-Za-z0-9_\-.~+/=]+/g, '$1 <redacted>')
-    .replace(/\bAQVN[A-Za-z0-9_-]{16,}/g, '<redacted-key>')
-    .replace(/\bt1\.[A-Za-z0-9_\-.]{16,}/g, '<redacted-iam>')
-    .replace(/\b(b1g|aje)[a-z0-9]{17}\b/g, '<redacted-id>')
-    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '<email>')
-    .replace(/(?:\+7|(?:^|[^\d])8)[\s(-]*\d{3}[\s)-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}(?!\d)/g, ' <phone>');
+    .replace(/(Api-Key|Bearer)\s+[A-Za-z0-9_\-.~+/=]+/g, '$1 [redacted]')
+    .replace(/\bAQVN[A-Za-z0-9_-]{16,}/g, '[redacted-key]')
+    .replace(/\bt1\.[A-Za-z0-9_\-.]{16,}/g, '[redacted-iam]')
+    .replace(/\b(b1g|aje)[a-z0-9]{17}\b/g, '[redacted-id]')
+    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[email]')
+    .replace(/(?:\+7|(?:^|[^\d])8)[\s(-]*\d{3}[\s)-]*\d{3}[\s-]*\d{2}[\s-]*\d{2}(?!\d)/g, ' [phone]');
 }
 
 /** The git working tree containing `from` (walks up to a `.git`), or null. */
@@ -104,11 +104,17 @@ export class CapturingTransport implements Transport {
   private write(req: TransportRequest, res: TransportResponse | null, error: string | null) {
     const ledgerId = req.headers['x-client-request-id'];
     const led = parseLedgerId(ledgerId);
-    const bodyText = res ? res.body.toString('utf8') : null;
+    let bodyText = res ? res.body.toString('utf8') : null;
     let decoded: string | null = null;
     try {
-      const raw = bodyText ? (JSON.parse(bodyText) as { rawData?: string }).rawData : undefined;
-      if (typeof raw === 'string') decoded = Buffer.from(raw, 'base64').toString('utf8');
+      const obj = bodyText ? (JSON.parse(bodyText) as { rawData?: unknown }) : null;
+      if (obj && typeof obj.rawData === 'string') {
+        // Search API: `rawData` is base64(XML). Redact the DECODED XML, then store ONLY the re-encoded clean
+        // copy — the original base64 (which would let anyone recover e-mails/phones) never reaches the disk.
+        // `{ rawData: base64(clean XML) }` keeps the official response shape for replaying the parser.
+        decoded = redact(Buffer.from(obj.rawData, 'base64').toString('utf8'), this.secrets);
+        bodyText = JSON.stringify({ ...obj, rawData: Buffer.from(decoded, 'utf8').toString('base64') });
+      }
     } catch {
       /* not JSON */
     }
@@ -126,6 +132,7 @@ export class CapturingTransport implements Transport {
       requestBody: req.body ?? null,
       responseBody: bodyText,
       decodedRawData: decoded,
+      rawDataRedacted: decoded !== null,
     };
     const sub = led ? join(led.jobKey.replace(/[^a-z0-9._-]/gi, '_'), `attempt-${led.attempt}`) : 'unlabeled';
     const folder = join(this.dir, sub);
