@@ -10,6 +10,7 @@
  *     401/403 are never retried; repeated failures open a per-run circuit breaker.
  */
 import { PROVIDER_HOSTS } from './config';
+import type { MinIntervalLimiter } from './net/rate-limit';
 import { TransportError, TransportTimeout, type Transport, type TransportRequest, type TransportResponse } from './net/transport';
 import { ProviderAuthError, ProviderUnavailable, type CallContext, type ReconcileInput, type UsageRecord } from '../machine/types';
 
@@ -40,6 +41,8 @@ export interface PaidCall {
 
 export interface CallerDeps {
   transport: Transport;
+  /** Applied before EVERY HTTP attempt, retries included (quota-bound providers). */
+  limiter?: MinIntervalLimiter;
   sleep?: (ms: number) => Promise<void>;
   random?: () => number;
   policy?: Partial<RetryPolicy>;
@@ -84,6 +87,7 @@ export class ProviderCaller {
         ctx.reconcile(id, { outcome: 'not_billed', actualCost: 0 });
         throw new ProviderAuthError(`хост ${req.url.hostname} не входит в список официальных — запрос не отправлен`);
       }
+      if (this.deps.limiter) await this.deps.limiter.acquire();
       let res: TransportResponse;
       try {
         res = await this.deps.transport.request(req);

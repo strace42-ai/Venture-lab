@@ -11,6 +11,7 @@ import { LiveSourceReader } from './live-reader';
 import { DEFAULT_FETCH_POLICY, SafeFetcher } from './net/safe-fetch';
 import type { Resolver, Transport } from './net/transport';
 import { ProviderCaller, type RetryPolicy } from './provider-http';
+import { MinIntervalLimiter, realClock, type Clock } from './net/rate-limit';
 import { YandexSearchProvider } from './yandex-search';
 import type { Providers } from '../machine/pipeline';
 
@@ -24,6 +25,8 @@ export interface LiveDeps {
   sleep?: (ms: number) => Promise<void>;
   random?: () => number;
   retry?: Partial<RetryPolicy>;
+  /** Clock for the Search API limiter (virtual time in tests). */
+  clock?: Clock;
 }
 
 export type Independence = 'independent' | 'single-model-degraded';
@@ -34,6 +37,8 @@ export interface LiveBundle {
   fetcher: SafeFetcher;
   searchCaller: ProviderCaller;
   llmCaller: ProviderCaller;
+  searchLimiter: MinIntervalLimiter;
+  chat: AIStudioChat;
   summary: ReturnType<typeof describeConfig>;
 }
 
@@ -41,7 +46,8 @@ export function buildLiveProviders(cfg: LiveConfig, deps: LiveDeps): LiveBundle 
   const problems = readinessProblems(cfg);
   if (problems.length) throw new LiveConfigError(`Живые провайдеры не готовы: ${problems.join('; ')}`);
   const independence: Independence = modelFamily(cfg.analystModel) === modelFamily(cfg.skepticModel) ? 'single-model-degraded' : 'independent';
-  const searchCaller = new ProviderCaller({ transport: deps.providerTransport, sleep: deps.sleep, random: deps.random, policy: { maxTimeoutRetries: 1, ...deps.retry } });
+  const searchLimiter = new MinIntervalLimiter(cfg.searchMinIntervalMs, deps.clock ?? realClock);
+  const searchCaller = new ProviderCaller({ transport: deps.providerTransport, sleep: deps.sleep, random: deps.random, limiter: searchLimiter, policy: { maxTimeoutRetries: 1, ...deps.retry } });
   const llmCaller = new ProviderCaller({ transport: deps.providerTransport, sleep: deps.sleep, random: deps.random, policy: { maxTimeoutRetries: 0, ...deps.retry } });
   const chat = new AIStudioChat(llmCaller, cfg);
   const fetcher = new SafeFetcher(
@@ -52,5 +58,5 @@ export function buildLiveProviders(cfg: LiveConfig, deps: LiveDeps): LiveBundle 
   const llm = new YandexAnalyst(chat, cfg.analystModel, cfg);
   const skeptic = new YandexSkeptic(chat, cfg.skepticModel, cfg);
   const reader = new LiveSourceReader(fetcher, new OfferExtractor(chat, cfg.analystModel));
-  return { providers: { search, reader, llm, skeptic }, independence, fetcher, searchCaller, llmCaller, summary: describeConfig(cfg) };
+  return { providers: { search, reader, llm, skeptic }, independence, fetcher, searchCaller, llmCaller, searchLimiter, chat, summary: describeConfig(cfg) };
 }

@@ -7,17 +7,19 @@
  */
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { loadLiveConfig } from '../live/config';
-import { RecordedProviders, RecordedWeb, TEST_ENV } from '../live/recordings/mock';
+import { RecordedProviders, RecordedWeb, TEST_ENV, virtualClock } from '../live/recordings/mock';
 import { liveRunOptions } from '../live/run';
 import { machineOverview, machineCandidate, runDiagnostics } from '../machine/read';
 import { runWorkerJob } from '../machine/worker';
 import { createTestDb, describeDb, type TestDb } from './helpers';
 
 const cfg = loadLiveConfig(TEST_ENV);
+/** Fixed «today» after every as_of used here (live runs may not be dated in the future). */
+const NOW = () => new Date('2026-11-20T03:00:00Z');
 const deps = (hooks: ConstructorParameters<typeof RecordedProviders>[0] = {}, webOver: ConstructorParameters<typeof RecordedWeb>[0] = {}) => {
   const web = new RecordedWeb(webOver);
   const prov = new RecordedProviders(hooks);
-  return { web, prov, deps: { providerTransport: prov, webTransport: web, resolver: web, sleep: async () => {} } };
+  return { web, prov, deps: { providerTransport: prov, webTransport: web, resolver: web, sleep: async () => {}, clock: virtualClock() } };
 };
 
 describeDb('VL-004B live worker on recorded HTTP (Case G)', () => {
@@ -31,7 +33,7 @@ describeDb('VL-004B live worker on recorded HTTP (Case G)', () => {
 
   it('a live run publishes exactly one LIVE snapshot; fixture feed untouched; usage is reconciled in the ledger', async () => {
     const d = deps();
-    const r = await runWorkerJob(db.pool, liveRunOptions(cfg, d.deps, { asOf: '2026-11-12', budgetKop: 20_000 }));
+    const r = await runWorkerJob(db.pool, liveRunOptions(cfg, d.deps, { asOf: '2026-11-12', budgetKop: 20_000, now: NOW }));
     expect(r.status).toBe('succeeded');
     expect(r.snapshot!.entries.map((e) => e.externalId).sort()).toEqual(['meeting-notes-ai', 'vag-autoscan-report']);
     const snaps = (await db.pool.query('SELECT feed, count(*)::int AS n FROM mr_snapshots GROUP BY feed')).rows;
@@ -84,7 +86,7 @@ describeDb('VL-004B live worker on recorded HTTP (Case G)', () => {
 
   it('a re-run of the same day is idempotent (no new calls, no double charge)', async () => {
     const d = deps();
-    const r = await runWorkerJob(db.pool, liveRunOptions(cfg, d.deps, { asOf: '2026-11-12', budgetKop: 20_000 }));
+    const r = await runWorkerJob(db.pool, liveRunOptions(cfg, d.deps, { asOf: '2026-11-12', budgetKop: 20_000, now: NOW }));
     expect(r.status).toBe('already-succeeded');
     expect(d.prov.requests).toHaveLength(0);
   });
@@ -92,7 +94,7 @@ describeDb('VL-004B live worker on recorded HTTP (Case G)', () => {
   it('rotation: the next day re-researches only the oldest incumbents and carries recent PASSED ones forward (with their date)', async () => {
     const d = deps();
     const c2 = loadLiveConfig({ ...TEST_ENV, VL_LIVE_MAX_NEW: '0', VL_LIVE_MAX_RECHECKS: '2', VL_LIVE_CARRY_DAYS: '7' });
-    const r = await runWorkerJob(db.pool, liveRunOptions(c2, d.deps, { asOf: '2026-11-13', budgetKop: 20_000 }));
+    const r = await runWorkerJob(db.pool, liveRunOptions(c2, d.deps, { asOf: '2026-11-13', budgetKop: 20_000, now: NOW }));
     expect(r.status).toBe('succeeded');
     const researched = (await db.pool.query("SELECT c.external_id FROM mr_assessments a JOIN mr_candidates c ON c.id = a.candidate_id JOIN mr_jobs j ON j.id = a.job_id WHERE j.as_of = '2026-11-13' AND a.feed = 'live' ORDER BY 1")).rows.map((x) => x.external_id);
     expect(researched).toEqual(['str-guest-guide', 'vag-autoscan-report']); // first two by registry order (all assessed 11-12)
@@ -131,7 +133,7 @@ describeDb('VL-004B live worker on recorded HTTP (Case G)', () => {
 
   it('budget exhaustion: the run stops «partial», nothing is published, the ledger never exceeds the cap', async () => {
     const d = deps();
-    const r = await runWorkerJob(db.pool, liveRunOptions(cfg, d.deps, { asOf: '2026-11-14', budgetKop: 600 }));
+    const r = await runWorkerJob(db.pool, liveRunOptions(cfg, d.deps, { asOf: '2026-11-14', budgetKop: 600, now: NOW }));
     expect(r.status).toBe('partial');
     expect((await db.pool.query("SELECT count(*)::int AS n FROM mr_snapshots WHERE feed = 'live' AND as_of = '2026-11-14'")).rows[0].n).toBe(0);
     const att = (await db.pool.query("SELECT a.reserved, a.used FROM mr_attempts a JOIN mr_jobs j ON j.id = a.job_id WHERE j.as_of = '2026-11-14' AND j.feed = 'live'")).rows[0];
@@ -147,7 +149,7 @@ describeDb('VL-004B live worker on recorded HTTP (Case G)', () => {
     try {
       let n = 0;
       const d = deps({ llm: (task) => (task === 'extract_offer' && ++n === 2 ? { timeout: true } : undefined) });
-      const r = await runWorkerJob(t.pool, liveRunOptions(cfg, d.deps, { asOf: '2026-11-12', budgetKop: 20_000 }));
+      const r = await runWorkerJob(t.pool, liveRunOptions(cfg, d.deps, { asOf: '2026-11-12', budgetKop: 20_000, now: NOW }));
       expect(r.status).toBe('succeeded');
       const u = (await t.pool.query("SELECT cost, estimated_cost, actual_cost FROM mr_usage WHERE reconciliation = 'unknown'")).rows;
       expect(u).toHaveLength(1);
@@ -163,7 +165,7 @@ describeDb('VL-004B live worker on recorded HTTP (Case G)', () => {
     const t = await createTestDb();
     try {
       const d = deps({ llm: (task) => (task === 'discover_seeds' ? undefined : task === 'extract_offer' ? { usage: { prompt_tokens: 50_000_000, completion_tokens: 1 } } : undefined) });
-      const r = await runWorkerJob(t.pool, liveRunOptions(cfg, d.deps, { asOf: '2026-11-12', budgetKop: 20_000 }));
+      const r = await runWorkerJob(t.pool, liveRunOptions(cfg, d.deps, { asOf: '2026-11-12', budgetKop: 20_000, now: NOW }));
       expect(r.status).toBe('failed');
       expect(r.message).toMatch(/превысила верхнюю оценку/);
       expect((await t.pool.query('SELECT count(*)::int AS n FROM mr_snapshots')).rows[0].n).toBe(0);
@@ -177,7 +179,7 @@ describeDb('VL-004B live worker on recorded HTTP (Case G)', () => {
     const t = await createTestDb();
     try {
       const d = deps({ search: () => ({ status: 401 }) });
-      const r = await runWorkerJob(t.pool, liveRunOptions(cfg, d.deps, { asOf: '2026-11-12', budgetKop: 20_000 }));
+      const r = await runWorkerJob(t.pool, liveRunOptions(cfg, d.deps, { asOf: '2026-11-12', budgetKop: 20_000, now: NOW }));
       expect(r.status).toBe('failed');
       expect(r.message).toMatch(/доступ отклонён/);
       expect(d.prov.searchCalls).toHaveLength(1);
@@ -205,10 +207,10 @@ describeDb('VL-004B live worker on recorded HTTP (Case G)', () => {
         }
         return orig(req);
       };
-      const a = runWorkerJob(t.pool, liveRunOptions(cfg, slow.deps, { asOf: '2026-11-12', budgetKop: 20_000 }));
+      const a = runWorkerJob(t.pool, liveRunOptions(cfg, slow.deps, { asOf: '2026-11-12', budgetKop: 20_000, now: NOW }));
       await inside;
       await t.pool.query("UPDATE mr_jobs SET lease_until = now() - interval '1 minute' WHERE feed = 'live'");
-      const b = await runWorkerJob(t.pool, liveRunOptions(cfg, deps().deps, { asOf: '2026-11-12', budgetKop: 20_000 }));
+      const b = await runWorkerJob(t.pool, liveRunOptions(cfg, deps().deps, { asOf: '2026-11-12', budgetKop: 20_000, now: NOW }));
       expect(b).toMatchObject({ status: 'succeeded', attempt: 2 });
       release();
       const ra = await a;
@@ -242,7 +244,7 @@ describeDb('VL-004B live worker on recorded HTTP (Case G)', () => {
         },
         { dns: { 'autoscanreader.example.com': ['151.101.99.1'] }, pages: { [RIVAL]: { status: 200, body: '<html lang="en"><body><p>AutoScan Reader turns a VCDS Auto-Scan into a plain report for car owners everywhere.</p></body></html>' } } },
       );
-      const r = await runWorkerJob(t.pool, liveRunOptions(cfg, d.deps, { asOf: '2026-11-12', budgetKop: 20_000 }));
+      const r = await runWorkerJob(t.pool, liveRunOptions(cfg, d.deps, { asOf: '2026-11-12', budgetKop: 20_000, now: NOW }));
       expect(r.status).toBe('succeeded');
       const top = (pool: TestDb['pool']) => pool.query("SELECT e.rank, e.title, e.market_score, e.confidence, e.evidence_grade FROM mr_snapshot_entries e JOIN mr_snapshots s ON s.id = e.snapshot_id WHERE s.feed = 'live' AND s.as_of = '2026-11-12' ORDER BY e.rank").then((x) => x.rows);
       expect(await top(t.pool)).toEqual(await top(db.pool));

@@ -35,9 +35,28 @@ export const DIM_COLUMN: Record<DimensionKey, string> = {
   riskManageable: 'score_risk_manageable',
 };
 
+export type TrialStage = 'probe' | 'stage2' | 'stage3';
+export const TRIAL_STAGE_ORDER: TrialStage[] = ['probe', 'stage2', 'stage3'];
+
+/** A bounded live trial (Phase B): one cumulative budget for all stages; one job per stage. */
+export interface TrialSpec {
+  id: string;
+  /** Cumulative ceiling of the whole trial, kopecks (immutable once the trial exists). */
+  budgetKop: number;
+  stage: TrialStage;
+}
+
+export class TrialRefused extends Error {}
+
 export interface RunOptions {
   feed: Feed;
   asOf: ISODate;
+  /** Phase B trial binding (live only): cumulative trial ceiling, stage order, no snapshot publication. */
+  trial?: TrialSpec;
+  /** Research exactly these candidates (live trial); discovery is then never run. */
+  seeds?: DiscoverySeed[];
+  /** false = no discovery searches / model call at all. */
+  discovery?: boolean;
   budget?: number;
   monthlyBudget?: number;
   maxAttempts?: number;
@@ -68,8 +87,13 @@ export interface RunResult {
   spent?: number;
 }
 
-export function jobKeyFor(feed: Feed, asOf: ISODate): string {
-  return `daily:${feed}:${asOf}`;
+export function jobKeyFor(feed: Feed, asOf: ISODate, trial?: Pick<TrialSpec, 'id' | 'stage'>): string {
+  return trial ? `trial:${trial.id}:${trial.stage}` : `daily:${feed}:${asOf}`;
+}
+
+/** «Today» in the worker timezone (YYYY-MM-DD). */
+export function workerToday(now: Date): ISODate {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: WORKER_TIMEZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
 }
 
 export function fixtureProviders(asOf: ISODate): Providers {
@@ -90,25 +114,41 @@ export const monthOf = (asOf: ISODate) => `${asOf.slice(0, 7)}-01`;
 /** Σ committed spend: actual usage where recorded, otherwise the full reservation (conservative). */
 const COMMITTED = 'COALESCE(SUM(COALESCE(used, reserved)), 0)::int';
 
-type Acquired = { job: JobRow; attempt: number; reserved: number; limitedBy: 'job' | 'month' };
+type Acquired = { job: JobRow; attempt: number; reserved: number; limitedBy: 'job' | 'month' | 'trial' };
 
 /**
  * Take ownership of the day's job and RESERVE its spend. Serialised per feed+month (advisory lock), so
  * concurrent jobs of different dates in the same month can never jointly exceed the monthly cap:
  * reservation = min(job budget − job committed, month cap − month committed).
  */
-async function acquire(pool: Pool, o: Required<Pick<RunOptions, 'feed' | 'asOf' | 'budget' | 'monthlyBudget' | 'maxAttempts' | 'leaseMs'>>, now: Date): Promise<Acquired | RunResult> {
-  const key = jobKeyFor(o.feed, o.asOf);
+/** Committed spend of every attempt of every job of a trial (actual where known, else the full reservation). */
+const TRIAL_COMMITTED = `SELECT ${'COALESCE(SUM(COALESCE(a.used, a.reserved)), 0)::int'} AS s FROM mr_attempts a JOIN mr_jobs j ON j.id = a.job_id WHERE j.trial_id = $1`;
+
+async function acquire(pool: Pool, o: Required<Pick<RunOptions, 'feed' | 'asOf' | 'budget' | 'monthlyBudget' | 'maxAttempts' | 'leaseMs'>> & { trial?: TrialSpec }, now: Date): Promise<Acquired | RunResult> {
+  const key = jobKeyFor(o.feed, o.asOf, o.trial);
   const month = monthOf(o.asOf);
   const c = await pool.connect();
   try {
     await c.query('BEGIN');
+    // Lock order everywhere: trial → month → job.
+    if (o.trial) await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`vl-mr-trial:${o.trial.id}`]);
     await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`vl-mr-month:${o.feed}:${month}`]);
     await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [key]);
+    if (o.trial) {
+      await c.query("INSERT INTO mr_trials (trial_id, feed, budget_limit) VALUES ($1, 'live', $2) ON CONFLICT (trial_id) DO NOTHING", [o.trial.id, o.trial.budgetKop]);
+      const t = (await c.query<{ budget_limit: number }>('SELECT budget_limit FROM mr_trials WHERE trial_id = $1', [o.trial.id])).rows[0]!;
+      if (t.budget_limit !== o.trial.budgetKop) throw new TrialRefused(`бюджет испытания ${o.trial.id} неизменяем: ${t.budget_limit} коп., запрошено ${o.trial.budgetKop} — для другого бюджета нужен новый идентификатор испытания`);
+      const idx = TRIAL_STAGE_ORDER.indexOf(o.trial.stage);
+      if (idx > 0) {
+        const prev = TRIAL_STAGE_ORDER[idx - 1]!;
+        const p = (await c.query<{ status: string }>('SELECT status FROM mr_jobs WHERE trial_id = $1 AND trial_stage = $2', [o.trial.id, prev])).rows[0];
+        if (p?.status !== 'succeeded') throw new TrialRefused(`ступень ${o.trial.stage} испытания ${o.trial.id} возможна только после успешной ступени ${prev} (сейчас: ${p?.status ?? 'не запускалась'})`);
+      }
+    }
     await c.query(
-      `INSERT INTO mr_jobs (job_key, feed, as_of, timezone, status, max_attempts, budget_limit, monthly_cap, pipeline_version)
-       VALUES ($1, $2, $3, $4, 'queued', $5, $6, $7, $8) ON CONFLICT (job_key) DO NOTHING`,
-      [key, o.feed, o.asOf, WORKER_TIMEZONE, o.maxAttempts, o.budget, o.monthlyBudget, PIPELINE_VERSION],
+      `INSERT INTO mr_jobs (job_key, feed, as_of, timezone, status, max_attempts, budget_limit, monthly_cap, pipeline_version, trial_id, trial_stage)
+       VALUES ($1, $2, $3, $4, 'queued', $5, $6, $7, $8, $9, $10) ON CONFLICT (job_key) DO NOTHING`,
+      [key, o.feed, o.asOf, WORKER_TIMEZONE, o.maxAttempts, o.budget, o.monthlyBudget, PIPELINE_VERSION, o.trial?.id ?? null, o.trial?.stage ?? null],
     );
     const job = (await c.query<JobRow>('SELECT id, status, attempts, max_attempts, lease_until, budget_limit FROM mr_jobs WHERE job_key = $1 FOR UPDATE', [key])).rows[0]!;
     const done = (status: RunStatus, message: string): RunResult => ({ status, jobKey: key, jobId: job.id, attempt: job.attempts, message });
@@ -135,8 +175,15 @@ async function acquire(pool: Pool, o: Required<Pick<RunOptions, 'feed' | 'asOf' 
     const monthCommitted = (await c.query<{ s: number }>(`SELECT ${COMMITTED} AS s FROM mr_attempts WHERE feed = $1 AND month = $2`, [o.feed, month])).rows[0]!.s;
     const jobLeft = Math.max(0, job.budget_limit - jobCommitted);
     const monthLeft = Math.max(0, o.monthlyBudget - monthCommitted);
-    if (monthLeft === 0 || jobLeft === 0) {
-      const reason = monthLeft === 0 ? `месячный лимит расходов исчерпан (${monthCommitted} из ${o.monthlyBudget})` : `бюджет задания исчерпан (${jobCommitted} из ${job.budget_limit})`;
+    const trialCommitted = o.trial ? (await c.query<{ s: number }>(TRIAL_COMMITTED, [o.trial.id])).rows[0]!.s : 0;
+    const trialLeft = o.trial ? Math.max(0, o.trial.budgetKop - trialCommitted) : Number.POSITIVE_INFINITY;
+    if (monthLeft === 0 || jobLeft === 0 || trialLeft === 0) {
+      const reason =
+        trialLeft === 0
+          ? `общий бюджет испытания ${o.trial!.id} исчерпан (${trialCommitted} из ${o.trial!.budgetKop})`
+          : monthLeft === 0
+            ? `месячный лимит расходов исчерпан (${monthCommitted} из ${o.monthlyBudget})`
+            : `бюджет задания исчерпан (${jobCommitted} из ${job.budget_limit})`;
       await c.query("UPDATE mr_jobs SET status = 'partial', partial_reason = $2, lease_until = NULL, finished_at = $3, monthly_cap = $4 WHERE id = $1", [job.id, reason, now, o.monthlyBudget]);
       await c.query('COMMIT');
       return done(monthLeft === 0 ? 'monthly-cap' : 'partial', `${reason[0]!.toUpperCase()}${reason.slice(1)} — прогон не выполнен, опубликован прежний TOP-10.`);
@@ -145,7 +192,7 @@ async function acquire(pool: Pool, o: Required<Pick<RunOptions, 'feed' | 'asOf' 
     // lease (see topUpAttempt): a normal run can use the whole job budget, a crashed attempt only holds
     // the chunks it already reserved, so retries are never starved.
     const perAttempt = Math.ceil(job.budget_limit / job.max_attempts);
-    const reserved = Math.min(jobLeft, monthLeft, perAttempt);
+    const reserved = Math.min(jobLeft, monthLeft, trialLeft, perAttempt);
     const attempt = job.attempts + 1;
     await c.query("INSERT INTO mr_attempts (job_id, feed, attempt, month, reserved, status, started_at) VALUES ($1, $2, $3, $4, $5, 'running', $6)", [job.id, o.feed, attempt, month, reserved, now]);
     await c.query(
@@ -154,7 +201,7 @@ async function acquire(pool: Pool, o: Required<Pick<RunOptions, 'feed' | 'asOf' 
       [job.id, attempt, new Date(now.getTime() + o.leaseMs), now, o.monthlyBudget],
     );
     await c.query('COMMIT');
-    return { job: { ...job, attempts: attempt }, attempt, reserved, limitedBy: monthLeft < Math.min(jobLeft, perAttempt) ? 'month' : 'job' };
+    return { job: { ...job, attempts: attempt }, attempt, reserved, limitedBy: trialLeft < Math.min(jobLeft, monthLeft, perAttempt) ? 'trial' : monthLeft < Math.min(jobLeft, perAttempt) ? 'month' : 'job' };
   } catch (e) {
     await c.query('ROLLBACK').catch(() => undefined);
     throw e;
@@ -173,6 +220,9 @@ export async function topUpAttempt(pool: Pool, feed: Feed, asOf: ISODate, jobId:
   const c = await pool.connect();
   try {
     await c.query('BEGIN');
+    // trial binding is immutable — read it first to take the locks in the global order trial → month → job
+    const trialId = (await c.query<{ trial_id: string | null }>('SELECT trial_id FROM mr_jobs WHERE id = $1', [jobId])).rows[0]?.trial_id ?? null;
+    if (trialId) await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`vl-mr-trial:${trialId}`]);
     await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`vl-mr-month:${feed}:${month}`]);
     const job = (await c.query<{ status: string; attempts: number; lease_until: Date | null; budget_limit: number }>('SELECT status, attempts, lease_until, budget_limit FROM mr_jobs WHERE id = $1 FOR UPDATE', [jobId])).rows[0];
     if (!job || job.status !== 'running' || job.attempts !== attempt || !job.lease_until || job.lease_until <= now) {
@@ -181,7 +231,12 @@ export async function topUpAttempt(pool: Pool, feed: Feed, asOf: ISODate, jobId:
     }
     const jobCommitted = (await c.query<{ s: number }>(`SELECT ${COMMITTED} AS s FROM mr_attempts WHERE job_id = $1`, [jobId])).rows[0]!.s;
     const monthCommitted = (await c.query<{ s: number }>(`SELECT ${COMMITTED} AS s FROM mr_attempts WHERE feed = $1 AND month = $2`, [feed, month])).rows[0]!.s;
-    const grant = Math.max(0, Math.min(want, job.budget_limit - jobCommitted, monthlyCap - monthCommitted));
+    let trialLeft = Number.POSITIVE_INFINITY;
+    if (trialId) {
+      const t = (await c.query<{ budget_limit: number }>('SELECT budget_limit FROM mr_trials WHERE trial_id = $1', [trialId])).rows[0]!;
+      trialLeft = t.budget_limit - (await c.query<{ s: number }>(TRIAL_COMMITTED, [trialId])).rows[0]!.s;
+    }
+    const grant = Math.max(0, Math.min(want, job.budget_limit - jobCommitted, monthlyCap - monthCommitted, trialLeft));
     if (grant > 0) {
       await c.query("UPDATE mr_attempts SET reserved = reserved + $3 WHERE job_id = $1 AND attempt = $2 AND status = 'running' AND used IS NULL", [jobId, attempt, grant]);
       await c.query(`UPDATE mr_jobs SET lease_until = $2, spent = (SELECT ${COMMITTED} FROM mr_attempts WHERE job_id = $1) WHERE id = $1`, [jobId, new Date(now.getTime() + leaseMs)]);
@@ -287,7 +342,7 @@ async function carriedForward(c: PoolClient, feed: Feed, asOf: ISODate, carry: C
     .map((x) => ({ externalId: x.external_id, candidateId: x.candidate_id, title: x.title, marketScore: x.market_score, confidence: x.confidence, grade: x.evidence_grade, speedToPilot: x.score_speed_to_pilot, carried: { assessmentId: x.id, jobId: x.job_id, asOf: x.as_of } }));
 }
 
-async function persist(pool: Pool, feed: Feed, asOf: ISODate, jobId: number, attempt: number, result: Awaited<ReturnType<typeof runPipeline>>, ctx: CallContext, now: Date, failAt?: RunOptions['failAt'], carry?: CarryOptions) {
+async function persist(pool: Pool, feed: Feed, asOf: ISODate, jobId: number, attempt: number, result: Awaited<ReturnType<typeof runPipeline>>, ctx: CallContext, now: Date, failAt?: RunOptions['failAt'], carry?: CarryOptions, publish = true) {
   const c = await pool.connect();
   try {
     await c.query('BEGIN');
@@ -364,6 +419,13 @@ async function persist(pool: Pool, feed: Feed, asOf: ISODate, jobId: number, att
       if (failAt === 'persist') throw new Error('injected persist failure (test)');
     }
 
+    if (!publish) {
+      // Trial stage: research is stored for review, but nothing is published into the live TOP-10.
+      await settleAttempt(c, feed, jobId, attempt, ctx, 'succeeded', now);
+      await c.query("UPDATE mr_jobs SET status = 'succeeded', lease_until = NULL, finished_at = $2, error = NULL WHERE id = $1", [jobId, now]);
+      await c.query('COMMIT');
+      return null;
+    }
     // Automatic machine TOP-10 (N/10 when fewer pass; never padded). Incumbents not re-researched this run
     // (live rotation) keep their latest PASSED assessment if it is recent — shown with its own date.
     const fresh: Rankable[] = result.candidates
@@ -440,11 +502,35 @@ export function selectRechecks<T extends { externalId: string; lastAssessed: str
 }
 
 /** Run (or resume) the daily autonomous job for `feed` / `asOf`. Never asks for approval. */
-export async function runWorkerJob(pool: Pool, opts: RunOptions): Promise<RunResult> {
+/** Mark a ledgered non-pipeline job (trial probe) as succeeded; usage is settled in the same transaction. */
+async function finishSucceeded(pool: Pool, feed: Feed, jobId: number, attempt: number, ctx: CallContext, now: Date) {
+  const c = await pool.connect();
+  try {
+    await c.query('BEGIN');
+    const own = await c.query<{ attempts: number; status: string }>('SELECT attempts, status FROM mr_jobs WHERE id = $1 FOR UPDATE', [jobId]);
+    if (own.rows[0]?.attempts !== attempt || own.rows[0]?.status !== 'running') throw new Error('задание перехвачено другой попыткой — результат не записан');
+    await settleAttempt(c, feed, jobId, attempt, ctx, 'succeeded', now);
+    await c.query("UPDATE mr_jobs SET status = 'succeeded', lease_until = NULL, finished_at = $2, error = NULL WHERE id = $1", [jobId, now]);
+    await c.query('COMMIT');
+  } catch (e) {
+    await c.query('ROLLBACK').catch(() => undefined);
+    throw e;
+  } finally {
+    c.release();
+  }
+}
+
+/** Run (or resume) the daily autonomous job for `feed` / `asOf` — or one stage of a live trial. Never asks for approval. */
+export async function runWorkerJob(pool: Pool, opts: RunOptions & { probe?: (ctx: CallContext) => Promise<unknown> }): Promise<RunResult & { probe?: unknown }> {
   const now = opts.now ?? (() => new Date());
-  if (opts.feed === 'live' && !opts.providers) {
+  if (opts.feed === 'live' && !opts.providers && !opts.probe) {
     throw new Error('Живые провайдеры не настроены (VL-004B). Используйте --fixture.');
   }
+  if (opts.trial && opts.feed !== 'live') throw new TrialRefused('испытание (trial) возможно только для ленты live');
+  if (opts.probe && !opts.trial) throw new TrialRefused('пробный вызов выполняется только как ступень испытания');
+  // No artificial dating: a live run is dated with the day it actually runs on (or earlier for replays), never the future.
+  if (opts.feed === 'live' && opts.asOf > workerToday(now())) throw new TrialRefused(`дата исследования ${opts.asOf} в будущем (сегодня ${workerToday(now())}) — датирование будущим днём запрещено`);
+  if (opts.seeds && opts.discovery !== false) throw new TrialRefused('заданные кандидаты (--seeds) запускаются только без discovery (--no-discovery)');
   const o = {
     feed: opts.feed,
     asOf: opts.asOf,
@@ -452,26 +538,42 @@ export async function runWorkerJob(pool: Pool, opts: RunOptions): Promise<RunRes
     monthlyBudget: opts.monthlyBudget ?? DEFAULT_MONTHLY_BUDGET,
     maxAttempts: opts.maxAttempts ?? 3,
     leaseMs: opts.leaseMs ?? 10 * 60_000,
+    trial: opts.trial,
   };
   const got = await acquire(pool, o, now());
   if (!('job' in got)) return got;
   const { job, attempt, reserved, limitedBy } = got;
-  const key = jobKeyFor(o.feed, o.asOf);
+  const key = jobKeyFor(o.feed, o.asOf, o.trial);
   // The attempt can never spend more than it reserved; it tops up chunk by chunk while it owns a live
   // lease — the hard caps hold even if it outlives its lease (top-ups are then refused).
   const chunk = Math.ceil(job.budget_limit / job.max_attempts);
   const ctx = new CallContext(key, attempt, reserved, opts.rateLimits ?? {}, (want) => topUpAttempt(pool, o.feed, o.asOf, job.id, attempt, want, o.leaseMs, o.monthlyBudget, now()), chunk);
-  const providers = (opts.providers ?? fixtureProviders)(o.asOf);
-  const knownRows = await knownSeeds(pool, o.feed, o.asOf);
-  const known: DiscoverySeed[] = knownRows.map((k) => { const { lastAssessed, ...seed } = k; void lastAssessed; return seed; });
-  const recheckIds = new Set(selectRechecks(knownRows, opts.maxRechecks).map((k) => k.externalId));
-  const recheck = known.filter((k) => recheckIds.has(k.externalId));
-  const carry: CarryOptions | undefined = opts.maxRechecks === undefined ? undefined : { notRechecked: known.filter((k) => !recheckIds.has(k.externalId)).map((k) => k.externalId), days: opts.carryDays ?? 7 };
   await pool.query('UPDATE mr_jobs SET independence = $2 WHERE id = $1 AND independence IS NULL', [job.id, opts.independence ?? (o.feed === 'fixture' ? 'emulated' : null)]);
   try {
     if (opts.failAt === 'pipeline') throw new Error('injected pipeline failure (test)');
-    const result = await runPipeline(o.asOf, known, providers, ctx, { ...opts.pipeline, maxNew: opts.maxNew, recheck });
-    const snapshot = await persist(pool, o.feed, o.asOf, job.id, attempt, result, ctx, now(), opts.failAt, carry);
+    if (opts.probe) {
+      const report = await opts.probe(ctx);
+      await finishSucceeded(pool, o.feed, job.id, attempt, ctx, now());
+      return { status: 'succeeded', jobKey: key, jobId: job.id, attempt, spent: ctx.spent, probe: report, message: `Пробный вызов выполнен (${key}); в рейтинг ничего не публикуется.` };
+    }
+    const providers = (opts.providers ?? fixtureProviders)(o.asOf);
+    const noDiscovery = opts.discovery === false;
+    const knownRows = await knownSeeds(pool, o.feed, o.asOf);
+    const known: DiscoverySeed[] = knownRows.map((k) => {
+      const { lastAssessed, ...seed } = k;
+      void lastAssessed;
+      return seed;
+    });
+    const recheckIds = new Set(selectRechecks(knownRows, opts.maxRechecks).map((k) => k.externalId));
+    // Trial stages research exactly their seeds: no incumbent rechecks.
+    const recheck = opts.seeds ? [] : known.filter((k) => recheckIds.has(k.externalId));
+    const carry: CarryOptions | undefined = opts.maxRechecks === undefined || opts.trial ? undefined : { notRechecked: known.filter((k) => !recheckIds.has(k.externalId)).map((k) => k.externalId), days: opts.carryDays ?? 7 };
+    const result = await runPipeline(o.asOf, known, providers, ctx, { ...opts.pipeline, maxNew: opts.maxNew, recheck, discovery: !noDiscovery, seeds: opts.seeds });
+    const snapshot = await persist(pool, o.feed, o.asOf, job.id, attempt, result, ctx, now(), opts.failAt, carry, !o.trial);
+    if (!snapshot) {
+      const held = result.candidates.filter((x) => x.assessment.state !== 'AUTOMATED_EVIDENCE_PASSED').length;
+      return { status: 'succeeded', jobKey: key, jobId: job.id, attempt, spent: ctx.spent, message: `Ступень испытания выполнена (${key}): кандидатов ${result.candidates.length}, отложено ${held}. В живой TOP-10 не публикуется.` };
+    }
     return {
       status: 'succeeded',
       jobKey: key,
@@ -484,7 +586,7 @@ export async function runWorkerJob(pool: Pool, opts: RunOptions): Promise<RunRes
   } catch (e) {
     const msg = (e as Error).message;
     if (e instanceof BudgetExhausted) {
-      const why = limitedBy === 'month' ? `месячный лимит: зарезервировано ${reserved} из остатка месяца` : `бюджет задания: зарезервировано ${reserved}`;
+      const why = limitedBy === 'trial' ? `общий бюджет испытания: зарезервировано ${reserved} из остатка испытания` : limitedBy === 'month' ? `месячный лимит: зарезервировано ${reserved} из остатка месяца` : `бюджет задания: зарезервировано ${reserved}`;
       await finishUnsuccessful(pool, o.feed, job.id, attempt, ctx, 'partial', `${msg} (${why})`, now());
       return { status: 'partial', jobKey: key, jobId: job.id, attempt, spent: ctx.spent, message: `Прогон остановлен лимитом расходов: ${msg} (${why}). Опубликованный TOP-10 не изменён.` };
     }

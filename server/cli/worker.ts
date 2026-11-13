@@ -9,18 +9,28 @@
  * Live (VL-004B):
  *   npm run research:worker:run -- --live --once --dry-run [--as-of D]
  *       configuration, readiness and worst-case cost plan — NO network request of any kind;
- *   npm run research:worker:run -- --live --once --execute --max-spend-rub N [--as-of D]
- *       Phase B ONLY (founder-authorised): real paid calls, hard ceiling N ₽ for this job. Requires
- *       VL_LIVE_PROVIDER=yandex, YANDEX_FOLDER_ID and YANDEX_API_KEY / YANDEX_IAM_TOKEN in the environment.
+ *   Phase B ONLY (founder-authorised), one gate for every paid action (server/live/gate.ts):
+ *   npm run research:worker:run -- --live --once --execute --probe --max-spend-rub 5
+ *   npm run research:worker:run -- --live --once --execute --stage stage2 --seeds research/phase-b/seeds-stage2.json --no-discovery --max-spend-rub 60
+ *   npm run research:worker:run -- --live --once --execute --stage stage3 --seeds research/phase-b/seeds-stage3.json --no-discovery --max-spend-rub 235
+ *       requires VL_LIVE_PROVIDER=yandex, YANDEX_FOLDER_ID, YANDEX_API_KEY|YANDEX_IAM_TOKEN, VL_LIVE_EXECUTE=phase-b-authorized,
+ *       VL_TRIAL_ID, VL_TRIAL_BUDGET_RUB (≤ 300); never in CI; no --as-of (real date); exclusive (no parallel paid runs).
+ *   npm run research:worker:export -- --live --trial <id> --out review.csv     (independent manual review, no network)
  *   There is no scheduled live run (tick --live is refused).
  */
 import { loadConfig } from '../config';
 import { createPool } from '../db/pool';
-import { describeConfig, loadLiveConfig, readinessProblems } from '../live/config';
+import { readFileSync, writeFileSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { describeConfig, loadLiveConfig, readinessProblems, type LiveConfig } from '../live/config';
+import { paidRunGate, STAGE_CAPS_RUB, TRIAL_BUDGET_RUB } from '../live/gate';
 import { NodeTransport, systemResolver } from '../live/net/transport';
-import { livePlan, liveRunOptions } from '../live/run';
+import { CapturingTransport, defaultRawDir } from '../live/raw-capture';
+import { livePlan, parseSeeds, runPaidStage } from '../live/run';
+import { exportReviewCsv } from '../machine/export';
 import { machineOverview } from '../machine/read';
-import { dueRun, localToday } from '../machine/schedule';
+import { dueRun } from '../machine/schedule';
 import { WORKER_TIMEZONE, runWorkerJob, type RunResult } from '../machine/worker';
 
 const [cmd, ...rest] = process.argv.slice(2);
@@ -46,8 +56,9 @@ const rub = (kop: number) => (Number.isFinite(kop) ? `${(kop / 100).toFixed(2)} 
 
 /** --live: dry-run (no network) or Phase B execute. Returns true when handled. */
 async function live(): Promise<void> {
+  if (cmd === 'export') return exportCsv();
   if (cmd !== 'run' && cmd !== 'status') {
-    console.error('Живой режим: только разовый запуск `run --live --once --dry-run|--execute`. Расписания для live в Phase A нет.');
+    console.error('Живой режим: только разовый запуск `run --live --once --dry-run|--execute`. Расписания для live нет.');
     process.exitCode = 2;
     return;
   }
@@ -63,17 +74,19 @@ async function live(): Promise<void> {
     return;
   }
   const dry = flags.has('--dry-run');
-  const execute = flags.has('--execute');
-  if (dry === execute || !flags.has('--once')) {
-    console.error('Укажите ровно один режим: --live --once --dry-run (без сети) или --live --once --execute --max-spend-rub N (только Phase B).');
+  if (dry && (flags.has('--execute') || flags.has('--probe'))) {
+    console.error('--dry-run несовместим с --execute/--probe.');
     process.exitCode = 2;
     return;
   }
-  const cfg = loadLiveConfig();
-  const problems = readinessProblems(cfg);
-  const asOf = opt('--as-of') ?? localToday(new Date());
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(asOf)) throw new Error('Укажите --as-of YYYY-MM-DD');
   if (dry) {
+    if (!flags.has('--once')) {
+      console.error('Укажите --live --once --dry-run.');
+      process.exitCode = 2;
+      return;
+    }
+    const cfg = loadLiveConfig();
+    const problems = readinessProblems(cfg);
     console.log('• DRY-RUN: сетевые запросы не выполняются (ни поиск, ни модели, ни страницы).');
     console.log('Конфигурация:');
     for (const [k, v] of Object.entries(describeConfig(cfg))) console.log(`  ${k}: ${v}`);
@@ -81,24 +94,62 @@ async function live(): Promise<void> {
     console.log(`Тарифы ${plan.tariffs.version}: поиск ${plan.tariffs.searchPerRequestKop} коп./запрос; аналитик ${plan.tariffs.analyst} ${JSON.stringify(plan.tariffs.analystTariff)} ₽/1000 токенов; скептик ${plan.tariffs.skeptic} ${JSON.stringify(plan.tariffs.skepticTariff)} ₽/1000 токенов`);
     console.log(`Границы прогона: кандидатов ≤ ${plan.bounds.candidates}, поисковых запросов ≤ ${plan.bounds.searches}, страниц ≤ ${plan.bounds.reads}, вызовов моделей ≤ ${plan.bounds.llmCalls}`);
     console.log(`Худший случай по лимитам: ${rub(plan.worstCaseKop)} (${plan.note})`);
-    console.log(problems.length ? `✖ Платный запуск сейчас невозможен: ${problems.join('; ')}` : '✔ Конфигурация готова; платный запуск требует отдельного разрешения (Phase B) и --execute --max-spend-rub N.');
+    console.log(`Испытание Phase B: общий потолок ${TRIAL_BUDGET_RUB} ₽; ступени probe ${STAGE_CAPS_RUB.probe} ₽ · stage2 ${STAGE_CAPS_RUB.stage2} ₽ · stage3 ${STAGE_CAPS_RUB.stage3} ₽; поиск не чаще 1 запроса в ${cfg.searchMinIntervalMs} мс.`);
+    console.log(problems.length ? `✖ Платный запуск сейчас невозможен: ${problems.join('; ')}` : '✔ Конфигурация готова; платный запуск требует отдельного разрешения (Phase B), VL_LIVE_EXECUTE и --execute.');
     return;
   }
-  // ---- execute: Phase B only
-  if (process.env.CI) throw new Error('Платные live-вызовы запрещены в CI.');
-  // Separate fail-closed activation flag: credentials alone never enable paid calls.
-  if (process.env.VL_LIVE_EXECUTE !== 'phase-b-authorized') throw new Error('Платный запуск не активирован: требуется VL_LIVE_EXECUTE=phase-b-authorized (ставится только после разрешения Phase B).');
-  if (problems.length) throw new Error(`Платный запуск невозможен: ${problems.join('; ')}`);
-  const maxRub = Number(opt('--max-spend-rub'));
-  if (!Number.isFinite(maxRub) || maxRub <= 0 || maxRub > 100_000) throw new Error('Укажите --max-spend-rub N (0 < N ≤ 100000) — жёсткий потолок расходов этого задания.');
+  // ---- paid execution (probe or stage): Phase B only — one gate for both, before any DB or network I/O
+  let cfg: LiveConfig | null = null;
+  let cfgError: string | undefined;
+  try {
+    cfg = loadLiveConfig();
+  } catch (e) {
+    cfgError = (e as Error).message;
+  }
+  const maxSpend = opt('--max-spend-rub');
+  const gate = paidRunGate(process.env, {
+    once: flags.has('--once'),
+    execute: flags.has('--execute'),
+    probe: flags.has('--probe'),
+    stage: opt('--stage'),
+    maxSpendRub: maxSpend === undefined ? undefined : Number(maxSpend),
+    asOf: opt('--as-of'),
+    seedsFile: opt('--seeds'),
+    noDiscovery: flags.has('--no-discovery'),
+  }, cfg, cfgError);
+  if (!gate.ok) {
+    console.error('✖ Платный запуск отклонён (ни одного запроса не сделано):');
+    for (const p of gate.problems) console.error(`  - ${p}`);
+    process.exitCode = 2;
+    return;
+  }
+  const seeds = opt('--seeds') ? parseSeeds(JSON.parse(readFileSync(opt('--seeds')!, 'utf8'))) : undefined;
+  const rawDir = defaultRawDir(gate.trial.id);
+  const lockFile = process.env.VL_LOCK_FILE ?? join(homedir(), '.venture-lab', 'live-paid.lock');
+  const capture = new CapturingTransport(new NodeTransport(), rawDir, [process.env.YANDEX_API_KEY, process.env.YANDEX_IAM_TOKEN, cfg!.folderId]);
   const pool = createPool(loadConfig().databaseUrl);
   try {
-    const opts = liveRunOptions(cfg, { providerTransport: new NodeTransport(), webTransport: new NodeTransport(), resolver: systemResolver }, { asOf, budgetKop: Math.floor(maxRub * 100) });
-    console.log(`• LIVE: ${asOf}, потолок задания ${maxRub} ₽, месячный лимит ${rub(cfg.monthlyBudgetKop)}; модели ${cfg.analystModel} / ${cfg.skepticModel}.`);
-    const r = await runWorkerJob(pool, opts);
+    console.log(`• LIVE ${gate.trial.stage}: испытание ${gate.trial.id}, потолок ступени ${gate.maxSpendKop / 100} ₽, общий потолок ${gate.trial.budgetKop / 100} ₽; модели ${cfg!.analystModel} / ${cfg!.skepticModel}; сырые ответы → ${rawDir}`);
+    const r = await runPaidStage(pool, cfg!, gate, { providerTransport: capture, webTransport: new NodeTransport(), resolver: systemResolver }, { seeds, lockFile });
     print(r);
+    if (r.probe) for (const c of r.probe) console.log(`  ${c.ok ? '✔' : '✖'} ${c.check}: ${c.detail}`);
     if (r.spent !== undefined) console.log(`  Учтено в журнале: ${rub(r.spent)} (лимит приложения не заменяет бюджет и оповещения в Yandex Cloud Billing).`);
-    if (r.status !== 'succeeded' && r.status !== 'already-succeeded') process.exitCode = 1;
+    console.log(`  Сырые ответы (без секретов): ${capture.files.length} файлов в ${rawDir}`);
+    if (r.status !== 'succeeded' || (r.probe && r.probe.some((c) => !c.ok))) process.exitCode = 1;
+  } finally {
+    await pool.end();
+  }
+}
+
+/** export --live --trial <id> | --job <key> --out <file>: CSV for an independent manual review (no network). */
+async function exportCsv(): Promise<void> {
+  const out = opt('--out');
+  if (!out) throw new Error('Укажите --out <файл.csv>');
+  const pool = createPool(loadConfig().databaseUrl);
+  try {
+    const r = await exportReviewCsv(pool, { trialId: opt('--trial'), jobKey: opt('--job') });
+    writeFileSync(out, r.csv, { mode: 0o600 });
+    console.log(`✔ ${r.rows} строк → ${out}`);
   } finally {
     await pool.end();
   }

@@ -57,6 +57,8 @@ const schema = z.object({
   VL_MAX_READS_PER_RUN: int(300, 1, 5000),
   VL_MAX_LLM_CALLS_PER_RUN: int(300, 1, 5000),
   VL_FETCH_TIMEOUT_MS: int(10_000, 1000, 60_000),
+  /** Search API sync quota is 1 request/s: the interval may never go below 1000 ms (default 1100 = 10 % margin). */
+  VL_SEARCH_MIN_INTERVAL_MS: int(1100, 1000, 60_000),
   VL_FETCH_MAX_BYTES: int(2_000_000, 10_000, 10_000_000),
   VL_HOST_INTERVAL_MS: int(1000, 0, 60_000),
   VL_LLM_TIMEOUT_MS: int(60_000, 5000, 300_000),
@@ -86,6 +88,7 @@ export interface LiveConfig {
   maxCounterQueries: number;
   rateLimits: { search: number; read: number; llm: number };
   fetchTimeoutMs: number;
+  searchMinIntervalMs: number;
   fetchMaxBytes: number;
   hostIntervalMs: number;
   llmTimeoutMs: number;
@@ -131,6 +134,7 @@ export function loadLiveConfig(env: NodeJS.ProcessEnv = process.env): LiveConfig
     maxCounterQueries: e.VL_MAX_COUNTER_QUERIES,
     rateLimits: { search: e.VL_MAX_SEARCHES_PER_RUN, read: e.VL_MAX_READS_PER_RUN, llm: e.VL_MAX_LLM_CALLS_PER_RUN },
     fetchTimeoutMs: e.VL_FETCH_TIMEOUT_MS,
+    searchMinIntervalMs: e.VL_SEARCH_MIN_INTERVAL_MS,
     fetchMaxBytes: e.VL_FETCH_MAX_BYTES,
     hostIntervalMs: e.VL_HOST_INTERVAL_MS,
     llmTimeoutMs: e.VL_LLM_TIMEOUT_MS,

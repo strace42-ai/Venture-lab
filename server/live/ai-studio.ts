@@ -73,28 +73,19 @@ export interface ChatRequest<T> {
 export class AIStudioChat {
   constructor(private readonly caller: ProviderCaller, private readonly cfg: Pick<LiveConfig, 'llmUrl' | 'folderId' | 'authHeader' | 'responseFormat' | 'llmTimeoutMs'>) {}
 
-  async complete<T>(ctx: CallContext, r: ChatRequest<T>): Promise<T> {
-    const tariff = tariffFor(r.model);
+  /** One metered chat completion: worst-case reservation, official request, reconciliation from `usage`. */
+  private async send(ctx: CallContext, model: string, messages: { role: string; content: string }[], maxTokens: number, format: Record<string, unknown>, task: string): Promise<z.infer<typeof completionSchema>> {
+    const tariff = tariffFor(model);
     // No tariff = cost cannot be bounded → fail closed (never call a model we cannot price).
-    if (!tariff) throw new InvalidModelOutput(`нет тарифа для модели ${r.model} — вызов не выполняется (стоимость не ограничена)`);
-    const messages = [
-      { role: 'system', content: `${r.system}\n\n${UNTRUSTED_RULES}\nTASK: ${r.task}` },
-      { role: 'user', content: JSON.stringify({ DATA: r.data }) },
-    ];
-    const format =
-      this.cfg.responseFormat === 'json_schema'
-        ? { response_format: { type: 'json_schema', json_schema: { name: r.task.replace(/[^a-z_]/gi, '_'), strict: true, schema: z.toJSONSchema(r.wire, { unrepresentable: 'any' }) } } }
-        : this.cfg.responseFormat === 'json_object'
-          ? { response_format: { type: 'json_object' } }
-          : {};
-    const body = JSON.stringify({ model: `gpt://${this.cfg.folderId}/${r.model}`, messages, max_tokens: r.maxTokens, temperature: 0, ...format });
+    if (!tariff) throw new InvalidModelOutput(`нет тарифа для модели ${model} — вызов не выполняется (стоимость не ограничена)`);
+    const body = JSON.stringify({ model: `gpt://${this.cfg.folderId}/${model}`, messages, max_tokens: maxTokens, temperature: 0, ...format });
     let completion: z.infer<typeof completionSchema> | null = null;
-    const res = await this.caller.call(ctx, {
+    await this.caller.call(ctx, {
       provider: 'yandex-ai-studio',
       operation: 'llm',
-      model: r.model,
+      model,
       priceVersion: YANDEX_PRICE_VERSION,
-      estimateKop: llmWorstCaseKop(tariff, messages, r.maxTokens),
+      estimateKop: llmWorstCaseKop(tariff, messages, maxTokens),
       build: (ledgerId) => ({
         method: 'POST',
         url: new URL(this.cfg.llmUrl),
@@ -116,9 +107,32 @@ export class AIStudioChat {
       },
       notBilled: (s) => s === 401 || s === 403,
     });
-    void res;
     const c = completion as z.infer<typeof completionSchema> | null;
-    if (!c) throw new InvalidModelOutput(`${r.task}: ответ провайдера не разобран`);
+    if (!c) throw new InvalidModelOutput(`${task}: ответ провайдера не разобран`);
+    return c;
+  }
+
+  /**
+   * Transport check (probe): a tiny plain completion WITHOUT response_format. Proves auth, model URI,
+   * reachability and that `usage` is reported — not the production schema.
+   */
+  async ping(ctx: CallContext, model: string): Promise<{ content: string; usageReported: boolean; finishReason: string | null }> {
+    const c = await this.send(ctx, model, [{ role: 'user', content: 'Ответь одним словом: ок' }], 16, {}, 'probe_transport');
+    return { content: (c.choices[0]!.message.content ?? '').slice(0, 200), usageReported: !!c.usage, finishReason: c.choices[0]!.finish_reason ?? null };
+  }
+
+  async complete<T>(ctx: CallContext, r: ChatRequest<T>): Promise<T> {
+    const messages = [
+      { role: 'system', content: `${r.system}\n\n${UNTRUSTED_RULES}\nTASK: ${r.task}` },
+      { role: 'user', content: JSON.stringify({ DATA: r.data }) },
+    ];
+    const format =
+      this.cfg.responseFormat === 'json_schema'
+        ? { response_format: { type: 'json_schema', json_schema: { name: r.task.replace(/[^a-z_]/gi, '_'), strict: true, schema: z.toJSONSchema(r.wire, { unrepresentable: 'any' }) } } }
+        : this.cfg.responseFormat === 'json_object'
+          ? { response_format: { type: 'json_object' } }
+          : {};
+    const c = await this.send(ctx, r.model, messages, r.maxTokens, format, r.task);
     const choice = c.choices[0]!;
     if (choice.finish_reason === 'length') throw new InvalidModelOutput(`${r.task}: ответ обрезан по max_tokens`);
     let json: unknown;

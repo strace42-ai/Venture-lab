@@ -44,7 +44,7 @@ describeDb('migrations 006–007 on a database that already ran 005', () => {
     expect((await pool.query("SELECT market_verified FROM mr_competitors WHERE name = 'Old Rival'")).rows[0].market_verified).toBe(true); // the 005 default
     // upgrade
     const r = await migrate(pool);
-    expect(r.applied).toEqual(['006_competitor_market_status', '007_null_safe_checks']);
+    expect(r.applied).toEqual(['006_competitor_market_status', '007_null_safe_checks', '008_live_trials']);
   });
   afterAll(async () => {
     await pool?.end();

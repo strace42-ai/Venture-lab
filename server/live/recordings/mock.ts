@@ -123,6 +123,8 @@ export class RecordedProviders implements Transport {
         content = typeof a === 'string' ? a : JSON.stringify(a ?? { claims: [], scores: {}, founderFit: null, ruQueries: [], rationale: 'нет записи' });
       } else if (task === 'extract_offer') content = JSON.stringify(EXTRACT[(data.page as { url: string }).url] ?? { isProductPage: false, name: null, market: 'unknown', jobs: [], price: null, pageKind: 'unknown' });
       else if (task === 'skeptic_challenge') content = JSON.stringify(skepticResponse(data as unknown as SkepticData));
+      else if (task === 'probe_schema') content = JSON.stringify({ ok: true, word: 'тест' });
+      else if (task === 'unknown') content = 'ок';
       else content = '{}';
       const usage = h?.usage === undefined ? { prompt_tokens: Math.ceil(Buffer.byteLength(req.body ?? '') / 3), completion_tokens: Math.ceil(Buffer.byteLength(content) / 3) + 40 } : h.usage;
       const resp = { id: `chatcmpl-rec-${n}`, object: 'chat.completion', created: 1_794_000_000, model: body.model, choices: [{ index: 0, message: { role: 'assistant', content }, finish_reason: 'stop' }], ...(usage ? { usage: { ...usage, total_tokens: usage.prompt_tokens + usage.completion_tokens } } : {}) };
@@ -140,3 +142,17 @@ export const TEST_ENV: NodeJS.ProcessEnv = {
   VL_LIVE_MAX_NEW: '6',
   VL_HOST_INTERVAL_MS: '0',
 };
+
+/** Virtual time for offline runs: `sleep` advances the clock instantly (rate limits are still enforced in virtual time). */
+export function virtualClock(start = 0): { now(): number; sleep(ms: number): Promise<void>; readonly sleeps: number[] } {
+  let t = start;
+  const sleeps: number[] = [];
+  return {
+    now: () => t,
+    sleep: async (ms: number) => {
+      sleeps.push(ms);
+      t += Math.max(0, ms);
+    },
+    sleeps,
+  };
+}
