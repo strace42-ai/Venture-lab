@@ -1,8 +1,8 @@
 # Venture Lab — Latest handoff
 
 **Task:** VL-004B / Live Research Provider Adapters, Evidence Safety & Controlled Trial — **Phase A only** (`tasks/current-task.md` v1.0)
-**Status:** PHASE A IMPLEMENTED, offline only. **No paid API call was made, no cloud resource created, no deploy.** PR open, **not merged**. Phase B is blocked until the founder authorises it.
-**As of:** 2026-11-12 · **Implementer:** Claude Code
+**Status:** PHASE A IMPLEMENTED + AUDIT ROUND 1 FIXES (ChatGPT review 5884565239 on `9fe7bac`), offline only. **No paid API call was made, no cloud resource created, no deploy.** PR open, **not merged**. Phase B is blocked until the founder authorises it.
+**As of:** 2026-11-13 · **Implementer:** Claude Code
 
 ## Git
 | | |
@@ -10,6 +10,19 @@
 | Base | `main` @ `c900fd6` (VL-004A merged; VL-004B docs activated) |
 | Branch | `claude/vl-004b-live-providers` |
 | PR | opened to `main` (see the PR list), not merged |
+
+## Audit round 1 — fixes
+| # | Finding | Fix | Tests |
+|---|---|---|---|
+| **P1** | A rival's market could be the model's guess: when page signals were missing, `groundOffer` still returned `market:'ru'`, and the rival counted as a direct RU competitor (caps, refutations, holds). | `marketEvidence()` (`server/live/grounding.ts`) separates the **product market** from the page language.<br>• «ru» requires an RU availability signal (RU domain, ₽/руб price, +7 phone, ИНН/ОГРН) plus Russian content, and no $/€/£ price.<br>• «west» requires a $/€/£ price on a western-language page.<br>• RU localisation alone is not enough.<br>• Undetermined → **automatic re-check of the site's home page** (same safe fetcher, no model call, no charge).<br>• Still undetermined → the offer is kept with `marketVerified:false` and stored as `mr_competitors.market_verified=false`. The UI shows «рынок не подтверждён».<br>• Such a rival is **excluded** from `directRu`/`adjacentRu` caps, refutation validation, free/≥2-rivals holds and Russia validation; the next rotation re-checks it.<br>• Diagnostics show the count. | Unit:<br>• neutral English `.com` where the model says «ru» → not established;<br>• Russian localisation without sales signals → not established;<br>• English `.ru` with a $ price → not established, conflict recorded;<br>• ₽ + +7 + ИНН → «ru» even when the model said «west»;<br>• home-page re-check resolves it.<br>Integration (pipeline):<br>• an unproven «direct» VAG rival leaves scores, score and state **unchanged**;<br>• the same rival with ₽/+7 **does** cap the RU dimensions;<br>• RYNTO (Russian page, no availability signal) is shown, not counted, and its home page was probed;<br>• RealtyCalendar and GuestCom stay proven direct and the guest guide stays held.<br>Integration (worker + PostgreSQL): the published TOP equals the baseline; `market_verified=false` is stored. |
+| **P1** | Source independence came from the extraction model's `pageKind`, which could raise the evidence grade and reliability. | New `assessProvenance()` (`server/live/provenance.ts`). «independent» requires the model's claim **and** all of the following verifiable signals:<br>• a site that is not the product's (not the seed source, not a site with a grounded offer this run, brand not in the domain);<br>• no offer on the page;<br>• publication markup (og:type=article / schema.org Article·Review·NewsArticle·BlogPosting / `<article>`);<br>• a named publisher or author that is not the product.<br>Otherwise the type is **UNKNOWN** («тип не установлен») or a self-report. The decision, its signals and the reason are stored in `mr_sources.provenance` and shown in the dossier; diagnostics count rejected claims. | Unit:<br>• the vendor's own page with `pageKind:'independent'` / `isProductPage:false` → self-report;<br>• a third-party page without markup/byline → UNKNOWN;<br>• publisher or author = product → self-report;<br>• a site seen offering a product → self-report;<br>• positive: a marked-up third-party review → independent;<br>• `forum` is never independent.<br>Integration:<br>• the misclassified Touch Stay pricing page stays a self-report (`vendor_claim`);<br>• the same review without provenance → UNKNOWN, grade **B → C**, lower reliability.<br>Worker: an unverified forum «independent» is stored as `unknown` / `unverified`; the TOP is unchanged. |
+| P2 | `--execute` was able to make paid calls whenever credentials were present | A separate fail-closed activation flag: `VL_LIVE_EXECUTE=phase-b-authorized` is required in addition to the config, credentials, `--max-spend-rub` and «not in CI». | CLI checked: refused without the flag. |
+| — | Found while fixing | JavaScript `\b` does not work next to Cyrillic letters, so `\bруб` (payment evidence) and `\bИНН` never matched. Replaced with explicit guards. | Covered by the ₽/ИНН tests |
+
+Recorded corpus changes:
+- genuine third-party pages got publication markup (og:type=article, og:site_name, author);
+- the Touch Stay pricing page now has a deliberately wrong extraction recording (`independent`, not a product page);
+- RYNTO and VAGLOGS have no RU availability signal on their recorded pages, so they are now **«рынок не подтверждён»** (shown, not counted). The guest guide is still held through RealtyCalendar and GuestCom.
 
 ## What was built
 Everything plugs into the existing VL-004A contracts (`SearchProvider`, `SourceReader`, `LLMProvider`, `SkepticalReviewer`, `CallContext`, worker, ledger). The fixture feed is unchanged: same scores, all VL-004A tests green.
@@ -34,16 +47,16 @@ Everything plugs into the existing VL-004A contracts (`SearchProvider`, `SourceR
 ## Offline benchmark (recorded HTTP — measures guardrails, NOT model accuracy)
 | | TP | FP | FN | Precision | Recall |
 |---|---|---|---|---|---|
-| Direct-RU rivals, pipeline | 5 | 0 | 0 | 100% | 100% |
-| Direct-RU rivals, recorded skeptic alone | 5 | 2 (VAGLOGS conflated with Auto-Scan; invented «Bnovo Гид») | — | 71% | — |
+| Direct-RU rivals with a proven market, pipeline | 4 | 0 | 0 | 100% | 100% |
+| Direct-RU rivals, recorded skeptic alone | 4 | 1 (invented «Bnovo Гид») + 2 with an unproven market (RYNTO, VAGLOGS-as-direct) | — | 57% | — |
 | Claims accepted, pipeline | 8 | 0 | 0 | 100% | 100% |
 | Claims «supported» by recorded skeptic alone | 8 | 1 («10,000 companies use» taken as payment) | — | 89% | — |
 
-The corpus was written together with the guardrails. 100% only means the guardrails do what they were built for on these cases. Real quality is measured only in Phase B.
+Rivals with an unproven market are shown but not counted: 2 of 2. Independent publications verified by provenance: 4. Model «independent» claims rejected: 1 (the Touch Stay pricing page). The corpus was written together with the guardrails. 100% only means the guardrails do what they were built for on these cases. Real quality is measured only in Phase B.
 
 ## Cases A–H (all automated)
-- **A — guest guide.** RealtyCalendar «Автопилот», RYNTO and GuestCom are validated as direct RU rivals. GuestCom is reachable only through a synonym query. The «empty niche» claim is contradicted, `ruUnmetJob` = 0 and the idea is held. The invented «Bnovo Гид» is dropped. RYNTO's model-claimed market `west` is corrected to `ru` and flagged.
-- **B — VAGLOGS vs VAG Report.** VAGLOGS proves only CSV-log analysis, so it is **adjacent**. The model's Auto-Scan job is dropped as not on the page. The skeptic's «direct» label and its refutation are rejected and its critical dispute downgraded. Ross-Tech is never counted as a rival. drive2 returns 403 and stays unretrievable.
+- **A — guest guide.** RealtyCalendar «Автопилот» and GuestCom are validated as direct RU rivals with a proven market (RU domain or ₽/руб). GuestCom is reachable only through a synonym query. The «empty niche» claim is contradicted, `ruUnmetJob` = 0 and the idea is held. RYNTO (Russian page, no availability signal; home page re-checked) is shown as «рынок не подтверждён» and not counted. The invented «Bnovo Гид» is dropped.
+- **B — VAGLOGS vs VAG Report.** VAGLOGS proves only CSV-log analysis, so it is **adjacent**; its market is not proven (no RU availability signal), so it is shown and not counted. The model's Auto-Scan job is dropped as not on the page. The skeptic's «direct» label and its refutation are rejected and its critical dispute downgraded. Ross-Tech is never counted as a rival. drive2 returns 403 and stays unretrievable.
 - **C — quote comparison.** ВНИКЛИ and Vortholm are direct; the gap claim is contradicted and the idea held.
 - **D — popularity ≠ payment.** «More than 10,000 companies use» never verifies «10,000 pay», even though the recorded skeptic says it does; `westernPay` stays unknown.
 - **E — unreachable sources.** robots.txt `Disallow: /` means only `/robots.txt` is requested. The claims citing the page are unretrievable and the idea is held. The PDF is `unsupported_content`, the 404 is `http_error`. A model-remembered URL is **never requested**.
@@ -71,7 +84,7 @@ The corpus was written together with the guardrails. 100% only means the guardra
 | Check | Result |
 |---|---|
 | `npm run lint` / `typecheck` / `build` | ✔ / ✔ / ✔ |
-| `CI=true TEST_DATABASE_URL=… npm test` | ✔ **20 files, 334 tests**, up from 231: `live-net` 42, `live-providers` 27, `live-pipeline` 21, `live-worker` 12, UI +1. All VL-001…VL-004A tests pass unchanged. |
+| `CI=true TEST_DATABASE_URL=… npm test` | ✔ **20 files, 350 tests** (round 1: 334): `live-net` 42, `live-providers` 38, `live-pipeline` 25, `live-worker` 13, UI test +2 assertions. All VL-001…VL-004A tests pass unchanged. |
 | Fixture CLI 3 days (fresh DB) | ✔ 3/10 → 3/10 → 4/10, same scores as VL-004A |
 | `--live --once --dry-run` | ✔ no network. `--execute` is refused without config, in CI and for deprecated models; `tick --live` is refused. |
 | `npm run research:benchmark` | ✔ (table above) |
@@ -93,7 +106,8 @@ The corpus was written together with the guardrails. 100% only means the guardra
 - **Token bound.** The input-token bound (bytes ≥ tokens) assumes byte-level BPE. A violation is caught as an anomaly that stops paid calls; the ledger then keeps the bound and the observed value is stored for audit.
 - **Coverage gaps.** No PDF parsing, no headless browser: JavaScript-only pages are `unsupported_content`.
 - **Reachability.** Foreign primary sites may be unreachable from a Russian host — to be measured in Phase B.
-- **Source type.** «independent» relies on the extraction model's page kind. It is never assigned to a page with a grounded offer or to the Western product's own site, but a vendor blog on another domain could still be mislabelled.
+- **Source type.** «independent» now requires verifiable provenance (see audit fixes). A well-marked-up **sponsored** article on a third-party site would still pass — a residual risk.
+- **Market signals.** These are page signals, not proof of legal registration or payment acceptance in Russia. Rivals without them are not counted, which can under-count real competition until a later rotation finds a signal (RYNTO and VAGLOGS in the corpus).
 - **Cost.** One run with the default bounds (3 new + 3 rechecks) cost about 55 ₽ on recorded data; the token counts are synthetic. Searches dominate (≈14 per candidate).
 - **Pre-existing layout issue.** On the 1440 dashboard, the evidence-grade column of the TOP table scrolls inside its card (unchanged since VL-004A).
 

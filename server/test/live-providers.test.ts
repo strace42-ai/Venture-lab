@@ -7,7 +7,9 @@
 import { describe, expect, it } from 'vitest';
 import { AIStudioChat, analystWire, offerWire, parseModelJson } from '../live/ai-studio';
 import { describeConfig, loadLiveConfig, modelFamily, readinessProblems } from '../live/config';
-import { groundOffer, marketSignal } from '../live/grounding';
+import { groundOffer, marketEvidence, marketSignal } from '../live/grounding';
+import { extractPage } from '../live/html';
+import { assessProvenance } from '../live/provenance';
 import { llmCostKop, llmWorstCaseKop, searchCostKop, tariffFor } from '../live/prices';
 import { ProviderCaller } from '../live/provider-http';
 import { buildLiveProviders } from '../live/providers';
@@ -265,11 +267,95 @@ describe('offer grounding (Case B: never conflate vendors or jobs)', () => {
     expect(g.offer?.jobs).toEqual([]);
   });
 
-  it('market comes from page signals; the model only fills a gap (marked uncertain)', () => {
+  it('page language (marketSignal) is not product market: RU localisation alone does not establish the market', () => {
     expect(marketSignal('https://rynto.io/ru/x', 'ru', 'Цифровой гид гостя с правилами дома и инструкцией')).toBe('ru');
-    expect(marketSignal('https://touchstay.com/', 'en', 'Digital guidebooks for vacation rental hosts. Plans from $9 per month per guidebook.')).toBe('west');
-    const g = groundOffer({ isProductPage: true, name: 'VAGLOGS', market: 'west', jobs: [], price: null, pageKind: 'vendor' }, page, SEEDS.vag!, 'm');
-    expect(g.offer?.market).toBe('ru');
-    expect(g.uncertain.join(' ')).toMatch(/модель указала west/);
+    expect(marketEvidence('https://rynto.io/ru/x', 'ru', 'Цифровой гид гостя с правилами дома и инструкцией').market).toBeNull();
+    expect(marketEvidence('https://touchstay.com/', 'en', 'Digital guidebooks for vacation rental hosts. Plans from $9 per month per guidebook.').market).toBe('west');
+    const g = groundOffer({ isProductPage: true, name: 'VAGLOGS', market: 'ru', jobs: [], price: null, pageKind: 'vendor' }, page, SEEDS.vag!, 'm');
+    expect(g.offer?.grounding?.marketVerified).toBe(false);
+    expect(g.uncertain.join(' ')).toMatch(/рынок не подтверждён признаками страницы \(модель: ru\)/);
   });
 });
+
+describe('audit P1 — a competitor\'s market must be established by page signals, never by the model', () => {
+  const offer = (market: 'ru' | 'west' | 'unknown') => ({ isProductPage: true, name: 'AutoScan Reader', market, jobs: [{ job: 'vag-autoscan-dtc-report', quote: 'turns a VCDS Auto-Scan into a plain report' }], price: null, pageKind: 'vendor' as const });
+  const text = 'AutoScan Reader turns a VCDS Auto-Scan into a plain report for car owners.';
+
+  it('neutral .com, English, no currency — the model says «ru» → market NOT established', () => {
+    const g = groundOffer(offer('ru'), { url: 'https://autoscanreader.example.com/', title: 'AutoScan Reader', lang: 'en', text }, SEEDS.vag!, 'm');
+    expect(g.offer?.grounding?.marketVerified).toBe(false);
+    expect(g.offer?.jobs).toEqual(['vag-autoscan-dtc-report']); // the job IS proven — only the market is not
+  });
+
+  it('Russian localisation without any sign of sales in Russia → NOT established', () => {
+    const t = 'AutoScan Reader превращает Auto-Scan VCDS в понятный отчёт: turns a VCDS Auto-Scan into a plain report. Сервис для владельцев автомобилей по всему миру.';
+    const g = groundOffer(offer('ru'), { url: 'https://autoscanreader.example.com/ru', title: 'AutoScan Reader', lang: 'ru', text: t }, SEEDS.vag!, 'm');
+    expect(g.offer?.grounding?.marketVerified).toBe(false);
+    expect(g.uncertain.join(' ')).toMatch(/локализация ≠ продажи в РФ/);
+  });
+
+  it('English .ru page with conflicting signals ($ price, English) → NOT established, conflict recorded', () => {
+    const t = `${text} Plans from $19 per month.`;
+    const g = groundOffer(offer('ru'), { url: 'https://autoscanreader.ru/', title: 'AutoScan Reader', lang: 'en', text: t }, SEEDS.vag!, 'm');
+    expect(g.offer?.grounding?.marketVerified).toBe(false);
+    expect(g.uncertain.join(' ')).toMatch(/противоречия/);
+  });
+
+  it('RU availability signals (₽ price, +7, ИНН) on a Russian page establish «ru» — even if the model said «west»', () => {
+    const t = 'AutoScan Reader: turns a VCDS Auto-Scan into a plain report. Тариф 490 ₽ в месяц. Поддержка: +7 (495) 123-45-67. ООО «Пример», ИНН 7701234567.';
+    const g = groundOffer(offer('west'), { url: 'https://autoscanreader.example.com/', title: 'AutoScan Reader', lang: 'ru', text: t }, SEEDS.vag!, 'm');
+    expect(g.offer).toMatchObject({ market: 'ru', grounding: { marketVerified: true } });
+    expect(g.offer?.grounding?.marketSignals).toEqual(expect.arrayContaining(['цена в рублях', 'телефон +7', 'ИНН/ОГРН']));
+  });
+
+  it('automatic re-check: an undetermined product page is resolved by the site\'s home page signals', () => {
+    const g = groundOffer(offer('unknown'), { url: 'https://autoscanreader.example.com/features', title: 'AutoScan Reader', lang: 'en', text }, SEEDS.vag!, 'm', {
+      url: 'https://autoscanreader.example.com/',
+      lang: 'ru',
+      text: 'AutoScan Reader — отчёты по Auto-Scan для владельцев. Стоимость 390 руб. за отчёт.',
+    });
+    expect(g.offer?.grounding).toMatchObject({ marketVerified: true });
+    expect(g.offer?.market).toBe('ru');
+    expect(g.offer?.grounding?.marketSignals.join(' ')).toMatch(/главная страница сайта/);
+  });
+});
+
+describe('audit P1 — «independent» needs verifiable provenance, never the model\'s word alone', () => {
+  const meta = (head: string) => extractPage(`<html><head>${head}</head><body><article><p>Body text of the page that is long enough.</p></article></body></html>`).meta;
+  const base = { seed: SEEDS.guest!, productSites: new Set<string>(), hasGroundedOffer: false };
+
+  it('the product\'s own site is a self-report even when the extractor says «independent» / not a product page', () => {
+    const p = assessProvenance({ ...base, url: 'https://touchstay.com/pricing', meta: meta('<meta property="og:type" content="article"><meta name="author" content="Jane">'), modelPageKind: 'independent' });
+    expect(p).toMatchObject({ sourceType: 'company_self_report', independence: 'not_claimed' });
+  });
+
+  it('a third-party-looking page without publication markup / publisher stays UNKNOWN («тип не установлен»)', () => {
+    const p = assessProvenance({ ...base, url: 'https://best-guest-apps.example.net/touch-stay', meta: extractPage('<html><body><p>Touch Stay is the best guidebook app!</p></body></html>').meta, modelPageKind: 'independent' });
+    expect(p).toMatchObject({ sourceType: 'unknown', independence: 'unverified' });
+    expect(p.reason).toMatch(/не подтверждено/);
+  });
+
+  it('a page published by the product itself on another domain (publisher/author = product) is a self-report', () => {
+    const p = assessProvenance({ ...base, url: 'https://hosting-blog.example.org/post', meta: meta(ARTICLE_HEAD('Touch Stay Blog', 'Touch Stay team')), modelPageKind: 'independent' });
+    expect(p.sourceType).toBe('company_self_report');
+  });
+
+  it('a page on a site that offers a product (seen this run) is never independent', () => {
+    const p = assessProvenance({ ...base, url: 'https://vaglogs.com/blog/review', meta: meta(ARTICLE_HEAD('VAGLOGS', 'Admin')), modelPageKind: 'independent', productSites: new Set(['vaglogs.com']) });
+    expect(p.sourceType).toBe('company_self_report');
+  });
+
+  it('positive: third-party site + article markup + publisher/author → independent (verified) with its signals', () => {
+    const p = assessProvenance({ ...base, url: 'https://www.str-review.example.org/touch-stay-review', meta: meta(ARTICLE_HEAD('STR Review', 'Jane Doe')), modelPageKind: 'independent' });
+    expect(p).toMatchObject({ sourceType: 'independent', independence: 'verified' });
+    expect(p.signals).toEqual(expect.arrayContaining(['og:type=article', 'издатель: STR Review']));
+  });
+
+  it('the model\'s «independent» is required: a perfectly marked-up page it calls «vendor» or «forum» is not independent', () => {
+    expect(assessProvenance({ ...base, url: 'https://forum.tdi.example.org/x', meta: meta(ARTICLE_HEAD('TDI Forum', 'user1')), modelPageKind: 'forum' }).sourceType).toBe('unknown');
+  });
+});
+
+function ARTICLE_HEAD(site: string, author: string) {
+  return `<meta property="og:type" content="article"><meta property="og:site_name" content="${site}"><meta name="author" content="${author}">`;
+}

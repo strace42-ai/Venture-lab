@@ -14,7 +14,11 @@ ALTER TABLE mr_sources
   ADD COLUMN failure          text CHECK (failure IS NULL OR length(failure) <= 500),
   -- grounded offer (name/market/jobs with verbatim evidence/price) + what the model claimed but code could not ground
   ADD COLUMN offer            jsonb,
-  ADD COLUMN extraction_model text;
+  ADD COLUMN extraction_model text,
+  -- how the source type was established: independence is never a model's word alone
+  ADD COLUMN provenance       jsonb;
+-- A rival whose market is not established by page signals is kept for transparency but never counts.
+ALTER TABLE mr_competitors ADD COLUMN market_verified boolean NOT NULL DEFAULT true;
 
 -- 1b. Live discovery context of a candidate (needed to re-research it with the same Russian synonyms)
 ALTER TABLE mr_candidates

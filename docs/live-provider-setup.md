@@ -37,6 +37,7 @@ Search 5xx and authorization errors are documented as not billed. If a tariff ch
    export VL_LIVE_PROVIDER=yandex
    export YANDEX_FOLDER_ID=<folder id>
    export YANDEX_API_KEY=<secret>      # or YANDEX_IAM_TOKEN
+   export VL_LIVE_EXECUTE=phase-b-authorized   # separate activation flag; set only after Phase B is authorised
    ```
 6. **Network allowlist on the host.** The host needs outbound HTTPS to:
    - `searchapi.api.cloud.yandex.net`;
@@ -59,7 +60,7 @@ npm run research:worker:run -- --live --once --execute --max-spend-rub 500 [--as
 npm run research:worker:status -- --live
 ```
 
-`--execute` is refused when:
+`--execute` is refused when `VL_LIVE_EXECUTE=phase-b-authorized` is not set (credentials alone never enable paid calls), and when:
 - `VL_LIVE_PROVIDER` is not `yandex`, or the folder or credentials are missing;
 - the analyst and the skeptic come from the same model family. The exception is `VL_ALLOW_SINGLE_MODEL=true`: then every candidate is held as `single-model-degraded` and nothing is presented as independent review;
 - it runs in CI;
@@ -110,3 +111,5 @@ If the reported usage exceeds the bound, that is an **anomaly**: the run stops m
 - **AI Studio JSON.** `response_format: json_schema` support in AI Studio for these models is documented only in general terms. If it is rejected, use `VL_LLM_RESPONSE_FORMAT=json_object` or `none`. The output is validated with Zod either way.
 - **Unsupported content.** PDFs and JavaScript-only pages are recorded as `unsupported_content`, never guessed. There is no headless browser.
 - **Reachability.** Foreign primary sites may not be reachable from a Russian host. This is to be measured in Phase B from the proposed host.
+- **Market signals.** These are page signals, not proof that a product is registered in Russia or accepts payment there. Rivals without them are shown but not counted, which can under-count real competition until a later rotation finds a signal.
+- **Independence.** «Independent» relies on publication markup and an identified publisher. A well-marked-up sponsored article on a third-party site would still pass — that is a residual risk for Phase B review.

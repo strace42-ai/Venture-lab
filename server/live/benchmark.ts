@@ -15,9 +15,11 @@ import { claimSupports, runPipeline } from '../machine/pipeline';
 import { CallContext } from '../machine/types';
 
 /** Hand labels for the recorded corpus. */
-export const LABELS: Record<string, { directRu: string[]; claims: Record<string, boolean> }> = {
-  'str-guest-guide': { directRu: ['RealtyCalendar «Автопилот»', 'RYNTO', 'GuestCom'], claims: { 'w-need': true, 'w-pay': true, 'w-review': true, 'ru-gap': false } },
-  'vag-autoscan-report': { directRu: [], claims: { 'w-need': true, 'ru-weak': true, 'ru-gap': false } },
+/** directRu = direct rivals whose Russian market is PROVABLE from page signals; marketUnproven = real-looking
+ *  rivals whose pages carry no RU availability signal (must be shown, never counted). */
+export const LABELS: Record<string, { directRu: string[]; marketUnproven?: string[]; claims: Record<string, boolean> }> = {
+  'str-guest-guide': { directRu: ['RealtyCalendar «Автопилот»', 'GuestCom'], marketUnproven: ['RYNTO'], claims: { 'w-need': true, 'w-pay': true, 'w-review': true, 'ru-gap': false } },
+  'vag-autoscan-report': { directRu: [], marketUnproven: ['VAGLOGS'], claims: { 'w-need': true, 'ru-weak': true, 'ru-gap': false } },
   'supplier-quote-compare': { directRu: ['ВНИКЛИ', 'Vortholm'], claims: { 'w-need': true, 'ru-gap': false } },
   'meeting-notes-ai': { directRu: [], claims: { 'w-need': true, 'w-pay': false } },
   'ai-call-receptionist': { directRu: [], claims: { 'w-need': false, 'w-pay': false, 'ru-gap': true } },
@@ -34,10 +36,18 @@ export async function runBenchmark() {
   const r = await runPipeline('2026-11-12', [], b.providers, ctx, { maxNew: 6, evidenceHits: 3, hitsPerQuery: 3, maxRuQueries: 8 });
 
   const rows: { id: string; state: string; score: number; directFound: string[]; fp: string[]; fn: string[]; modelDirect: string[]; phantomsDropped: number; claimTP: number; claimFP: number; claimFN: number; modelClaimFP: number }[] = [];
-  let tp = 0, fp = 0, fn = 0, mTp = 0, mFp = 0, cTp = 0, cFp = 0, cFn = 0, mcTp = 0, mcFp = 0, phantoms = 0, phantomsDropped = 0;
+  let tp = 0, fp = 0, fn = 0, mTp = 0, mFp = 0, mUnproven = 0, cTp = 0, cFp = 0, cFn = 0, mcTp = 0, mcFp = 0, phantoms = 0, phantomsDropped = 0, unprovenShown = 0, unprovenExpected = 0, indepVerified = 0, indepRejected = 0;
   for (const c of r.candidates) {
     const lab = LABELS[c.externalId] ?? { directRu: [], claims: {} };
-    const found = c.competitors.filter((x) => x.market === 'ru' && x.kind === 'direct').map((x) => x.name);
+    const found = c.competitors.filter((x) => x.market === 'ru' && x.kind === 'direct' && x.marketVerified !== false).map((x) => x.name);
+    const unproven = c.competitors.filter((x) => x.marketVerified === false).map((x) => x.name);
+    unprovenShown += unproven.filter((n) => (lab.marketUnproven ?? []).includes(n)).length;
+    unprovenExpected += (lab.marketUnproven ?? []).length;
+    for (const s of c.sources) {
+      if (s.provenance?.independence === 'verified') indepVerified++;
+      // the extraction model said «independent», provenance did not confirm it
+      if ((EXTRACT[s.url] as { pageKind?: string } | undefined)?.pageKind === 'independent' && s.sourceType !== 'independent') indepRejected++;
+    }
     const f = found.filter((n) => !lab.directRu.includes(n));
     const m = lab.directRu.filter((n) => !found.includes(n));
     tp += found.length - f.length;
@@ -50,7 +60,8 @@ export async function runBenchmark() {
       ...(spec?.phantoms ?? []).filter((p) => p.market === 'ru').map((p) => p.name),
     ];
     mTp += modelDirect.filter((n) => lab.directRu.includes(n)).length;
-    mFp += modelDirect.filter((n) => !lab.directRu.includes(n)).length;
+    mUnproven += modelDirect.filter((n) => (lab.marketUnproven ?? []).includes(n)).length;
+    mFp += modelDirect.filter((n) => !lab.directRu.includes(n) && !(lab.marketUnproven ?? []).includes(n)).length;
     const ph = (spec?.phantoms ?? []).length;
     phantoms += ph;
     const dropped = (spec?.phantoms ?? []).filter((p) => !c.competitors.some((x) => x.name === p.name)).length;
@@ -79,7 +90,8 @@ export async function runBenchmark() {
   return {
     asOf: r.asOf,
     rows,
-    competitors: { tp, fp, fn, precision: ratio(tp, tp + fp), recall: ratio(tp, tp + fn), modelOnly: { tp: mTp, fp: mFp, precision: ratio(mTp, mTp + mFp) }, phantoms, phantomsDropped },
+    competitors: { tp, fp, fn, precision: ratio(tp, tp + fp), recall: ratio(tp, tp + fn), modelOnly: { tp: mTp, fp: mFp, unproven: mUnproven, precision: ratio(mTp, mTp + mFp + mUnproven) }, phantoms, phantomsDropped, unprovenShown, unprovenExpected },
+    provenance: { independentVerified: indepVerified, independentClaimRejected: indepRejected },
     claims: { tp: cTp, fp: cFp, fn: cFn, precision: ratio(cTp, cTp + cFp), recall: ratio(cTp, cTp + cFn), modelOnly: { tp: mcTp, fp: mcFp, precision: ratio(mcTp, mcTp + mcFp) } },
     calls: { search: prov.searchCalls.length, llm: prov.llmCalls.length, pages: web.requests.length },
     costKop: { reserved: paid.reduce((a, u) => a + (u.estimatedCost ?? u.cost), 0), charged: paid.reduce((a, u) => a + u.cost, 0) },
@@ -99,9 +111,11 @@ export function benchmarkMarkdown(b: Awaited<ReturnType<typeof runBenchmark>>): 
     '| | TP | FP | FN | Precision | Recall |',
     '|---|---|---|---|---|---|',
     `| Pipeline (code + models) | ${b.competitors.tp} | ${b.competitors.fp} | ${b.competitors.fn} | ${pct(b.competitors.precision)} | ${pct(b.competitors.recall)} |`,
-    `| Recorded skeptic model alone | ${b.competitors.modelOnly.tp} | ${b.competitors.modelOnly.fp} | — | ${pct(b.competitors.modelOnly.precision)} | — |`,
+    `| Recorded skeptic model alone | ${b.competitors.modelOnly.tp} | ${b.competitors.modelOnly.fp} (+${b.competitors.modelOnly.unproven} with unproven market) | — | ${pct(b.competitors.modelOnly.precision)} | — |`,
     '',
-    `Rivals invented by the model: ${b.competitors.phantoms}; dropped by code: ${b.competitors.phantomsDropped}.`,
+    `Rivals invented by the model: ${b.competitors.phantoms}; dropped by code: ${b.competitors.phantomsDropped}. Rivals with an UNPROVEN market (no RU availability signal on the page or home page) shown but not counted: ${b.competitors.unprovenShown}/${b.competitors.unprovenExpected}.`,
+    '',
+    `Source provenance: independent publications verified by signals ${b.provenance.independentVerified}; «independent» claims by the extraction model rejected as unverified ${b.provenance.independentClaimRejected}.`,
     '',
     '## Claim / source verification',
     '| | TP | FP | FN | Precision | Recall |',

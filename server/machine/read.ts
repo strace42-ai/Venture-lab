@@ -129,7 +129,10 @@ export async function runDiagnostics(db: Queryable, jobId: number): Promise<Mach
   const q = async (sql: string) => (await db.query(sql, [jobId])).rows as Row[];
   const searches = await q("SELECT region, count(*)::int AS n, count(*) FILTER (WHERE status <> 'ok')::int AS failed FROM mr_searches WHERE job_id = $1 GROUP BY region");
   const pages = await q('SELECT fetch_status, count(DISTINCT url)::int AS n FROM mr_sources WHERE job_id = $1 GROUP BY fetch_status');
-  const comps = await q("SELECT count(*) FILTER (WHERE market = 'ru' AND kind = 'direct')::int AS direct, count(*) FILTER (WHERE market = 'ru' AND kind = 'adjacent')::int AS adjacent, count(DISTINCT name) FILTER (WHERE market = 'ru')::int AS distinct_ru FROM mr_competitors WHERE job_id = $1");
+  const comps = await q(
+    "SELECT count(*) FILTER (WHERE market = 'ru' AND kind = 'direct' AND market_verified)::int AS direct, count(*) FILTER (WHERE market = 'ru' AND kind = 'adjacent' AND market_verified)::int AS adjacent, count(DISTINCT name) FILTER (WHERE market = 'ru' AND market_verified)::int AS distinct_ru, count(*) FILTER (WHERE NOT market_verified)::int AS unverified FROM mr_competitors WHERE job_id = $1",
+  );
+  const indep = await q("SELECT count(DISTINCT url)::int AS n FROM mr_sources WHERE job_id = $1 AND provenance->>'independence' = 'unverified'");
   const contra = await q("SELECT count(*)::int AS n FROM mr_claims WHERE job_id = $1 AND status = 'contradicted'");
   const cost = await q(
     `SELECT COALESCE(SUM(COALESCE(estimated_cost, cost)), 0)::int AS estimated, COALESCE(SUM(cost), 0)::int AS charged, COALESCE(SUM(actual_cost), 0)::int AS observed,
@@ -148,7 +151,8 @@ export async function runDiagnostics(db: Queryable, jobId: number): Promise<Mach
     independence: (j.independence as MachineRunDiagnostics['independence']) ?? null,
     searches: { ru: by('ru') ?? 0, west: by('west') ?? 0, world: by('world') ?? 0, failed: searches.reduce((a, x) => a + (x.failed as number), 0) },
     pages: { ok, failed: Object.values(byStatus).reduce((a, n) => a + n, 0) - ok, byStatus },
-    competitors: { ruDirect: comps[0]!.direct as number, ruAdjacent: comps[0]!.adjacent as number, distinctRu: comps[0]!.distinct_ru as number },
+    competitors: { ruDirect: comps[0]!.direct as number, ruAdjacent: comps[0]!.adjacent as number, distinctRu: comps[0]!.distinct_ru as number, marketUnverified: comps[0]!.unverified as number },
+    independenceUnverified: indep[0]!.n as number,
     contradictions: contra[0]!.n as number,
     cost: { estimated: cost[0]!.estimated as number, charged: cost[0]!.charged as number, observed: cost[0]!.observed as number, unknownCalls: cost[0]!.unknown as number, anomalies: cost[0]!.anomalies as number },
     averageConfidence: (conf[0]!.c as number | null) ?? null,
@@ -297,6 +301,7 @@ export async function machineCandidate(db: Queryable, feed: MachineFeed, externa
       fetchedAt: s.fetched_at ? (s.fetched_at as Date).toISOString() : null,
       failure: (s.failure as string | null) ?? null,
       offerUncertain: ((s.offer as { grounding?: { uncertain?: string[] } } | null)?.grounding?.uncertain ?? []).slice(0, 10),
+      provenance: (s.provenance as MachineCandidateDetail['sources'][number]['provenance']) ?? null,
     })),
     claims: (await q('SELECT * FROM mr_claims WHERE job_id = $1 AND candidate_id = $2 ORDER BY id')).map((x) => ({
       key: x.claim_key as string,
@@ -327,6 +332,7 @@ export async function machineCandidate(db: Queryable, feed: MachineFeed, externa
       foundBy: x.found_by as 'analyst' | 'skeptic',
       note: (x.note as string | null) ?? null,
       reason: x.classification_reason as string,
+      marketVerified: x.market_verified !== false,
     })),
     reviews: (await q('SELECT * FROM mr_reviews WHERE job_id = $1 AND candidate_id = $2 ORDER BY id')).map((x) => ({
       reviewer: x.reviewer as MachineCandidateDetail['reviews'][number]['reviewer'],

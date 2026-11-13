@@ -86,6 +86,8 @@ async function live(): Promise<void> {
   }
   // ---- execute: Phase B only
   if (process.env.CI) throw new Error('Платные live-вызовы запрещены в CI.');
+  // Separate fail-closed activation flag: credentials alone never enable paid calls.
+  if (process.env.VL_LIVE_EXECUTE !== 'phase-b-authorized') throw new Error('Платный запуск не активирован: требуется VL_LIVE_EXECUTE=phase-b-authorized (ставится только после разрешения Phase B).');
   if (problems.length) throw new Error(`Платный запуск невозможен: ${problems.join('; ')}`);
   const maxRub = Number(opt('--max-spend-rub'));
   if (!Number.isFinite(maxRub) || maxRub <= 0 || maxRub > 100_000) throw new Error('Укажите --max-spend-rub N (0 < N ≤ 100000) — жёсткий потолок расходов этого задания.');

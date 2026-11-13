@@ -316,12 +316,12 @@ async function persist(pool: Pool, feed: Feed, asOf: ISODate, jobId: number, att
       for (const s of cand.sources) {
         await c.query(
           `INSERT INTO mr_sources (job_id, candidate_id, feed, source_key, url, publisher, region, source_type, fetch_status, http_status, content_hash, excerpt, observed_at, agent,
-                                   canonical_url, fetched_at, page_title, content_type, failure, offer, extraction_model)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`,
+                                   canonical_url, fetched_at, page_title, content_type, failure, offer, extraction_model, provenance)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
           [
             jobId, id, feed, s.key, s.url, s.publisher, s.region, s.sourceType, s.fetchStatus, s.httpStatus, s.contentHash, s.excerpt, asOf, s.agent,
             s.canonicalUrl ?? null, s.fetchedAt ?? null, s.title?.slice(0, 500) ?? null, s.contentType?.slice(0, 200) ?? null, s.failure?.slice(0, 500) ?? null,
-            s.offer ? JSON.stringify(s.offer) : null, s.offer?.grounding?.extractor ?? null,
+            s.offer ? JSON.stringify(s.offer) : null, s.offer?.grounding?.extractor ?? null, s.provenance ? JSON.stringify(s.provenance) : null,
           ],
         );
       }
@@ -337,8 +337,8 @@ async function persist(pool: Pool, feed: Feed, asOf: ISODate, jobId: number, att
       }
       for (const co of cand.competitors) {
         await c.query(
-          'INSERT INTO mr_competitors (job_id, candidate_id, feed, name, url, market, kind, found_by, source_key, note, classification_reason) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)',
-          [jobId, id, feed, co.name, co.url, co.market, co.kind, co.foundBy, co.sourceKey, co.note, co.reason],
+          'INSERT INTO mr_competitors (job_id, candidate_id, feed, name, url, market, kind, found_by, source_key, note, classification_reason, market_verified) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)',
+          [jobId, id, feed, co.name, co.url, co.market, co.kind, co.foundBy, co.sourceKey, co.note, co.reason, co.marketVerified !== false],
         );
       }
       for (const r of cand.reviews) {

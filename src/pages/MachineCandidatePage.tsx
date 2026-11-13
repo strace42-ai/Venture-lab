@@ -35,7 +35,7 @@ const FETCH_LABEL: Record<string, string> = {
   timeout: 'таймаут',
 };
 
-const TYPE_LABEL: Record<string, string> = { independent: 'независимый', company_self_report: 'заявление компании', primary_data: 'первичные данные', unknown: 'тип не указан' };
+const TYPE_LABEL: Record<string, string> = { independent: 'независимый', company_self_report: 'заявление компании', primary_data: 'первичные данные', unknown: 'тип не установлен' };
 const REVIEWER_LABEL: Record<string, string> = { analyst: 'Аналитик (ИИ)', claim_checker: 'Проверка цитат (код)', skeptic: 'Скептик (ИИ, другая модель)', quality_gate: 'Фильтр качества (код)' };
 const SKEPTIC_LABEL: Record<string, string> = { supported: 'подтверждает', refuted: 'опровергает', needs_more_evidence: 'нужны доказательства', not_reviewed: 'не проверял' };
 const SKEPTIC_TONE: Record<string, 'success' | 'danger' | 'warn' | 'neutral'> = { supported: 'success', refuted: 'danger', needs_more_evidence: 'warn', not_reviewed: 'neutral' };
@@ -171,8 +171,8 @@ function Dossier({ d, feed }: { d: MachineCandidateDetail; feed: MachineFeed }) 
               <ul className="mcomp">
                 {d.competitors.map((c) => (
                   <li key={`${c.market}-${c.name}`} className="mcomp__item">
-                    <Badge tone={c.kind === 'direct' ? 'danger' : 'neutral'}>
-                      {c.market === 'ru' ? 'РФ' : 'Запад'} · {KIND_LABEL[c.kind]}
+                    <Badge tone={c.marketVerified === false ? 'neutral' : c.kind === 'direct' ? 'danger' : 'neutral'}>
+                      {c.marketVerified === false ? 'рынок не подтверждён' : c.market === 'ru' ? 'РФ' : 'Запад'} · {KIND_LABEL[c.kind]}
                     </Badge>
                     {c.url ? (
                       <a href={c.url} target="_blank" rel="noopener noreferrer nofollow" className="mcomp__name">
@@ -184,6 +184,7 @@ function Dossier({ d, feed }: { d: MachineCandidateDetail; feed: MachineFeed }) 
                     {c.foundBy === 'skeptic' && <span className="small tone-warn">найден скептиком</span>}
                     {c.note && <span className="muted small">{c.note}</span>}
                     <span className="muted small mcomp__reason">{c.reason}</span>
+                    {c.marketVerified === false && <span className="small tone-warn mcomp__reason">Рынок не установлен признаками страницы — в оценке конкуренции не учитывается; перепроверяется автоматически.</span>}
                   </li>
                 ))}
               </ul>
@@ -208,6 +209,12 @@ function Dossier({ d, feed }: { d: MachineCandidateDetail; feed: MachineFeed }) 
                   {s.fetchedAt && (
                     <span className="small muted msource__line">
                       прочитано {s.fetchedAt.slice(0, 16).replace('T', ' ')} UTC{s.canonicalUrl && s.canonicalUrl !== s.url ? ` · канонический адрес: ${s.canonicalUrl}` : ''}
+                    </span>
+                  )}
+                  {s.provenance && s.provenance.independence !== 'not_claimed' && (
+                    <span className={`small msource__line ${s.provenance.independence === 'verified' ? 'muted' : 'tone-warn'}`}>
+                      {s.provenance.reason}
+                      {s.provenance.signals.length ? ` (${s.provenance.signals.join('; ')})` : ''}
                     </span>
                   )}
                   {s.failure && <span className="small tone-warn msource__line">{s.failure}</span>}

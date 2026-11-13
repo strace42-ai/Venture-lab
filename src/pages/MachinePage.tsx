@@ -87,7 +87,14 @@ function Diagnostics({ o }: { o: MachineOverview }) {
           <dd className="num">
             прямых {d.competitors.ruDirect} · смежных {d.competitors.ruAdjacent}
           </dd>
+          {d.competitors.marketUnverified > 0 && <dd className="small tone-warn">рынок не подтверждён (не учтены): {d.competitors.marketUnverified}</dd>}
         </div>
+        {d.independenceUnverified > 0 && (
+          <div>
+            <dt>Независимость не подтверждена</dt>
+            <dd className="small tone-warn">источников: {d.independenceUnverified} — учтены как «тип не установлен»</dd>
+          </div>
+        )}
         <div>
           <dt>Опровергнуто утверждений</dt>
           <dd className="num">{d.contradictions}</dd>

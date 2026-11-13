@@ -53,7 +53,7 @@ export function searchXml(docs: { url: string; title: string; passage: string }[
   return `<?xml version="1.0" encoding="utf-8"?><yandexsearch version="1.0"><request><query>q</query></request><response date="20261112T030000"><reqid>${reqid}</reqid><found priority="phrase">${docs.length}</found><found priority="strict">${docs.length}</found><found priority="all">${docs.length}</found><results><grouping attr="d" mode="deep" groups-on-page="10" docs-in-group="1" curcateg="-1"><found priority="all">${docs.length}</found><page first="1" last="${docs.length}">0</page>${groups}</grouping></results></response></yandexsearch>`;
 }
 
-export type Hook = { status?: number; content?: string; usage?: { prompt_tokens: number; completion_tokens: number } | null; timeout?: boolean; headers?: Record<string, string> } | undefined;
+export type Hook = { status?: number; content?: string; results?: { url: string; title: string; passage: string }[]; appendResults?: { url: string; title: string; passage: string }[]; usage?: { prompt_tokens: number; completion_tokens: number } | null; timeout?: boolean; headers?: Record<string, string> } | undefined;
 
 interface SkepticData {
   seed: { externalId: string };
@@ -104,7 +104,7 @@ export class RecordedProviders implements Transport {
       if (h?.timeout) throw new TransportTimeout('recorded search timeout');
       if (h?.status && h.status !== 200) return { status: h.status, headers: { ...h.headers }, body: enc('{"error":"recorded"}'), truncated: false };
       const rule = q.page === 0 ? SEARCH.find((r) => r.type === q.type && r.match.test(q.text)) : undefined;
-      const xml = searchXml(rule?.results ?? [], `rec-${n}`);
+      const xml = searchXml([...(h?.results ?? rule?.results ?? []), ...(h?.appendResults ?? [])], `rec-${n}`);
       return { status: 200, headers: { 'content-type': 'application/json', 'x-request-id': `search-${n}` }, body: enc(JSON.stringify({ rawData: Buffer.from(xml, 'utf8').toString('base64') })), truncated: false };
     }
     if (req.url.hostname === 'ai.api.cloud.yandex.net' || req.url.hostname === 'llm.api.cloud.yandex.net') {

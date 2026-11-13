@@ -14,8 +14,8 @@ import { runWorkerJob } from '../machine/worker';
 import { createTestDb, describeDb, type TestDb } from './helpers';
 
 const cfg = loadLiveConfig(TEST_ENV);
-const deps = (hooks: ConstructorParameters<typeof RecordedProviders>[0] = {}) => {
-  const web = new RecordedWeb();
+const deps = (hooks: ConstructorParameters<typeof RecordedProviders>[0] = {}, webOver: ConstructorParameters<typeof RecordedWeb>[0] = {}) => {
+  const web = new RecordedWeb(webOver);
   const prov = new RecordedProviders(hooks);
   return { web, prov, deps: { providerTransport: prov, webTransport: web, resolver: web, sleep: async () => {} } };
 };
@@ -51,8 +51,11 @@ describeDb('VL-004B live worker on recorded HTTP (Case G)', () => {
     const det = (await machineCandidate(db.pool, 'live', 'str-guest-guide'))!;
     const rynto = det.sources.find((s) => s.url === 'https://rynto.io/ru/guest-portal')!;
     expect(rynto.fetchedAt).toMatch(/^2\d{3}-/);
-    expect(rynto.offerUncertain!.join(' ')).toMatch(/модель указала west/);
-    expect(det.competitors.filter((c) => c.market === 'ru' && c.kind === 'direct')).toHaveLength(3);
+    expect(rynto.offerUncertain!.join(' ')).toMatch(/рынок не подтверждён/);
+    expect(det.competitors.filter((c) => c.market === 'ru' && c.kind === 'direct' && c.marketVerified)).toHaveLength(2);
+    expect(det.competitors.find((c) => c.name === 'RYNTO')!.marketVerified).toBe(false);
+    const mv = (await db.pool.query("SELECT name, market_verified FROM mr_competitors WHERE feed = 'live' AND name IN ('RYNTO', 'GuestCom') ORDER BY name LIMIT 2")).rows;
+    expect(mv).toEqual([{ name: 'GuestCom', market_verified: true }, { name: 'RYNTO', market_verified: false }]);
     const off = (await db.pool.query("SELECT offer, extraction_model FROM mr_sources WHERE url = 'https://new.realtycalendar.ru/products/autopilot' LIMIT 1")).rows[0];
     expect(off.extraction_model).toBe('qwen3.6-35b-a3b');
     expect(off.offer.grounding.jobEvidence['guest-guide']).toMatch(/цифровой гид гостя/);
@@ -70,8 +73,9 @@ describeDb('VL-004B live worker on recorded HTTP (Case G)', () => {
     expect(g.searches.world).toBeGreaterThan(5);
     expect(g.pages.ok).toBeGreaterThan(10);
     expect(g.pages.byStatus.robots_disallowed).toBe(2);
-    expect(g.competitors.ruDirect).toBe(5); // 3 guest-guide + 2 quotes
-    expect(g.competitors.ruAdjacent).toBe(1); // VAGLOGS
+    expect(g.competitors.ruDirect).toBe(4); // RealtyCalendar + GuestCom, ВНИКЛИ + Vortholm (market proven)
+    expect(g.competitors.ruAdjacent).toBe(0);
+    expect(g.competitors.marketUnverified).toBe(2); // RYNTO, VAGLOGS: shown, not counted
     expect(g.contradictions).toBe(2);
     expect(g.cost.charged).toBeLessThan(g.cost.estimated);
     expect(g.cost.unknownCalls).toBe(0);
@@ -217,6 +221,39 @@ describeDb('VL-004B live worker on recorded HTTP (Case G)', () => {
       expect(dup).toEqual([]);
       const job = (await t.pool.query('SELECT spent FROM mr_jobs')).rows[0];
       expect(job.spent).toBe(atts[0].used + atts[1].used);
+    } finally {
+      await t.drop();
+    }
+  });
+
+  it('audit P1: an unproven-market «direct» rival and an unverified «independent» page do not change the published TOP; both are stored as such', async () => {
+    const t = await createTestDb();
+    try {
+      const RIVAL = 'https://autoscanreader.example.com/';
+      const d = deps(
+        {
+          search: (q) => (q.type === 'SEARCH_TYPE_RU' && /автоскан/i.test(q.text) ? { appendResults: [{ url: RIVAL, title: 'AutoScan Reader', passage: 'Auto-Scan' }] } : undefined),
+          llm: (task, data) =>
+            task === 'extract_offer' && (data.page as { url: string }).url === RIVAL
+              ? { content: JSON.stringify({ isProductPage: true, name: 'AutoScan Reader', market: 'ru', jobs: [{ job: 'vag-autoscan-dtc-report', quote: 'turns a VCDS Auto-Scan into a plain report' }], price: null, pageKind: 'vendor' }) }
+              : task === 'extract_offer' && (data.page as { url: string }).url === 'https://forum.tdi.example.org/autoscan-help'
+                ? { content: JSON.stringify({ isProductPage: false, name: null, market: 'west', jobs: [], price: null, pageKind: 'independent' }) } // forum page without publication markup
+                : undefined,
+        },
+        { dns: { 'autoscanreader.example.com': ['151.101.99.1'] }, pages: { [RIVAL]: { status: 200, body: '<html lang="en"><body><p>AutoScan Reader turns a VCDS Auto-Scan into a plain report for car owners everywhere.</p></body></html>' } } },
+      );
+      const r = await runWorkerJob(t.pool, liveRunOptions(cfg, d.deps, { asOf: '2026-11-12', budgetKop: 20_000 }));
+      expect(r.status).toBe('succeeded');
+      const top = (pool: TestDb['pool']) => pool.query("SELECT e.rank, e.title, e.market_score, e.confidence, e.evidence_grade FROM mr_snapshot_entries e JOIN mr_snapshots s ON s.id = e.snapshot_id WHERE s.feed = 'live' AND s.as_of = '2026-11-12' ORDER BY e.rank").then((x) => x.rows);
+      expect(await top(t.pool)).toEqual(await top(db.pool));
+      const rival = (await t.pool.query("SELECT market, kind, market_verified FROM mr_competitors WHERE name = 'AutoScan Reader'")).rows[0];
+      expect(rival).toEqual({ market: 'ru', kind: 'direct', market_verified: false });
+      const forum = (await t.pool.query("SELECT source_type, provenance FROM mr_sources WHERE url = 'https://forum.tdi.example.org/autoscan-help' LIMIT 1")).rows[0];
+      expect(forum.source_type).toBe('unknown');
+      expect(forum.provenance.independence).toBe('unverified');
+      const g = (await runDiagnostics(t.pool, r.jobId))!;
+      expect(g.competitors.marketUnverified).toBe(3); // RYNTO, VAGLOGS, AutoScan Reader
+      expect(g.independenceUnverified).toBe(1);
     } finally {
       await t.drop();
     }

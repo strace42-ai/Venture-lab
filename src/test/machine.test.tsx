@@ -147,7 +147,8 @@ describe('Автоматический TOP-10 (machine dashboard)', () => {
         jobId: 9, asOf: '2026-11-13', status: 'succeeded', independence: 'independent',
         searches: { ru: 31, west: 2, world: 12, failed: 1 },
         pages: { ok: 22, failed: 3, byStatus: { ok: 22, robots_disallowed: 2, blocked: 1 } },
-        competitors: { ruDirect: 5, ruAdjacent: 1, distinctRu: 6 },
+        competitors: { ruDirect: 5, ruAdjacent: 1, distinctRu: 6, marketUnverified: 2 },
+        independenceUnverified: 1,
         contradictions: 2,
         cost: { estimated: 4120, charged: 1834, observed: 1834, unknownCalls: 1, anomalies: 0 },
         averageConfidence: 47, partialReason: null, error: null, carried: 1,
@@ -158,6 +159,8 @@ describe('Автоматический TOP-10 (machine dashboard)', () => {
     expect(screen.getByText(/две независимые модели/)).toBeInTheDocument();
     expect(screen.getByText(/запрещено robots\.txt: 2/)).toBeInTheDocument();
     expect(screen.getByText(/прямых 5 · смежных 1/)).toBeInTheDocument();
+    expect(screen.getByText(/рынок не подтверждён \(не учтены\): 2/)).toBeInTheDocument();
+    expect(screen.getByText(/источников: 1 — учтены как «тип не установлен»/)).toBeInTheDocument();
     expect(screen.getByText(/41,20 ₽ → 18,34 ₽/)).toBeInTheDocument();
     expect(screen.getByText(/без подтверждённой стоимости: 1 \(учтён максимум\)/)).toBeInTheDocument();
     expect(screen.getAllByText(/оценка от 12 нояб.*не перепроверялась|оценка от .*не перепроверялась/).length).toBeGreaterThan(0);

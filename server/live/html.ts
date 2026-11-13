@@ -41,13 +41,28 @@ export interface ExtractedPage {
   text: string;
   /** Characters of text dropped because they were hidden from humans. */
   hiddenChars: number;
+  /** Publication metadata used for deterministic provenance checks (never trusted alone). */
+  meta: PageMeta;
 }
+
+export interface PageMeta {
+  ogType: string | null;
+  siteName: string | null;
+  author: string | null;
+  published: string | null;
+  /** schema.org @type values from JSON-LD. */
+  schemaTypes: string[];
+  /** The page uses <article> markup. */
+  articleTag: boolean;
+}
+
+const EMPTY_META: PageMeta = { ogType: null, siteName: null, author: null, published: null, schemaTypes: [], articleTag: false };
 
 const MAX_TEXT = 200_000;
 
 export function extractPage(html: string, contentType: string | null = 'text/html'): ExtractedPage {
   if ((contentType ?? '').toLowerCase().startsWith('text/plain')) {
-    return { title: null, description: null, canonical: null, lang: null, text: html.replace(/\s+/g, ' ').trim().slice(0, MAX_TEXT), hiddenChars: 0 };
+    return { title: null, description: null, canonical: null, lang: null, text: html.replace(/\s+/g, ' ').trim().slice(0, MAX_TEXT), hiddenChars: 0, meta: EMPTY_META };
   }
   const src = html.replace(/<!--[\s\S]*?-->/g, ' ').replace(/<![^>]*>|<\?[^>]*\?>/g, ' ');
   const title = /<title[^>]*>([\s\S]*?)<\/title>/i.exec(src)?.[1];
@@ -55,6 +70,20 @@ export function extractPage(html: string, contentType: string | null = 'text/htm
   const description = metaTags.map((t) => ((attr(t, 'name') ?? attr(t, 'property') ?? '').toLowerCase().match(/^(description|og:description)$/) ? attr(t, 'content') : null)).find((x) => x) ?? null;
   const canonical = (src.match(/<link\b[^>]*>/gi) ?? []).map((t) => ((attr(t, 'rel') ?? '').toLowerCase().split(/\s+/).includes('canonical') ? attr(t, 'href') : null)).find((x) => x) ?? null;
   const lang = attr(/<html\b[^>]*>/i.exec(src)?.[0] ?? '<html>', 'lang');
+  const metaBy = (...keys: string[]) => metaTags.map((t) => (keys.includes((attr(t, 'name') ?? attr(t, 'property') ?? attr(t, 'itemprop') ?? '').toLowerCase()) ? attr(t, 'content') : null)).find((x) => x) ?? null;
+  const schemaTypes = [
+    ...new Set(
+      [...src.matchAll(/<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)].flatMap((m) => [...m[1]!.matchAll(/"@type"\s*:\s*"([A-Za-z]+)"/g)].map((t) => t[1]!)),
+    ),
+  ].slice(0, 20);
+  const metaInfo: PageMeta = {
+    ogType: metaBy('og:type'),
+    siteName: metaBy('og:site_name', 'application-name'),
+    author: metaBy('author', 'article:author'),
+    published: metaBy('article:published_time', 'datepublished', 'date'),
+    schemaTypes,
+    articleTag: /<article\b/i.test(src),
+  };
 
   const out: string[] = [];
   let hiddenChars = 0;
@@ -104,7 +133,15 @@ export function extractPage(html: string, contentType: string | null = 'text/htm
     .join('\n')
     .slice(0, MAX_TEXT);
   const clean = (s: string | null | undefined) => (s ? decodeEntities(s).replace(/\s+/g, ' ').trim() || null : null);
-  return { title: clean(title), description: clean(description), canonical: canonical ? canonical.trim() : null, lang: lang ? lang.toLowerCase().slice(0, 10) : null, text, hiddenChars };
+  return {
+    title: clean(title),
+    description: clean(description),
+    canonical: canonical ? canonical.trim() : null,
+    lang: lang ? lang.toLowerCase().slice(0, 10) : null,
+    text,
+    hiddenChars,
+    meta: { ...metaInfo, ogType: clean(metaInfo.ogType), siteName: clean(metaInfo.siteName), author: clean(metaInfo.author), published: clean(metaInfo.published) },
+  };
 }
 
 /**

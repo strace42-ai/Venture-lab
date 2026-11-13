@@ -73,7 +73,7 @@ export interface PipelineOptions {
 /** A claim about paying users / revenue … */
 const PAYMENT_CLAIM = /платящ|платят|оплачива|оплатил|выручк|доход|revenue|paying|paid (users|customers|subscribers|accounts)|customers pay|\bARR\b|\bMRR\b/i;
 /** … must be backed by a quote about money, not popularity («10 000 компаний используют»). */
-const PAYMENT_EVIDENCE = /[$€£₽]|\bруб|\bUSD\b|\bEUR\b|per (month|year|user|seat)|\/mo\b|в месяц|в год|\/мес|pricing|price|тариф|subscription|подписк|revenue|выручк|paying|платящ|оплат|plan(s)? (start|from)/i;
+const PAYMENT_EVIDENCE = /[$€£₽]|руб|\bUSD\b|\bEUR\b|per (month|year|user|seat)|\/mo\b|в месяц|в год|\/мес|pricing|price|тариф|subscription|подписк|revenue|выручк|paying|платящ|оплат|plan(s)? (start|from)/i;
 
 const limit = <T,>(xs: T[], n: number | undefined) => (n === undefined ? xs : xs.slice(0, n));
 
@@ -299,7 +299,7 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
     const offer = r.read.status === 'ok' ? r.read.offer : null;
     // The western analogue the idea is modelled on is evidence of demand, not a rival.
     if (!offer || isWesternAnalogue(offer.name, url, seed) || raw.some((x) => x.market === offer.market && x.name === offer.name)) return;
-    raw.push({ name: offer.name, url, market: offer.market, sourceKey: r.key, jobs: offer.jobs, price: offer.price ?? null, foundBy: by });
+    raw.push({ name: offer.name, url, market: offer.market, sourceKey: r.key, jobs: offer.jobs, price: offer.price ?? null, foundBy: by, marketVerified: offer.grounding ? offer.grounding.marketVerified : true });
   };
   for (const q of limit(proposal.ruQueries, opts.maxRuQueries)) {
     for (const h of limit(await runSearch(p.search, ctx, searches, { agent: 'analyst', purpose: 'ru_competitors', region: 'ru', query: q }), opts.hitsPerQuery)) await collect(h.url, 'analyst');
@@ -328,6 +328,7 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
     contentType: read.contentType ?? null,
     failure: read.failure ?? null,
     offer: read.offer ?? null,
+    provenance: read.provenance ?? null,
   }));
   const checkerFindings = claims.filter((c) => c.status === 'unretrievable' || c.status === 'unknown').map((c) => `${c.key}: ${c.reason}`);
   const quarantined = sources.filter((s) => s.fetchStatus === 'injection_suspected');
@@ -373,15 +374,18 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
     // The kind follows the jobs PROVEN on the rival's page (code), not the model's opinion.
     const kind = codeKind(r, seed);
     if (kind !== c.kind) rejected.push(`«${c.name}»: скептик указал «${c.kind}», по подтверждённым на странице работам — «${kind}»`);
-    competitors.push({ name: c.name, url: r.url, market: c.market, kind, foundBy: r.foundBy, sourceKey: c.sourceKey, note: r.price ? `цена: ${r.price}` : null, reason: kind === c.kind ? c.reason : `${c.reason} (исправлено кодом: ${kind})` });
+    competitors.push({ name: c.name, url: r.url, market: c.market, kind, foundBy: r.foundBy, sourceKey: c.sourceKey, note: r.price ? `цена: ${r.price}` : null, reason: kind === c.kind ? c.reason : `${c.reason} (исправлено кодом: ${kind})`, marketVerified: r.marketVerified !== false });
   }
   // A rival the skeptic did not mention is still a rival: no model can hide a competitor found on a fetched page.
   for (const r of raw) {
     if (competitors.some((x) => x.name === r.name && x.market === r.market)) continue;
     const kind = codeKind(r, seed);
     rejected.push(`«${r.name}» не упомянут скептиком — классифицирован кодом как «${kind}»`);
-    competitors.push({ name: r.name, url: r.url, market: r.market, kind, foundBy: r.foundBy, sourceKey: r.sourceKey, note: r.price ? `цена: ${r.price}` : null, reason: 'классифицирован кодом по работам, подтверждённым на странице' });
+    competitors.push({ name: r.name, url: r.url, market: r.market, kind, foundBy: r.foundBy, sourceKey: r.sourceKey, note: r.price ? `цена: ${r.price}` : null, reason: 'классифицирован кодом по работам, подтверждённым на странице', marketVerified: r.marketVerified !== false });
   }
+  // Only rivals whose market is established by page signals count as proven competition.
+  const proven = competitors.filter((c) => c.marketVerified !== false);
+  for (const c of competitors.filter((x) => x.marketVerified === false)) rejected.push(`«${c.name}»: рынок не подтверждён признаками страницы — в оценке конкуренции не учитывается, перепроверяется автоматически`);
   const okSrc = new Set(sources.filter((s) => s.fetchStatus === 'ok').map((s) => s.key));
   const downgraded = new Set<string>();
   for (const c of claims) {
@@ -396,7 +400,7 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
     const absence = proposal.claims.find((pc) => pc.key === c.key)?.absence;
     let problem: string | null = null;
     if (v.verdict === 'supported' && (v.sourceKeys.length === 0 || v.sourceKeys.some((k) => !c.supportingKeys.includes(k)))) problem = 'подтверждение не опирается на источник, где код нашёл цитату';
-    if (v.verdict === 'refuted' && absence && !v.sourceKeys.some((k) => competitors.some((x) => x.sourceKey === k && x.market === absence.market && x.kind === 'direct'))) problem = 'опровержение не опирается на подтверждённого прямого конкурента';
+    if (v.verdict === 'refuted' && absence && !v.sourceKeys.some((k) => proven.some((x) => x.sourceKey === k && x.market === absence.market && x.kind === 'direct'))) problem = 'опровержение не опирается на подтверждённого прямого конкурента (с установленным рынком)';
     if (v.verdict === 'refuted' && !absence && (v.sourceKeys.length === 0 || v.sourceKeys.some((k) => !okSrc.has(k)))) problem = 'опровержение не опирается на загруженный источник';
     if (problem) {
       downgraded.add(c.key);
@@ -424,7 +428,7 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
     reviewer: 'skeptic',
     model: findings.model,
     decision: claims.some((c) => c.skepticVerdict !== 'supported') || disputes.length || rejected.length ? 'challenge' : 'support',
-    summary: `${findings.summary} Контр-запросов: ${searches.filter((s) => s.agent === 'skeptic').length}; конкурентов: ${competitors.length} (прямых в РФ: ${competitors.filter((c) => c.market === 'ru' && c.kind === 'direct').length}).`,
+    summary: `${findings.summary} Контр-запросов: ${searches.filter((s) => s.agent === 'skeptic').length}; конкурентов: ${competitors.length} (прямых в РФ с подтверждённым рынком: ${proven.filter((c) => c.market === 'ru' && c.kind === 'direct').length}${competitors.length > proven.length ? `; рынок не подтверждён: ${competitors.length - proven.length}` : ''}).`,
     findings: skepticFindingsText,
     citedClaims: findings.claimVerdicts.map((v) => v.claimKey),
   });
@@ -433,8 +437,8 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
   const notes: string[] = [];
   const byKey = new Map(claims.map((c) => [c.key, c]));
   const srcType = new Map(sources.map((s) => [s.key, s]));
-  const directRu = competitors.filter((c) => c.market === 'ru' && c.kind === 'direct');
-  const adjacentRu = competitors.filter((c) => c.market === 'ru' && c.kind !== 'direct');
+  const directRu = proven.filter((c) => c.market === 'ru' && c.kind === 'direct');
+  const adjacentRu = proven.filter((c) => c.market === 'ru' && c.kind !== 'direct');
   // Zero rivals found is NOT proof of a gap: without rivals the cap is 3, or 4 only when an independent
   // Russian source supports an RU claim. Never 5/5 from searches alone.
   const ruIndependent = claims.some((c) => (c.dimension === 'ruWeakness' || c.dimension === 'ruUnmetJob') && claimSupports(c) && c.supportingKeys.some((k) => srcType.get(k)?.sourceType === 'independent' && srcType.get(k)?.region === 'ru'));
@@ -490,7 +494,7 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
       : 0,
     recency: supportingSources.length ? 90 : 0,
     reliability: supportingSources.length ? Math.round((100 * supportingSources.filter((s) => s.sourceType === 'independent').length) / supportingSources.length) : 0,
-    russiaValidation: Math.min(100, ruQueries.size * 15 + competitors.filter((c) => c.market === 'ru').length * 10),
+    russiaValidation: Math.min(100, ruQueries.size * 15 + proven.filter((c) => c.market === 'ru').length * 10),
   };
 
   // 6. Quality gate (code) — combines deterministic checks with the skeptic's structured findings
@@ -501,7 +505,7 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
   if (ruQueries.size < MIN_RU_QUERIES) hold.push(`Слабое покрытие поиска конкурентов в РФ (${ruQueries.size} из ${MIN_RU_QUERIES} запросов)`);
   for (const c of claims.filter((x) => x.status === 'contradicted' && proposal.claims.find((pc) => pc.key === x.key)?.absence)) {
     const market = proposal.claims.find((pc) => pc.key === c.key)!.absence!.market;
-    const rivals = competitors.filter((x) => x.market === market && x.kind === 'direct');
+    const rivals = proven.filter((x) => x.market === market && x.kind === 'direct');
     const free = rivals.some((x) => FREE_OFFER.test(x.note ?? ''));
     if (rivals.length >= 2 || free) hold.push(`Пробел опровергнут: ${market === 'ru' ? 'в РФ' : 'на Западе'} уже есть ${rivals.map((x) => x.name).join(', ')}${free ? ' (есть бесплатный тариф)' : ''}`);
   }

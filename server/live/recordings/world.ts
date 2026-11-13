@@ -23,6 +23,9 @@ export interface SearchRule {
   results: { url: string; title: string; passage: string }[];
 }
 
+/** Publication markup of a third-party article (og:type=article + publisher + author) — what provenance checks need. */
+export const ARTICLE = (site: string, author: string) => `<meta property="og:type" content="article"><meta property="og:site_name" content="${site}"><meta name="author" content="${author}">`;
+
 const html = (lang: string, title: string, body: string, extraHead = '') =>
   `<!doctype html><html lang="${lang}"><head><meta charset="utf-8"><title>${title}</title>${extraHead}<script>window.track=1</script><style>.x{color:red}</style></head><body><nav>Меню · Menu</nav>${body}<footer>© 2026</footer></body></html>`;
 
@@ -117,11 +120,11 @@ export const PAGES: Record<string, PageRec> = {
   },
   'https://www.str-review.example.org/touch-stay-review': {
     status: 200,
-    body: html('en', 'Touch Stay review (independent)', '<h1>Touch Stay review</h1><p>We tested Touch Stay for three months: hosts reported fewer guest questions at check-in, and the paid plan was worth it for multi-property hosts.</p>'),
+    body: html('en', 'Touch Stay review (independent)', '<article><h1>Touch Stay review</h1><p>We tested Touch Stay for three months: hosts reported fewer guest questions at check-in, and the paid plan was worth it for multi-property hosts.</p></article>', ARTICLE('STR Review', 'Пример: редакция обзоров')),
   },
   'https://vc.example.ru/hospitality/guest-guides': {
     status: 200,
-    body: html('ru', 'Цифровые гиды для гостей в России', '<h1>Цифровые гиды для гостей</h1><p>Рынок цифровых гидов для гостей посуточной аренды в России только формируется: большинство хозяев до сих пор отправляют инструкции вручную в мессенджере.</p>'),
+    body: html('ru', 'Цифровые гиды для гостей в России', '<article><h1>Цифровые гиды для гостей</h1><p>Рынок цифровых гидов для гостей посуточной аренды в России только формируется: большинство хозяев до сих пор отправляют инструкции вручную в мессенджере.</p></article>', ARTICLE('Пример: деловое издание', 'Пример: автор колонки')),
   },
   'https://new.realtycalendar.ru/products/autopilot': {
     status: 200,
@@ -169,7 +172,7 @@ export const PAGES: Record<string, PageRec> = {
   },
   'https://techreview.example.org/notecopilot': {
     status: 200,
-    body: html('en', 'NoteCopilot growth', '<h1>NoteCopilot is growing fast</h1><p>More than 10,000 companies use NoteCopilot every week, according to the founders.</p>'),
+    body: html('en', 'NoteCopilot growth', '<article><h1>NoteCopilot is growing fast</h1><p>More than 10,000 companies use NoteCopilot every week, according to the founders.</p></article>', ARTICLE('Tech Review Example', 'Example Staff Writer')),
   },
   // Case E — unreachable primary sources
   'https://callpilot.example.com/robots.txt': { status: 200, contentType: 'text/plain', body: 'User-agent: *\nDisallow: /\n' },
@@ -179,7 +182,7 @@ export const PAGES: Record<string, PageRec> = {
   'https://www.calls.example.org/missing': { status: 404, body: 'Not found' },
   'https://telefonia.example.ru/ii-sekretar': {
     status: 200,
-    body: html('ru', 'ИИ-секретарь для бизнеса', '<p>Обзор: ИИ-секретари для входящих звонков в России пока используют в основном крупные колл-центры.</p>'),
+    body: html('ru', 'ИИ-секретарь для бизнеса', '<article><p>Обзор: ИИ-секретари для входящих звонков в России пока используют в основном крупные колл-центры.</p></article>', ARTICLE('Пример: Телефония', 'Пример: обозреватель')),
   },
   // Case F — prompt injection
   'https://hiresift.example.com/': {
@@ -328,6 +331,8 @@ export const EXTRACT: Record<string, unknown> = {
   'https://forum.tdi.example.org/autoscan-help': { isProductPage: false, name: null, market: 'west', jobs: [], price: null, pageKind: 'forum' },
   'https://vnikli.ru/sravnenie-kommercheskih-predlozheniy/': { isProductPage: true, name: 'ВНИКЛИ', market: 'ru', jobs: [{ job: 'quote-comparison', quote: 'загрузите КП в PDF или Excel и получите сравнительную таблицу условий' }], price: 'Первые 10 сравнений бесплатно', pageKind: 'vendor' },
   'https://vortholm.ru/solutions/procurement/supplier-quotes-comparison/': { isProductPage: true, name: 'Vortholm', market: 'ru', jobs: [{ job: 'quote-comparison', quote: 'сводит коммерческие предложения поставщиков в одну таблицу' }], price: 'от 2 900 ₽ в месяц', pageKind: 'vendor' },
+  // misclassification: the vendor's own pricing page called «independent» / not a product page → must stay a self-report
+  'https://touchstay.com/pricing': { isProductPage: false, name: null, market: 'west', jobs: [], price: null, pageKind: 'independent' },
   'https://techreview.example.org/notecopilot': { isProductPage: false, name: null, market: 'west', jobs: [], price: null, pageKind: 'independent' },
   'https://www.str-review.example.org/touch-stay-review': { isProductPage: false, name: null, market: 'west', jobs: [], price: null, pageKind: 'independent' },
   'https://telefonia.example.ru/ii-sekretar': { isProductPage: false, name: null, market: 'ru', jobs: [], price: null, pageKind: 'independent' },

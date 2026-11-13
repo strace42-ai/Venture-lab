@@ -53,7 +53,15 @@ export interface PageOffer {
    * text by code; `uncertain` lists what the extraction model claimed but code could not ground.
    * Absent for the fixture emulator (whose offers are hand-written test data).
    */
-  grounding?: { level: 'grounded' | 'partial'; jobEvidence: Record<string, string>; uncertain: string[]; extractor: string };
+  grounding?: {
+    level: 'grounded' | 'partial';
+    jobEvidence: Record<string, string>;
+    uncertain: string[];
+    extractor: string;
+    /** The market was established from verifiable page signals (not the model's opinion). */
+    marketVerified: boolean;
+    marketSignals: string[];
+  };
 }
 
 export interface PageRead {
@@ -74,6 +82,8 @@ export interface PageRead {
   contentType?: string | null;
   /** Why a live read failed (safe, human-readable; never contains secrets). */
   failure?: string | null;
+  /** Live: how the source type was established (independence is never a model's word alone). */
+  provenance?: { independence: 'verified' | 'unverified' | 'not_claimed'; signals: string[]; reason: string } | null;
 }
 
 /** What the reader may know about WHY it reads a page: used only to map offers onto the idea's jobs. */
@@ -158,6 +168,8 @@ export interface RawCompetitor {
   jobs: string[];
   price: string | null;
   foundBy: 'analyst' | 'skeptic';
+  /** false = market not established by page signals: never counted as a proven rival (default true). */
+  marketVerified?: boolean;
 }
 
 /** Everything the independent skeptic sees. Excerpts are untrusted data, never instructions. */
@@ -367,6 +379,7 @@ export interface SourceRow {
   contentType?: string | null;
   failure?: string | null;
   offer?: PageOffer | null;
+  provenance?: PageRead['provenance'];
 }
 
 export interface ClaimRow {
@@ -406,6 +419,8 @@ export interface CompetitorRow {
   note: string | null;
   /** Why the skeptic classified it this way. */
   reason: string;
+  /** false = market not established: shown, but never used for caps, refutations or holds. */
+  marketVerified?: boolean;
 }
 
 export interface ReviewRow {

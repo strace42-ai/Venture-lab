@@ -120,7 +120,9 @@ export interface MachineRunDiagnostics {
   independence: 'emulated' | 'independent' | 'single-model-degraded' | null;
   searches: { ru: number; west: number; world: number; failed: number };
   pages: { ok: number; failed: number; byStatus: Record<string, number> };
-  competitors: { ruDirect: number; ruAdjacent: number; distinctRu: number };
+  competitors: { ruDirect: number; ruAdjacent: number; distinctRu: number; marketUnverified: number };
+  /** Sources the model called independent but provenance did not confirm (kept as «type not established»). */
+  independenceUnverified: number;
   contradictions: number;
   cost: { estimated: number; charged: number; observed: number; unknownCalls: number; anomalies: number };
   averageConfidence: number | null;
@@ -145,6 +147,8 @@ export interface MachineSource {
   failure?: string | null;
   /** What the extraction model claimed that code could not find on the page. */
   offerUncertain?: string[];
+  /** How the source type was established (live). */
+  provenance?: { independence: 'verified' | 'unverified' | 'not_claimed'; signals: string[]; reason: string } | null;
 }
 
 export interface MachineClaim {
@@ -181,6 +185,8 @@ export interface MachineCompetitor {
   note: string | null;
   /** The skeptic's classification reason. */
   reason: string;
+  /** false = market not established by page signals: shown, never counted (default true). */
+  marketVerified?: boolean;
 }
 
 export interface MachineReview {

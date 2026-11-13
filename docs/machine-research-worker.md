@@ -83,7 +83,27 @@ The architecture source of truth is `docs/no-vpn-automation-architecture.md` v2.
   - size cap after decompression, timeouts, HTML/text only (PDF → `unsupported_content`);
   - visible text only: scripts and hidden elements are dropped;
   - instruction-like content (also when hidden) → quarantine.
-- **Offers are grounded by code** (`server/live/grounding.ts`). The extraction model proposes name, market, jobs-with-quotes and price; code keeps only what is literally on the page. Market comes from page signals (domain, `lang`, script, currency). Anything else is stored as «uncertain» and never used.
+- **Offers are grounded by code** (`server/live/grounding.ts`). The extraction model proposes name, market, jobs-with-quotes and price; code keeps only what is literally on the page. Anything else is stored as «uncertain» and never used.
+- **A rival's market must be established, not guessed** (audit P1).
+  - «ru» needs an RU availability signal and Russian content, with no western price:
+    - an RU domain;
+    - a price in ₽ or руб;
+    - a +7 phone;
+    - an ИНН or ОГРН.
+  - «west» needs a $, € or £ price on a western-language page.
+  - Russian localisation alone is not enough («локализация ≠ продажи в РФ»).
+  - If the page shows neither, the site's home page is checked once more, automatically and for free.
+  - If the market is still not established, the rival is stored with `market_verified = false` and shown as «рынок не подтверждён».
+  - Such a rival is **never** used for caps, refutations, holds or Russia validation; it is re-checked on the next rotation.
+  - These are page signals, not proof of legal registration or payment acceptance in Russia.
+- **«Independent» needs verifiable provenance** (`server/live/provenance.ts`, audit P1).
+  - The model's «independent» is necessary but never sufficient. All of these are also required:
+    - a site that does not belong to the product: not the seed source, not a site with a grounded offer this run, the brand not in the domain;
+    - no product offer on the page;
+    - publication markup (`og:type=article`, schema.org Article/Review/NewsArticle/BlogPosting, or `<article>`);
+    - a named publisher or author that is not the product.
+  - Otherwise the source type is UNKNOWN («тип не установлен») or a self-report, and it cannot raise the evidence grade or reliability.
+  - The decision and its signals are stored in `mr_sources.provenance`.
 - **Competitor kind is decided by code** from the jobs proven on the rival's page: direct = the idea's primary job. The skeptic's label is checked against it. A rival the skeptic omits is still counted, and a rival it invents is dropped. The Western analogue is never a rival.
 - **Popularity ≠ payment.** A claim about paying users or revenue needs a quote about money; «10,000 companies use» does not verify it.
 - **Independent second model.** The analyst and skeptic families must differ (Qwen vs DeepSeek). The same family is refused, or — only if explicitly allowed — every candidate is held as `single-model-degraded`.
