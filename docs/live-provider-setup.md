@@ -55,8 +55,12 @@ npm run research:worker:run -- --live --once --dry-run [--as-of YYYY-MM-DD]
 npm run research:benchmark            # offline benchmark of the guardrails on recorded HTTP
 npm test                              # includes the recorded-HTTP live tests
 
-# Phase B ONLY, after explicit founder authorisation, on the approved host:
-npm run research:worker:run -- --live --once --execute --max-spend-rub 500 [--as-of YYYY-MM-DD]
+# Phase B ONLY, after explicit founder authorisation, on the approved host (plan: docs/vl-004b-phase-b-trial-plan.md):
+#   env: VL_LIVE_EXECUTE=phase-b-authorized, VL_TRIAL_ID=<id>, VL_TRIAL_BUDGET_RUB=300 (cumulative for ALL stages)
+npm run research:worker:run -- --live --once --execute --probe --max-spend-rub 5
+npm run research:worker:run -- --live --once --execute --stage stage2 --seeds research/phase-b/seeds-stage2.json --no-discovery --max-spend-rub 60
+npm run research:worker:run -- --live --once --execute --stage stage3 --seeds research/phase-b/seeds-stage3.json --no-discovery --max-spend-rub 235
+npm run research:worker:export -- --live --trial <id> --out review.csv
 npm run research:worker:status -- --live
 ```
 
@@ -65,6 +69,14 @@ npm run research:worker:status -- --live
 - the analyst and the skeptic come from the same model family. The exception is `VL_ALLOW_SINGLE_MODEL=true`: then every candidate is held as `single-model-degraded` and nothing is presented as independent review;
 - it runs in CI;
 - `--max-spend-rub` is missing.
+
+Every paid action, `--probe` included, passes one gate (`server/live/gate.ts`):
+- the trial's **cumulative** ceiling (≤ 300 ₽, immutable once created) caps every reservation and every top-up;
+- stage ceilings are 5, 60 and 235 ₽, and stages run strictly in that order;
+- trial stages are dated with the real day and never publish into the live TOP-10;
+- Search API calls go out at most once per 1.1 s, retries included;
+- two paid runs never overlap: a host lock file plus a DB advisory lock;
+- raw provider responses are saved redacted, outside the git tree only.
 
 `--max-spend-rub N` is the hard ceiling for that job, in kopecks in the ledger. `VL_LIVE_MONTHLY_BUDGET_KOP` caps the month. There is no scheduled live run: `tick --live` is refused in Phase A.
 

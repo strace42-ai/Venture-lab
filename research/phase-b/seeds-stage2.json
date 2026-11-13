@@ -1,0 +1,14 @@
+[
+  {
+    "externalId": "str-guest-guide-ru",
+    "title": "Цифровой гид гостя для посуточной аренды",
+    "pitch": "Ссылка или QR на гид квартиры: заселение, Wi-Fi, правила, район.",
+    "segment": "B2B",
+    "category": "Hospitality",
+    "primaryJob": "guest-guide",
+    "jobs": ["guest-guide", "checkin-instructions"],
+    "westernProduct": "Touch Stay",
+    "ruKeywords": ["цифровой гид гостя", "электронная инструкция по заселению", "гостевой портал посуточная аренда"],
+    "sourceUrl": "https://touchstay.com/digital-guidebook"
+  }
+]

@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 import { loadLiveConfig } from '../live/config';
 import { buildLiveProviders } from '../live/providers';
-import { RecordedProviders, RecordedWeb, TEST_ENV } from '../live/recordings/mock';
+import { RecordedProviders, RecordedWeb, TEST_ENV, virtualClock } from '../live/recordings/mock';
 import { researchCandidate, runPipeline, type Providers } from '../machine/pipeline';
 import { FixtureLLMProvider, FixtureSearchProvider, FixtureSkeptic, FixtureSourceReader } from '../machine/providers/fixture';
 import { CallContext, type AnalystProposal, type DiscoverySeed, type PageRead, type SkepticFindings, type SkepticInput } from '../machine/types';
@@ -119,7 +119,7 @@ describe('recorded corpus: Quote Compare with rivals whose pages lose every RU s
         return undefined;
       },
     });
-    const b = buildLiveProviders(loadLiveConfig(TEST_ENV), { providerTransport: prov, webTransport: web, resolver: web, sleep: async () => {} });
+    const b = buildLiveProviders(loadLiveConfig(TEST_ENV), { providerTransport: prov, webTransport: web, resolver: web, sleep: async () => {}, clock: virtualClock() });
     const r = await runPipeline(DAY, [], b.providers, new CallContext('t', 1, 1_000_000), { maxNew: 6, evidenceHits: 3, hitsPerQuery: 3, maxRuQueries: 8 });
     const c = r.candidates.find((x) => x.externalId === 'supplier-quote-compare')!;
     expect(c.competitors.map((x) => `${x.name}:${x.kind}:${x.marketStatus}`).sort()).toEqual(['Vortholm:direct:unknown', 'ВНИКЛИ:direct:unknown']);

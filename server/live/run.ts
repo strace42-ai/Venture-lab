@@ -5,7 +5,12 @@
 import { YANDEX_TARIFFS, inputTokenBound, llmCostKop, searchCostKop, tariffFor } from './prices';
 import { buildLiveProviders, type LiveBundle, type LiveDeps } from './providers';
 import type { LiveConfig } from './config';
-import type { RunOptions } from '../machine/worker';
+import { jobKeyFor, runWorkerJob, TrialRefused, workerToday, type RunOptions, type RunResult, type TrialSpec } from '../machine/worker';
+import { discoverySeedSchema } from '../machine/schemas';
+import type { DiscoverySeed } from '../machine/types';
+import type { Pool } from '../db/pool';
+import { withPaidExecutionLock } from './paid-lock';
+import { PROBE_REQUIRED_CHECKS, runProbe, type ProbeCheck } from './probe';
 import type { ISODate } from '../../src/domain/types';
 
 export interface LiveRunInput {
@@ -68,4 +73,65 @@ export function livePlan(cfg: LiveConfig) {
     worstCaseKop: worstKop,
     note: 'Верхняя граница по лимитам конфигурации; реальный прогон останавливается бюджетом задания (--max-spend-rub) раньше.',
   };
+}
+
+/** Seeds file of a trial stage: a JSON array of discovery seeds, validated; at most 5, unique ids. */
+export function parseSeeds(json: unknown): DiscoverySeed[] {
+  if (!Array.isArray(json) || json.length === 0 || json.length > 5) throw new Error('файл кандидатов: нужен непустой JSON-массив, не больше 5 кандидатов');
+  const seeds = json.map((x, i) => {
+    const r = discoverySeedSchema.safeParse(x);
+    if (!r.success) throw new Error(`кандидат №${i + 1}: ${r.error.issues.slice(0, 2).map((e) => `${e.path.join('.')}: ${e.message}`).join('; ')}`);
+    return r.data as DiscoverySeed;
+  });
+  if (new Set(seeds.map((s) => s.externalId)).size !== seeds.length) throw new Error('файл кандидатов: повторяющиеся externalId');
+  return seeds;
+}
+
+/**
+ * One paid stage of a live trial, behind the paid gate (already passed by the caller): exclusive
+ * paid-execution lock (host + DB), the real date, the cumulative trial ceiling, the stage ceiling, no
+ * discovery, no publication into the live TOP-10. The probe runs the transport + mini-schema checks only.
+ */
+export async function runPaidStage(
+  pool: Pool,
+  cfg: LiveConfig,
+  gate: { trial: TrialSpec; maxSpendKop: number },
+  deps: LiveDeps,
+  x: { seeds?: DiscoverySeed[]; lockFile: string; now?: () => Date; retry?: boolean },
+): Promise<RunResult & { probe?: ProbeCheck[] }> {
+  return withPaidExecutionLock(pool, x.lockFile, async () => {
+    const now = x.now ?? (() => new Date());
+    const asOf = workerToday(now());
+    // A failed stage (e.g. a failed probe) is never re-run implicitly: only with an explicit --retry. The new
+    // attempt shares the stage's job budget and the trial ledger — nothing is reset.
+    const prev = (await pool.query<{ status: string; attempts: number; max_attempts: number }>('SELECT status, attempts, max_attempts FROM mr_jobs WHERE job_key = $1', [jobKeyFor('live', asOf, gate.trial)])).rows[0];
+    if (prev && prev.status !== 'succeeded' && prev.status !== 'running' && !x.retry) {
+      throw new TrialRefused(`ступень ${gate.trial.stage} испытания ${gate.trial.id} завершилась со статусом «${prev.status}» (попыток ${prev.attempts}/${prev.max_attempts}); повтор — только явно с --retry, расходы прошлых попыток остаются в журнале`);
+    }
+    if (x.retry && (!prev || prev.status === 'succeeded')) throw new TrialRefused(`--retry: ступень ${gate.trial.stage} не завершалась неуспешно — повторять нечего`);
+    if (gate.trial.stage === 'probe') {
+      if (x.seeds) throw new Error('пробный вызов не принимает кандидатов');
+      const bundle = buildLiveProviders(cfg, deps);
+      const r = await runWorkerJob(pool, {
+        feed: 'live',
+        asOf,
+        budget: gate.maxSpendKop,
+        monthlyBudget: cfg.monthlyBudgetKop,
+        maxAttempts: 3, // the first try + at most 2 explicit --retry, all within the same 5 ₽ stage budget
+        rateLimits: { search: 2, read: 0, llm: 4 },
+        trial: gate.trial,
+        independence: bundle.independence,
+        now,
+        probe: async (ctx) => {
+          const checks = await runProbe(bundle, { analyst: cfg.analystModel, skeptic: cfg.skepticModel }, ctx);
+          const failed = checks.filter((c) => !c.ok);
+          return { passed: failed.length === 0 && checks.length === PROBE_REQUIRED_CHECKS, report: checks, failure: failed.map((c) => `${c.check}: ${c.detail}`).join('; ') || undefined };
+        },
+      });
+      return r as RunResult & { probe?: ProbeCheck[] };
+    }
+    if (!x.seeds?.length) throw new Error(`ступень ${gate.trial.stage} требует заданных кандидатов (--seeds)`);
+    const base = liveRunOptions(cfg, deps, { asOf, budgetKop: gate.maxSpendKop, now });
+    return (await runWorkerJob(pool, { ...base, trial: gate.trial, seeds: x.seeds, discovery: false, maxNew: 0, maxRechecks: 0 })) as RunResult;
+  });
 }

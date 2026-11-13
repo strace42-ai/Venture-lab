@@ -1,0 +1,50 @@
+[
+  {
+    "externalId": "vag-autoscan-report",
+    "title": "VAG Report: понятный отчёт по Auto-Scan VCDS",
+    "pitch": "Загрузите Auto-Scan VCDS — получите понятный отчёт по кодам неисправностей на русском.",
+    "segment": "B2C",
+    "category": "Auto",
+    "primaryJob": "vag-autoscan-dtc-report",
+    "jobs": ["vag-autoscan-dtc-report", "vag-csv-log-analysis"],
+    "westernProduct": "Ross-Tech VCDS",
+    "ruKeywords": ["расшифровка автоскан vcds", "расшифровка кодов ошибок вася диагност", "анализ логов vcds онлайн"],
+    "sourceUrl": "https://www.ross-tech.com/vcds/tour/autoscan.php"
+  },
+  {
+    "externalId": "supplier-quote-compare",
+    "title": "Сравнение КП поставщиков в одну таблицу",
+    "pitch": "Загрузка КП в PDF/XLSX → сравнительная таблица условий.",
+    "segment": "B2B",
+    "category": "Procurement",
+    "primaryJob": "quote-comparison",
+    "jobs": ["quote-comparison"],
+    "westernProduct": "SourceDay RFQ",
+    "ruKeywords": ["сравнение коммерческих предложений", "сравнить кп поставщиков", "сравнительная таблица кп"],
+    "sourceUrl": "https://sourceday.com/solutions/request-for-quote-collaboration/"
+  },
+  {
+    "externalId": "virtual-focus-coworking-ru",
+    "title": "Фокус-коворкинг 1-на-1 для русскоязычных",
+    "pitch": "Мгновенный подбор напарника для фокус-сессий по видео с оплатой в рублях.",
+    "segment": "B2C",
+    "category": "Productivity",
+    "primaryJob": "focus-1on1-matching",
+    "jobs": ["focus-1on1-matching", "focus-group-rooms"],
+    "westernProduct": "Focusmate",
+    "ruKeywords": ["онлайн коворкинг напарник", "body doubling", "фокус сессии с напарником"],
+    "sourceUrl": "https://www.focusmate.com/"
+  },
+  {
+    "externalId": "sales-gamification-smb",
+    "title": "Геймификация продаж для малого бизнеса",
+    "pitch": "Соревнования и рейтинги для отдела продаж на данных CRM.",
+    "segment": "B2B",
+    "category": "Sales",
+    "primaryJob": "sales-gamification",
+    "jobs": ["sales-gamification"],
+    "westernProduct": "Spinify",
+    "ruKeywords": ["геймификация продаж", "геймификация отдела продаж crm", "рейтинг менеджеров по продажам"],
+    "sourceUrl": "https://spinify.com/product/sales-gamification-software/"
+  }
+]

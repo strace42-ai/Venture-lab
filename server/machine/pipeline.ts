@@ -579,10 +579,22 @@ export async function researchCandidate(seed: DiscoverySeed, isNew: boolean, asO
 export interface RunPipelineOptions extends PipelineOptions {
   /** Incumbents to re-research this run (default: all of `known`). */
   recheck?: DiscoverySeed[];
+  /** false = no discovery searches and no discovery model call at all. */
+  discovery?: boolean;
+  /** Candidates given explicitly (trial): researched as new, discovery is off. */
+  seeds?: DiscoverySeed[];
 }
 
 export async function runPipeline(asOf: ISODate, known: DiscoverySeed[], p: Providers, ctx: CallContext, opts: RunPipelineOptions = {}): Promise<PipelineResult> {
   const discoverySearches: SearchRow[] = [];
+  const knownIds = new Set(known.map((k) => k.externalId));
+  if (opts.discovery === false || opts.seeds) {
+    // Discovery fully off: not a single discovery search or model call (trial stages, given seeds).
+    const seeds = (opts.seeds ?? []).filter((s) => discoverySeedSchema.safeParse(s).success);
+    const candidates: CandidateResult[] = [];
+    for (const seed of [...(opts.recheck ?? []), ...seeds]) candidates.push(await researchCandidate(seed, !knownIds.has(seed.externalId), asOf, p, ctx, opts));
+    return { asOf, discoverySearches, candidates };
+  }
   let leads: SearchHit[] | undefined;
   if (p.llm.discoveryQueries) {
     // Live: real discovery searches; the model may only propose seeds found on these hits.
@@ -592,7 +604,6 @@ export async function runPipeline(asOf: ISODate, known: DiscoverySeed[], p: Prov
     await runSearch(p.search, ctx, discoverySearches, { agent: 'discovery', purpose: 'discovery', region: 'world', query: `discovery:${asOf}` });
   }
   // Discovery output is validated; an invalid seed is dropped (never scored), the rest proceed.
-  const knownIds = new Set(known.map((k) => k.externalId));
   const d = await guarded(() => p.llm.discover(asOf, [...knownIds], ctx, leads));
   let fresh = (d.ok ? d.value : []).filter((s) => discoverySeedSchema.safeParse(s).success && !knownIds.has(s.externalId));
   // A seed must come from a real search hit (no invented products / sources).

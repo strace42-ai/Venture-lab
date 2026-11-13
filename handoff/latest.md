@@ -153,10 +153,69 @@ Rivals with an unproven market are shown but not counted: 2 of 2. Independent pu
 - **Cost.** One run with the default bounds (3 new + 3 rechecks) cost about 55 ₽ on recorded data; the token counts are synthetic. Searches dominate (≈14 per candidate).
 - **Pre-existing layout issue.** On the 1440 dashboard, the evidence-grade column of the TOP table scrolls inside its card (unchanged since VL-004A).
 
+## VL-004B-prep — final P2 (audit of `0c84b21`): Search API `rawData` redaction
+- **Problem.** The saved `responseBody` kept the provider's original base64 `rawData`. Only the decoded copy was redacted, so e-mails and phones could be recovered from the base64.
+- **Fix** (`server/live/raw-capture.ts` only):
+  - the XML is decoded, redacted, **re-encoded**, and stored as `{ rawData: base64(clean XML) }`, so the official response shape still replays through the parser;
+  - the original base64 never reaches the disk;
+  - `decodedRawData` equals the decoded clean copy;
+  - placeholders became `[email]`, `[phone]` and `[redacted]`, so a redacted XML stays well-formed (`<email>` would have been parsed as a tag).
+- **Test.** XML with an e-mail, a +7 phone and the key, inside `rawData`:
+  - the original base64 is absent from the file;
+  - **no** base64-looking token in the saved JSON decodes back to a secret;
+  - the saved `rawData` decodes to the redacted XML;
+  - `parseYandexXml` still returns the document with `[email]`, `[phone]` and `[redacted]` in its passage.
+- **Checks.** 420 tests ✔. No change to scoring, trial architecture or API adapters.
+- **The prep PR is frozen after this fix;** next is organisational preparation for Phase B.
+
+## VL-004B-prep — audit fixes (audit of `d49a831`)
+| # | Finding | Fix | Tests (`server/test/live-prep.test.ts`) |
+|---|---|---|---|
+| **P1** | A failed probe (`ok:false` checks) still became a **succeeded** job, so stage 2 could run after a broken XML or model check. | The probe returns `{ passed, report, failure }`. The job is `succeeded` **only if all 6 required checks pass**. Otherwise it is `failed`: real usage is settled in the ledger and the next stage stays blocked by the existing stage-order check.<br>A failed stage is **never re-run implicitly**: only with an explicit `--retry`, which makes a new attempt in the same stage budget (5 ₽, at most 2 retries), without resetting costs. `--retry` on a succeeded stage is refused. | **PostgreSQL integration:**<br>• (a) **XML with 0 documents** → probe `failed`; all real calls are in `mr_usage` with costs > 0; attempt `failed` with `used` = cost; stage 2 is refused **before any provider or page request**, and no stage-2 job is created.<br>• (b) **invalid model JSON** in the minimal-schema check → `failed`; stage 2 is refused with 0 requests; a probe re-run without `--retry` is refused with 0 requests; with `--retry` → attempt 2 `succeeded`, the first attempt's costs are unchanged, and both attempts together stay ≤ 5 ₽; stage 2 is then allowed; `--retry` on a succeeded probe is refused. |
+| **P1** | Raw responses could overwrite each other between stages: `seq` started from zero in one shared folder, and `writeFileSync` overwrote. | Path = `<raw>/trial_<id>_<stage>/attempt-<n>/<seq>-<host>-<status>.json`, derived from the request's **ledger id** (= `mr_usage.request_id`, also stored inside the record with job key and attempt). Files are created with O_EXCL (`wx`) and are **never overwritten**; an impossible clash is kept as a separate `-clash-` file and reported. | **Probe, stage 2, stage 3** in the **same** directory, each with a fresh transport, same hosts, HTTP 200:<br>• every record is kept, 1 file per provider request, 0 clashes;<br>• all earlier files are **byte-identical** afterwards (SHA-256);<br>• one folder per stage;<br>• the ledger ids of the records equal the `mr_usage.request_id` set exactly.<br>Unit test: the same ledger id twice leaves the original untouched and stores the clash separately. |
+| P2 | Model independence | The gate refuses an analyst and skeptic from the same family **even with `VL_ALLOW_SINGLE_MODEL=true`**: degraded mode is never allowed for paid runs. | Probe and stage 2 are both refused with the «VL_ALLOW_SINGLE_MODEL здесь не действует» reason. |
+| P2 | Fail-closed gate | `cfg = null` is always a problem («конфигурация live не загружена»), with or without `cfgError`. | Both variants assert `ok === false`, a non-empty problems list and the message (the old `toBeTruthy()` was replaced). |
+| P2 | Symlinks | `assertOutsideRepo` compares the **real path** (`realpath` of the longest existing prefix plus the not-yet-existing tail) against the real repo root; `CapturingTransport` re-checks after `mkdir`. | A symlink outside the repo pointing into it is refused; a non-existent tail under such a link is refused; a transport on such a link is refused before anything is created. |
+
+Checks:
+- `lint` ✔, `typecheck` ✔, `build` ✔;
+- **419 tests** (23 files) on PostgreSQL ✔, of which `live-prep` has 42;
+- benchmark unchanged;
+- the CLI still refuses `--execute --probe` without permission (exit 2, no request).
+
+No change to scoring or research logic. **No paid request, no cloud resource, no deploy, no merge.**
+
+## VL-004B-prep (2026-11-13) — offline preparation for the Phase B trial (no paid call)
+Implemented on branch `claude/vl-004b-prep` (stacked on PR #7 → PR #6). Audit remarks on the plan addressed:
+
+| # | Remark | Implementation | Tests (`server/test/live-prep.test.ts`, 35) |
+|---|---|---|---|
+| 1 | 5 + 60 + 240 ≠ 300 | Stages **5 + 60 + 235 = 300 ₽**. **Migration 008** adds `mr_trials`: an immutable trial budget and one job per stage, `trial:<id>:<stage>`. Every reservation and every top-up is capped by the trial's cumulative committed spend, under a per-trial advisory lock (lock order: trial → month → job). Stage order is enforced: probe → stage2 → stage3. | The stage caps sum to 300. A 10 ₽ trial binds stage 2 below its own 60 ₽ cap, and total committed spend stays ≤ 10 ₽. The trial budget is immutable (code and DB). A finished stage repeated costs 0 requests. |
+| 2 | `--probe` must be as protected as `--execute` | One gate, `server/live/gate.ts`, for the probe and for stages. All of these are required:<br>• `--once --execute`;<br>• `VL_LIVE_EXECUTE=phase-b-authorized`;<br>• not in CI;<br>• config ready and independent model families;<br>• models with a pinned tariff;<br>• `VL_TRIAL_ID` and a trial budget ≤ 300;<br>• `--max-spend-rub` ≤ the stage cap;<br>• `--seeds` + `--no-discovery` for stages;<br>• no `--as-of`.<br>A refusal happens before any DB or network I/O. | 14 refusal cases + model, family and credential refusals. A **real CLI process** refuses `--probe` without `--execute`, without the flag, in CI, and a stage without seeds — exit 2, «ни одного запроса не сделано». |
+| 3 | Search API 1 request/s, 429, parallel processes | `MinIntervalLimiter` (1100 ms; config cannot go below 1000) applies to **every HTTP attempt**, retries after 429/5xx included; concurrent callers are serialised. Parallel paid execution is **prohibited**: a host O_EXCL lock file (a stale lock of a dead pid is reclaimed) plus a DB session advisory lock for the whole run. | Virtual time: sequential and concurrent calls ≥ 1100 ms apart; 429 → retry → next query still spaced; a full pipeline run spaced ≥ 1100 ms. Lock file busy/stale; DB lock refuses a second paid run even with a different lock file. |
+| 4 | Probe vs production schema | Probe = **transport** (plain completion, no `response_format`, `max_tokens` 16; auth, model URI and `usage`) + **minimal JSON schema** (2 fields, `max_tokens` 60) per model, plus one RU and one COM search. Production schemas are checked on the first candidate (gate C). | 6 checks pass on recordings; 2 searches + 4 model calls, all `max_tokens` ≤ 60; no page reads; ≤ 5 ₽; nothing published. |
+| 5 | Seeds without discovery; no future dating | `seeds` with `discovery: false` → not a single discovery search or model call, and no incumbent rechecks. Live runs dated in the future are refused; `--as-of` is forbidden in paid mode. Two stages on the same real day do not conflict (distinct job keys). The DB trigger refuses snapshots of trial jobs. | No `discover_seeds` call and no discovery query; `mr_searches` has 0 discovery rows; probe and stage2 have the same real `as_of`; a future `as_of` is refused; a snapshot for a trial job is refused by the DB. |
+| 6 | Raw responses | `CapturingTransport` writes **outside the git tree only** (a directory inside the repo is refused, even an ignored one), with modes 0700/0600. Redacted: key and IAM token (values + patterns), folder id, `Authorization` values, e-mails, phones. Request headers are never written. Search `rawData` is also stored decoded for parser review. | Redaction unit tests; repo paths refused; probe writes 6 files, none contains the key or folder id, all mode 0600, decoded XML present. |
+| 7 | CSV export | `research:worker:export -- --live --trial <id> \| --job <key> --out file`. Rows by kind:<br>• assessment — state, score, grade, holds;<br>• source — URL, fetch status, source type, provenance and signals, uncertainty;<br>• competitor — kind, market, market status, signals, uncertainty, job evidence quotes, reason, price;<br>• claim — quote, cited and supporting sources, locations, checker status, skeptic verdict.<br>Empty reviewer columns follow; cells are guarded against formula injection. | The export contains GuestCom with its job quote, RYNTO with an `unknown` market, a claim with its quote, the independent review with verified provenance, and an assessment HOLD. |
+| 8 | Plan update | `docs/vl-004b-phase-b-trial-plan.md` revision 2:<br>• stages 5/60/235 and one cumulative 300 ₽ ledger;<br>• a cumulative SQL check;<br>• a Billing budget of 300 ₽ with thresholds **5 / 65 / 150 / 240 / 300 ₽** tied to the stages;<br>• new env vars and runbook commands;<br>• the extended founder checklist. | — |
+
+Also:
+- `research/phase-b/seeds-stage2.json` (1) and `seeds-stage3.json` (4): hypotheses from the VL-003P corpus, validated by tests.
+- The CI smoke covers probe refusals and the export.
+- Existing live tests now use a virtual clock (the limiter is real) and a fixed «today» (no future dating).
+
+Checks:
+- `lint` ✔, `typecheck` ✔, `build` ✔;
+- **412 tests** (23 files) on PostgreSQL ✔;
+- benchmark unchanged;
+- the fixture CLI is unchanged.
+
+No UI change, so no new QA screenshots. **No paid request, no cloud resource, no deploy, no merge.**
+
 ## Phase B plan (2026-11-13)
 - The plan for a bounded real-data trial is `docs/vl-004b-phase-b-trial-plan.md`; the manual review template is `research/reviews/phase-b-review-template.csv`.
 - **No paid call is authorised.**
-- Found while planning: the synchronous Search API quota is **1 request/s**, and the Phase A adapter does not rate-limit. A small prep PR (rate limiter, `--probe`, `--seeds`/`--no-discovery`, export) is a GO precondition and is not implemented yet.
+- Found while planning: the synchronous Search API quota is **1 request/s**, and the Phase A adapter did not rate-limit. Fixed by VL-004B-prep (above).
 
 ## Next
 1. ChatGPT independent audit of this PR.

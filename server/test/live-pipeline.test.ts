@@ -7,7 +7,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadLiveConfig } from '../live/config';
 import { buildLiveProviders } from '../live/providers';
-import { RecordedProviders, RecordedWeb, TEST_ENV } from '../live/recordings/mock';
+import { RecordedProviders, RecordedWeb, TEST_ENV, virtualClock } from '../live/recordings/mock';
 import { runBenchmark } from '../live/benchmark';
 import { runPipeline } from '../machine/pipeline';
 import { CallContext, type CandidateResult, type PipelineResult } from '../machine/types';
@@ -18,7 +18,7 @@ const OPTS = { maxNew: 6, evidenceHits: 3, hitsPerQuery: 3, maxRuQueries: 8 };
 async function liveRun(env = TEST_ENV, hooks: ConstructorParameters<typeof RecordedProviders>[0] = {}, webOver: ConstructorParameters<typeof RecordedWeb>[0] = {}) {
   const web = new RecordedWeb(webOver);
   const prov = new RecordedProviders(hooks);
-  const b = buildLiveProviders(loadLiveConfig(env), { providerTransport: prov, webTransport: web, resolver: web, sleep: async () => {} });
+  const b = buildLiveProviders(loadLiveConfig(env), { providerTransport: prov, webTransport: web, resolver: web, sleep: async () => {}, clock: virtualClock() });
   const ctx = new CallContext('t', 1, 1_000_000);
   const result = await runPipeline(AS_OF, [], b.providers, ctx, OPTS);
   return { result, web, prov, ctx, bundle: b };

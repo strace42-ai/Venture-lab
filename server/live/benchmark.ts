@@ -9,7 +9,7 @@
  */
 import { loadLiveConfig } from './config';
 import { buildLiveProviders } from './providers';
-import { RecordedProviders, RecordedWeb, TEST_ENV } from './recordings/mock';
+import { RecordedProviders, RecordedWeb, TEST_ENV, virtualClock } from './recordings/mock';
 import { EXTRACT, SKEPTIC } from './recordings/world';
 import { claimSupports, runPipeline } from '../machine/pipeline';
 import { CallContext } from '../machine/types';
@@ -31,7 +31,7 @@ const ratio = (a: number, b: number) => (b === 0 ? null : Math.round((1000 * a) 
 export async function runBenchmark() {
   const web = new RecordedWeb();
   const prov = new RecordedProviders();
-  const b = buildLiveProviders(loadLiveConfig(TEST_ENV), { providerTransport: prov, webTransport: web, resolver: web, sleep: async () => {} });
+  const b = buildLiveProviders(loadLiveConfig(TEST_ENV), { providerTransport: prov, webTransport: web, resolver: web, sleep: async () => {}, clock: virtualClock() });
   const ctx = new CallContext('benchmark', 1, 10_000_000);
   const r = await runPipeline('2026-11-12', [], b.providers, ctx, { maxNew: 6, evidenceHits: 3, hitsPerQuery: 3, maxRuQueries: 8 });
 

@@ -29,6 +29,7 @@
     "research:worker:run": "tsx server/cli/worker.ts run",
     "research:worker:tick": "tsx server/cli/worker.ts tick",
     "research:worker:status": "tsx server/cli/worker.ts status",
+    "research:worker:export": "tsx server/cli/worker.ts export",
     "research:benchmark": "tsx server/cli/benchmark.ts"
   },
   "dependencies": {
