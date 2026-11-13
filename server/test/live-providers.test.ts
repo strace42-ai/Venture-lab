@@ -110,7 +110,7 @@ describe('retries, backoff and the circuit breaker (Case G)', () => {
     const t = new RecordedProviders({ llm: () => ({ timeout: true }) });
     const chat = new AIStudioChat(caller(t, { maxTimeoutRetries: 0 }), cfg);
     const c = ctx();
-    await expect(chat.complete(c, { model: 'qwen3.6-35b-a3b', task: 'extract_offer', system: 's', data: {}, schema: offerWire, wire: offerWire, maxTokens: 100 })).rejects.toBeInstanceOf(ProviderUnavailable);
+    await expect(chat.complete(c, { model: 'qwen3.6-35b-a3b', task: 'extract_offer', system: 's', data: {}, schema: offerWire, wire: offerWire, answerTokens: 100 })).rejects.toBeInstanceOf(ProviderUnavailable);
     expect(t.llmCalls).toHaveLength(1);
     expect(c.usage[0]).toMatchObject({ reconciliation: 'unknown', actualCost: null });
     expect(c.usage[0]!.cost).toBe(c.usage[0]!.estimatedCost);
@@ -119,7 +119,7 @@ describe('retries, backoff and the circuit breaker (Case G)', () => {
   it('refuses any host outside the official Yandex endpoints before sending', async () => {
     const t = new RecordedProviders();
     const chat = new AIStudioChat(caller(t), { ...cfg, llmUrl: 'https://evil.example.com/v1/chat/completions' });
-    await expect(chat.complete(ctx(), { model: 'qwen3.6-35b-a3b', task: 'x', system: 's', data: {}, schema: offerWire, wire: offerWire, maxTokens: 10 })).rejects.toBeInstanceOf(ProviderAuthError);
+    await expect(chat.complete(ctx(), { model: 'qwen3.6-35b-a3b', task: 'extract_offer', system: 's', data: {}, schema: offerWire, wire: offerWire, answerTokens: 10 })).rejects.toBeInstanceOf(ProviderAuthError);
     expect(t.requests).toHaveLength(0);
   });
 });
@@ -129,7 +129,7 @@ describe('AI Studio adapter and cost reconciliation (Case G)', () => {
   const run = (hook: NonNullable<ConstructorParameters<typeof RecordedProviders>[0]>['llm'], model = 'qwen3.6-35b-a3b') => {
     const t = new RecordedProviders({ llm: hook });
     const c = ctx();
-    const p = new AIStudioChat(caller(t), cfg).complete(c, { model, task: 'extract_offer', system: 'sys', data: { page: { url: 'https://x.example.com/' } }, schema: offerWire, wire: offerWire, maxTokens: 500 });
+    const p = new AIStudioChat(caller(t), cfg).complete(c, { model, task: 'extract_offer', system: 'sys', data: { page: { url: 'https://x.example.com/' } }, schema: offerWire, wire: offerWire, answerTokens: 500 });
     return { t, c, p };
   };
 

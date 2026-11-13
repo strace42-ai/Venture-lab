@@ -281,10 +281,15 @@ describeDb('trial ledger, probe, seeds, isolation, export (recorded HTTP + Postg
       'search:ru:true', 'search:world:true',
       'transport:analyst:qwen3.6-35b-a3b:true', 'mini-schema:analyst:qwen3.6-35b-a3b:true',
       'transport:skeptic:deepseek-v4.1-flash:true', 'mini-schema:skeptic:deepseek-v4.1-flash:true',
+      // non-required diagnostics of reasoning_effort=none (the recording has no reasoning → «disabled»)
+      'reasoning-off:analyst:qwen3.6-35b-a3b:true', 'reasoning-off:skeptic:deepseek-v4.1-flash:true',
     ]);
+    expect(r.probe!.filter((c) => c.required)).toHaveLength(6);
     expect(p.searchCalls).toHaveLength(2);
-    expect(p.llmCalls).toHaveLength(4);
-    expect(p.llmCalls.every((x) => (x.body as { max_tokens: number }).max_tokens <= 60)).toBe(true);
+    expect(p.llmCalls).toHaveLength(6);
+    // transport 16; mini-schema 60 + 1024 reasoning reserve (reasoning not switched off: unverified); diagnostic 60 with «none»
+    const sent = p.llmCalls.map((x) => x.body as { max_tokens: number; reasoning_effort?: string });
+    expect(sent.map((b) => [b.max_tokens, b.reasoning_effort ?? null])).toEqual([[16, null], [1084, null], [16, null], [1084, null], [60, 'none'], [60, 'none']]);
     expect(web.requests).toHaveLength(0);
     expect(r.spent!).toBeLessThanOrEqual(500);
     expect((await db.pool.query('SELECT count(*)::int AS n FROM mr_snapshots')).rows[0].n).toBe(0);
@@ -292,8 +297,8 @@ describeDb('trial ledger, probe, seeds, isolation, export (recorded HTTP + Postg
     expect(job).toEqual({ job_key: 'trial:phase-b-test:probe', as_of: TODAY, trial_stage: 'probe', status: 'succeeded' });
     // raw capture: <raw>/trial_phase-b-test_probe/attempt-1/<seq>-<host>-<status>.json
     const files = capture.files;
-    expect(files).toHaveLength(6);
-    expect(readdirSync(join(rawDir, 'trial_phase-b-test_probe', 'attempt-1'))).toHaveLength(6);
+    expect(files).toHaveLength(8);
+    expect(readdirSync(join(rawDir, 'trial_phase-b-test_probe', 'attempt-1'))).toHaveLength(8);
     for (const f of files) {
       const t = readFileSync(f, 'utf8');
       expect(t).not.toContain(ENV.YANDEX_API_KEY!);
@@ -431,7 +436,7 @@ describeDb('audit P1: a failed probe blocks stage 2; raw records survive every s
     const bad = mk({ llm: (task) => (task === 'probe_schema' ? { content: '{"ok": tru' } : undefined) });
     const r1 = await runPaidStage(db.pool, cfg, gate('bad-json', 'probe', 5), bad.deps, { lockFile: join(dir, 'c'), now: NOW });
     expect(r1.status).toBe('failed');
-    expect(r1.probe!.filter((c) => !c.ok).map((c) => c.check)).toEqual(['mini-schema:analyst:qwen3.6-35b-a3b', 'mini-schema:skeptic:deepseek-v4.1-flash']);
+    expect(r1.probe!.filter((c) => c.required && !c.ok).map((c) => c.check)).toEqual(['mini-schema:analyst:qwen3.6-35b-a3b', 'mini-schema:skeptic:deepseek-v4.1-flash']);
     const spentFirst = (await usage('trial:bad-json:probe')).s;
     expect(spentFirst).toBeGreaterThan(0);
     // stage 2 blocked

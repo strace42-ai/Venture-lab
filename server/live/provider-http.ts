@@ -37,6 +37,11 @@ export interface PaidCall {
   settle(res: TransportResponse): Omit<ReconcileInput, 'httpStatus'>;
   /** Is an error status documented as not billed? (Search API: 5xx and auth errors.) */
   notBilled(status: number): boolean;
+  /**
+   * Optional: explain a non-retryable 4xx (not 401/403/429) from its body, e.g. an unsupported parameter.
+   * Returning an error throws it instead of the generic «HTTP <status>»; it is never retried.
+   */
+  rejected?(status: number, body: Buffer): Error | null;
 }
 
 export interface CallerDeps {
@@ -116,6 +121,13 @@ export class ProviderCaller {
       if (s === 401 || s === 403) {
         this.open = `HTTP ${s}`;
         throw new ProviderAuthError(`${pc.provider}: доступ отклонён (HTTP ${s}) — проверьте ключ/роль сервисного аккаунта; повторов не будет`);
+      }
+      if (s >= 400 && s < 500 && s !== 429 && pc.rejected) {
+        const why = pc.rejected(s, res.body);
+        if (why) {
+          this.consecutiveFailures++;
+          throw why;
+        }
       }
       if ((s === 429 || s >= 500) && attempt < this.policy.maxRetries) {
         await this.sleep(this.backoff(attempt, res.headers['retry-after']));

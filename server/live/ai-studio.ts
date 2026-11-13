@@ -16,6 +16,7 @@ import { z } from 'zod';
 import { modelFamily, type LiveConfig } from './config';
 import { llmCostKop, llmWorstCaseKop, tariffFor, YANDEX_PRICE_VERSION } from './prices';
 import type { ProviderCaller } from './provider-http';
+import { planReasoning, type LlmOperation, type ReasoningEffort, type ReasoningPlan } from './reasoning';
 import type { ExtractedOffer } from './grounding';
 import { analystProposalBase, skepticFindingsSchema } from '../machine/schemas';
 import {
@@ -35,17 +36,74 @@ import type { ISODate } from '../../src/domain/types';
 
 const completionSchema = z.object({
   id: z.string().optional(),
-  choices: z.array(z.object({ message: z.object({ content: z.string().nullable().optional() }), finish_reason: z.string().nullable().optional() })).min(1),
+  choices: z
+    .array(
+      z.object({
+        // reasoning_content is read ONLY for diagnostics; the answer must be in `content`.
+        message: z.object({ content: z.string().nullable().optional(), reasoning_content: z.string().nullable().optional() }),
+        finish_reason: z.string().nullable().optional(),
+      }),
+    )
+    .min(1),
   usage: z
     .object({
       prompt_tokens: z.number().int().nonnegative(),
       completion_tokens: z.number().int().nonnegative(),
       total_tokens: z.number().int().nonnegative().optional(),
       prompt_tokens_details: z.object({ cached_tokens: z.number().int().nonnegative().optional() }).nullable().optional(),
+      completion_tokens_details: z.object({ reasoning_tokens: z.number().int().nonnegative().optional() }).nullable().optional(),
     })
     .nullable()
     .optional(),
 });
+type Completion = z.infer<typeof completionSchema>;
+
+/** The model rejected the requested reasoning mode (a non-retryable 4xx naming the parameter). */
+export class ReasoningModeUnsupported extends InvalidModelOutput {}
+
+/** What one completion actually produced — for diagnostics and reports (never contains the reasoning text). */
+export interface CompletionMeta {
+  operation: string;
+  effort: ReasoningEffort | null;
+  maxTokens: number;
+  finishReason: string | null;
+  contentChars: number;
+  reasoningChars: number;
+  reasoningTokens: number | null;
+  completionTokens: number | null;
+  /** HTTP 200 + usage: transport and billing work. */
+  transportOk: boolean;
+  /** Non-empty content that did not stop on max_tokens — a generated answer (not yet schema-checked). */
+  contentGenerated: boolean;
+  /** max_tokens was hit while content was empty and reasoning was present: reasoning consumed the budget. */
+  reasoningExhausted: boolean;
+}
+
+export function completionMeta(c: Completion, operation: string, plan: Pick<ReasoningPlan, 'effort' | 'maxTokens'>): CompletionMeta {
+  const ch = c.choices[0]!;
+  const content = (ch.message.content ?? '').trim();
+  const reasoningChars = (ch.message.reasoning_content ?? '').length;
+  const reasoningTokens = c.usage?.completion_tokens_details?.reasoning_tokens ?? null;
+  const finishReason = ch.finish_reason ?? null;
+  return {
+    operation,
+    effort: plan.effort,
+    maxTokens: plan.maxTokens,
+    finishReason,
+    contentChars: content.length,
+    reasoningChars,
+    reasoningTokens,
+    completionTokens: c.usage?.completion_tokens ?? null,
+    transportOk: !!c.usage,
+    contentGenerated: content.length > 0 && finishReason !== 'length',
+    reasoningExhausted: finishReason === 'length' && content.length === 0 && (reasoningChars > 0 || (reasoningTokens ?? 0) > 0),
+  };
+}
+
+export function describeMeta(m: CompletionMeta): string {
+  const r = m.reasoningTokens !== null ? `${m.reasoningTokens} ток. рассуждения` : m.reasoningChars ? `рассуждение ${m.reasoningChars} симв.` : 'без рассуждения';
+  return `finish_reason ${m.finishReason ?? '—'}, content ${m.contentChars ? `${m.contentChars} симв.` : 'пуст'}, ${r}, completion ${m.completionTokens ?? '—'}/${m.maxTokens}${m.effort ? `, reasoning_effort=${m.effort}` : ''}`;
+}
 
 /** Strip reasoning blocks / code fences a model may wrap JSON in, then parse. */
 export function parseModelJson(content: string): unknown {
@@ -61,31 +119,37 @@ const UNTRUSTED_RULES =
 
 export interface ChatRequest<T> {
   model: string;
-  task: string;
+  /** The operation decides the reasoning policy (`reasoning.ts`). */
+  task: LlmOperation;
   system: string;
   data: unknown;
   schema: z.ZodType<T>;
   /** Wire schema (without refinements) sent as response_format json_schema. */
   wire: z.ZodType;
-  maxTokens: number;
+  /** Tokens for the JSON answer itself; the reasoning reserve is added by the policy. */
+  answerTokens: number;
+  /** Probe diagnostics only: request an unverified reasoning mode. */
+  forceEffort?: ReasoningEffort;
 }
 
 export class AIStudioChat {
   constructor(private readonly caller: ProviderCaller, private readonly cfg: Pick<LiveConfig, 'llmUrl' | 'folderId' | 'authHeader' | 'responseFormat' | 'llmTimeoutMs'>) {}
 
   /** One metered chat completion: worst-case reservation, official request, reconciliation from `usage`. */
-  private async send(ctx: CallContext, model: string, messages: { role: string; content: string }[], maxTokens: number, format: Record<string, unknown>, task: string): Promise<z.infer<typeof completionSchema>> {
+  private async send(ctx: CallContext, model: string, messages: { role: string; content: string }[], plan: Pick<ReasoningPlan, 'effort' | 'maxTokens'>, format: Record<string, unknown>, task: string): Promise<Completion> {
     const tariff = tariffFor(model);
     // No tariff = cost cannot be bounded → fail closed (never call a model we cannot price).
     if (!tariff) throw new InvalidModelOutput(`нет тарифа для модели ${model} — вызов не выполняется (стоимость не ограничена)`);
-    const body = JSON.stringify({ model: `gpt://${this.cfg.folderId}/${model}`, messages, max_tokens: maxTokens, temperature: 0, ...format });
-    let completion: z.infer<typeof completionSchema> | null = null;
+    // Reasoning tokens are part of completion_tokens and bounded by max_tokens (recorded 13.11.2026), so the
+    // worst case below — every input byte a token, output = max_tokens incl. the reasoning reserve — still holds.
+    const body = JSON.stringify({ model: `gpt://${this.cfg.folderId}/${model}`, messages, max_tokens: plan.maxTokens, temperature: 0, ...(plan.effort ? { reasoning_effort: plan.effort } : {}), ...format });
+    let completion: Completion | null = null;
     await this.caller.call(ctx, {
       provider: 'yandex-ai-studio',
       operation: 'llm',
       model,
       priceVersion: YANDEX_PRICE_VERSION,
-      estimateKop: llmWorstCaseKop(tariff, messages, maxTokens),
+      estimateKop: llmWorstCaseKop(tariff, messages, plan.maxTokens),
       build: (ledgerId) => ({
         method: 'POST',
         url: new URL(this.cfg.llmUrl),
@@ -106,22 +170,41 @@ export class AIStudioChat {
         return { outcome: 'reconciled', actualCost: actual, tokensIn: u.prompt_tokens, tokensOut: u.completion_tokens, providerRequestId: providerRequestId ?? parsed.data.id ?? null };
       },
       notBilled: (s) => s === 401 || s === 403,
+      rejected: (status, raw) => {
+        if (!plan.effort) return null;
+        const text = raw.toString('utf8').slice(0, 2_000);
+        return /reasoning/i.test(text) ? new ReasoningModeUnsupported(`${task}: модель ${model} отклонила reasoning_effort=${plan.effort} (HTTP ${status}): ${text.replace(/\s+/g, ' ').slice(0, 200)}`) : null;
+      },
     });
-    const c = completion as z.infer<typeof completionSchema> | null;
+    const c = completion as Completion | null;
     if (!c) throw new InvalidModelOutput(`${task}: ответ провайдера не разобран`);
     return c;
   }
 
   /**
    * Transport check (probe): a tiny plain completion WITHOUT response_format. Proves auth, model URI,
-   * reachability and that `usage` is reported — not the production schema.
+   * reachability and that `usage` is reported. It does NOT prove content generation: with 16 tokens a
+   * reasoning model may return empty content (`meta.contentGenerated` says which).
    */
-  async ping(ctx: CallContext, model: string): Promise<{ content: string; usageReported: boolean; finishReason: string | null }> {
-    const c = await this.send(ctx, model, [{ role: 'user', content: 'Ответь одним словом: ок' }], 16, {}, 'probe_transport');
-    return { content: (c.choices[0]!.message.content ?? '').slice(0, 200), usageReported: !!c.usage, finishReason: c.choices[0]!.finish_reason ?? null };
+  async ping(ctx: CallContext, model: string): Promise<{ content: string; meta: CompletionMeta }> {
+    const plan = { effort: null, maxTokens: 16 };
+    const c = await this.send(ctx, model, [{ role: 'user', content: 'Ответь одним словом: ок' }], plan, {}, 'probe_transport');
+    return { content: (c.choices[0]!.message.content ?? '').slice(0, 200), meta: completionMeta(c, 'probe_transport', plan) };
   }
 
   async complete<T>(ctx: CallContext, r: ChatRequest<T>): Promise<T> {
+    return (await this.completeWithMeta(ctx, r)).value;
+  }
+
+  /**
+   * Structured completion. Accepted only if `content` holds JSON that passes the schema:
+   *  - finish_reason=length is never a result (it is reported as «reasoning exhausted the budget» when
+   *    content is empty and reasoning is present);
+   *  - empty content is never a result;
+   *  - reasoning_content is never parsed as the answer.
+   */
+  async completeWithMeta<T>(ctx: CallContext, r: ChatRequest<T>): Promise<{ value: T; meta: CompletionMeta; plan: ReasoningPlan }> {
+    const plan = planReasoning(r.model, r.task, r.answerTokens, r.forceEffort);
     const messages = [
       { role: 'system', content: `${r.system}\n\n${UNTRUSTED_RULES}\nTASK: ${r.task}` },
       { role: 'user', content: JSON.stringify({ DATA: r.data }) },
@@ -132,18 +215,25 @@ export class AIStudioChat {
         : this.cfg.responseFormat === 'json_object'
           ? { response_format: { type: 'json_object' } }
           : {};
-    const c = await this.send(ctx, r.model, messages, r.maxTokens, format, r.task);
-    const choice = c.choices[0]!;
-    if (choice.finish_reason === 'length') throw new InvalidModelOutput(`${r.task}: ответ обрезан по max_tokens`);
+    const c = await this.send(ctx, r.model, messages, plan, format, r.task);
+    const meta = completionMeta(c, r.task, plan);
+    if (meta.finishReason === 'length') {
+      throw new InvalidModelOutput(
+        meta.reasoningExhausted
+          ? `${r.task}: рассуждение израсходовало весь max_tokens (${describeMeta(meta)}) — JSON не получен`
+          : `${r.task}: ответ обрезан по max_tokens (${describeMeta(meta)})`,
+      );
+    }
+    if (meta.contentChars === 0) throw new InvalidModelOutput(`${r.task}: пустой content (${describeMeta(meta)}) — reasoning_content не используется как ответ`);
     let json: unknown;
     try {
-      json = parseModelJson(choice.message.content ?? '');
+      json = parseModelJson(c.choices[0]!.message.content ?? '');
     } catch {
       throw new InvalidModelOutput(`${r.task}: ответ модели не является JSON`);
     }
     const v = r.schema.safeParse(json);
     if (!v.success) throw new InvalidModelOutput(`${r.task}: ${v.error.issues.slice(0, 3).map((i) => `${i.path.join('.') || 'ответ'}: ${i.message}`).join('; ')}`);
-    return v.data;
+    return { value: v.data, meta, plan };
   }
 }
 
@@ -213,7 +303,7 @@ export class YandexAnalyst implements LLMProvider {
       data: { asOf, known, maxSeeds: this.cfg.maxNew, leads: leads.slice(0, 40).map((l) => ({ url: l.url, title: l.title, snippet: l.snippet ?? '' })) },
       schema: discoveryWire,
       wire: discoveryWire,
-      maxTokens: this.cfg.llmMaxTokens,
+      answerTokens: this.cfg.llmMaxTokens,
     });
     return out.seeds;
   }
@@ -244,7 +334,7 @@ export class YandexAnalyst implements LLMProvider {
       data: { asOf, seed, rubricDimensions: ['westernNeed', 'westernPay', 'ruWeakness', 'ruUnmetJob', 'monetization', 'speedToPilot', 'mvpFeasible', 'fastTest', 'distribution', 'retention', 'defensibility', 'riskManageable'], evidence },
       schema: analystWire,
       wire: analystWire,
-      maxTokens: this.cfg.llmMaxTokens,
+      answerTokens: this.cfg.llmMaxTokens,
     });
     return { ...(out as Omit<AnalystProposal, 'model'>), ruQueries: [...new Set([...out.ruQueries, ...ruQueries])].slice(0, 20), model: this.model } as AnalystProposal;
   }
@@ -271,7 +361,7 @@ export class OfferExtractor {
       data: { jobs: seed.jobs, primaryJob: seed.primaryJob, page: { url: page.url, title: page.title, text: page.text.slice(0, 6000) } },
       schema: offerWire,
       wire: offerWire,
-      maxTokens: this.maxTokens,
+      answerTokens: this.maxTokens,
     });
   }
 }
@@ -318,7 +408,7 @@ export class YandexSkeptic implements SkepticalReviewer {
       },
       schema: skepticWire,
       wire: skepticWire,
-      maxTokens: this.cfg.llmMaxTokens,
+      answerTokens: this.cfg.llmMaxTokens,
     });
     return { ...out, model: this.model };
   }

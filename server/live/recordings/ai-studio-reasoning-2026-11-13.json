@@ -1,0 +1,125 @@
+{
+  "_source": "Real AI Studio /v1/chat/completions responses captured by the authorised Phase B probe on 2026-11-13 (attempt 2), redacted raw records; no secrets, no folder id.",
+  "qwen_ping_reasoning_exhausted": {
+    "request_max_tokens": 16,
+    "status": 200,
+    "response": {
+      "id": "chatcmpl-c5383212-3979-4d8b-9338-39ec2895291f",
+      "object": "chat.completion",
+      "created": 1794555012,
+      "model": "gpt://qwen3.6-35b-a3b/latest",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": null,
+            "reasoning_content": "Here's a thinking process:\n\n1.  **Analyze User Input:**"
+          },
+          "finish_reason": "length"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 16,
+        "total_tokens": 32,
+        "completion_tokens": 16,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    }
+  },
+  "qwen_schema_reasoning_exhausted": {
+    "request_max_tokens": 60,
+    "status": 200,
+    "response": {
+      "id": "chatcmpl-e92c1774-865d-47bb-a947-9cb942507f2e",
+      "object": "chat.completion",
+      "created": 1794555012,
+      "model": "gpt://qwen3.6-35b-a3b/latest",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": null,
+            "reasoning_content": "Here's a thinking process:\n\n1.  **Analyze User Input:**\n   - **Input Format:** JSON with a `DATA` field: `{\"DATA\":{}}`\n   - **Instructions:** \n     - Return a JSON object with `ok=true` and `word`"
+          },
+          "finish_reason": "length"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 137,
+        "total_tokens": 197,
+        "completion_tokens": 60,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        }
+      }
+    }
+  },
+  "deepseek_ping_ok": {
+    "request_max_tokens": 16,
+    "status": 200,
+    "response": {
+      "id": "chatcmpl-364a7593-5c33-48b9-917e-384cdff21b67",
+      "object": "chat.completion",
+      "created": 1794555013,
+      "model": "gpt://deepseek-v4.1-flash/latest",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "ок",
+            "reasoning_content": "We need answer one word: ок. Need comply."
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 37,
+        "total_tokens": 51,
+        "completion_tokens": 14,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 12
+        }
+      }
+    }
+  },
+  "deepseek_schema_ok": {
+    "request_max_tokens": 60,
+    "status": 200,
+    "response": {
+      "id": "chatcmpl-6e552e6b-b612-474f-8355-5d76207ae1df",
+      "object": "chat.completion",
+      "created": 1794555014,
+      "model": "gpt://deepseek-v4.1-flash/latest",
+      "choices": [
+        {
+          "index": 0,
+          "message": {
+            "role": "assistant",
+            "content": "{\"ok\":true,\"word\":\"пример\"}",
+            "reasoning_content": "The user wants JSON: ok=true and word — any one word. DATA is empty, but the task is just probe_schema, no data needed. Return {\"ok\":true,\"word\":\"...\"}."
+          },
+          "finish_reason": "stop"
+        }
+      ],
+      "usage": {
+        "prompt_tokens": 286,
+        "total_tokens": 338,
+        "completion_tokens": 52,
+        "prompt_tokens_details": {
+          "cached_tokens": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 41
+        }
+      }
+    }
+  }
+}

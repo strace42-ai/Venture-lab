@@ -3,6 +3,7 @@
  * HTTP) and the CLI (`--live --execute`, Phase B only) exercise exactly the same path.
  */
 import { YANDEX_TARIFFS, inputTokenBound, llmCostKop, searchCostKop, tariffFor } from './prices';
+import { planReasoning } from './reasoning';
 import { buildLiveProviders, type LiveBundle, type LiveDeps } from './providers';
 import type { LiveConfig } from './config';
 import { jobKeyFor, runWorkerJob, TrialRefused, workerToday, type RunOptions, type RunResult, type TrialSpec } from '../machine/worker';
@@ -10,7 +11,7 @@ import { discoverySeedSchema } from '../machine/schemas';
 import type { DiscoverySeed } from '../machine/types';
 import type { Pool } from '../db/pool';
 import { withPaidExecutionLock } from './paid-lock';
-import { PROBE_REQUIRED_CHECKS, runProbe, type ProbeCheck } from './probe';
+import { PROBE_DIAGNOSTIC_CALLS, PROBE_REQUIRED_CHECKS, runProbe, type ProbeCheck } from './probe';
 import type { ISODate } from '../../src/domain/types';
 
 export interface LiveRunInput {
@@ -61,9 +62,10 @@ export function livePlan(cfg: LiveConfig) {
   const analyst = tariffFor(cfg.analystModel);
   const skeptic = tariffFor(cfg.skepticModel);
   const msg = (bytes: number) => [{ role: 'system', content: 'x'.repeat(3000) }, { role: 'user', content: 'x'.repeat(bytes) }];
-  const extractKop = analyst ? llmCostKop(analyst, { input: inputTokenBound(msg(14_000)), output: 700 }) : null;
-  const analyseKop = analyst ? llmCostKop(analyst, { input: inputTokenBound(msg(4 * cfg.evidenceHits * 9_000)), output: cfg.llmMaxTokens }) : null;
-  const skepticKop = skeptic ? llmCostKop(skeptic, { input: inputTokenBound(msg(60_000)), output: cfg.llmMaxTokens }) : null;
+  // Output bound = max_tokens actually sent: answer tokens + the model's reasoning reserve (reasoning.ts).
+  const extractKop = analyst ? llmCostKop(analyst, { input: inputTokenBound(msg(14_000)), output: planReasoning(cfg.analystModel, 'extract_offer', 700).maxTokens }) : null;
+  const analyseKop = analyst ? llmCostKop(analyst, { input: inputTokenBound(msg(4 * cfg.evidenceHits * 9_000)), output: planReasoning(cfg.analystModel, 'analyse_candidate', cfg.llmMaxTokens).maxTokens }) : null;
+  const skepticKop = skeptic ? llmCostKop(skeptic, { input: inputTokenBound(msg(60_000)), output: planReasoning(cfg.skepticModel, 'skeptic_challenge', cfg.llmMaxTokens).maxTokens }) : null;
   const llmCalls = Math.min(cfg.rateLimits.llm, 1 + reads + 2 * candidates);
   const worstKop =
     searches * searchCostKop() + (extractKop !== null && analyseKop !== null && skepticKop !== null ? Math.min(llmCalls, reads) * extractKop + candidates * (analyseKop + skepticKop) + analyseKop : Number.POSITIVE_INFINITY);
@@ -118,14 +120,16 @@ export async function runPaidStage(
         budget: gate.maxSpendKop,
         monthlyBudget: cfg.monthlyBudgetKop,
         maxAttempts: 3, // the first try + at most 2 explicit --retry, all within the same 5 ₽ stage budget
-        rateLimits: { search: 2, read: 0, llm: 4 },
+        rateLimits: { search: 2, read: 0, llm: 4 + PROBE_DIAGNOSTIC_CALLS },
         trial: gate.trial,
         independence: bundle.independence,
         now,
         probe: async (ctx) => {
           const checks = await runProbe(bundle, { analyst: cfg.analystModel, skeptic: cfg.skepticModel }, ctx);
-          const failed = checks.filter((c) => !c.ok);
-          return { passed: failed.length === 0 && checks.length === PROBE_REQUIRED_CHECKS, report: checks, failure: failed.map((c) => `${c.check}: ${c.detail}`).join('; ') || undefined };
+          // Only the required checks decide; reasoning-off diagnostics are reported, never failing.
+          const required = checks.filter((c) => c.required);
+          const failed = required.filter((c) => !c.ok);
+          return { passed: failed.length === 0 && required.length === PROBE_REQUIRED_CHECKS, report: checks, failure: failed.map((c) => `${c.check}: ${c.detail}`).join('; ') || undefined };
         },
       });
       return r as RunResult & { probe?: ProbeCheck[] };

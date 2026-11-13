@@ -1,5 +1,87 @@
 # Venture Lab — Latest handoff
 
+## VL-004B-reasoning — reasoning-aware AI Studio adapter (2026-11-13)
+**Why.** Probe attempt 2, the authorised `--retry`, passed 5 of 6 checks:
+- the secret was substituted through HTTPS_PROXY;
+- the search returned 10 + 10 documents;
+- DeepSeek returned a valid schema;
+- **Qwen3.6 spent the whole `max_tokens` (16 and 60) on `reasoning_content`**: `content` was null and `finish_reason` was `length`.
+
+Ledger: 1.18 ₽ of the 5 ₽ trial. The job is `failed` with 2/3 attempts, so **one attempt is left (3.82 ₽)**.
+
+**Documentation check:**
+- **Yandex «Reasoning mode» page:**
+  - `reasoning_effort` is documented with low / medium / high;
+  - reasoning is on by default;
+  - «the Qwen family can turn reasoning off but not choose its depth», with no value named;
+  - DeepSeek is not mentioned.
+- **Official SDK `yandex-ai-studio-sdk` 0.22.1:** `reasoning_effort` takes low / medium / high only; `reasoning_content` is read separately.
+- **API reference page:** it could not be read here, because it returned a bot check.
+- **Result:** `none` is **unverified** for both models.
+
+**Change** (branch `claude/vl-004b-reasoning-policy`, base `claude/vl-004b-provider-proxy` @ `afa43bf`):
+- **`server/live/reasoning.ts`:**
+  - model profiles, with evidence: both reason by default, and disabling is `unverified`;
+  - operation policy: simple → `none` only when verified, otherwise answer + reserve (1024 probe / 2048 extraction); reasoned → reserve 4096;
+  - `planReasoning()`.
+- **`ai-studio.ts`:**
+  - every call is planned by operation;
+  - `max_tokens` = answer + reserve;
+  - `reasoning_effort` is sent only when planned;
+  - `content` is the only answer: `finish_reason=length`, empty content and JSON in `reasoning_content` are refused;
+  - errors name reasoning exhaustion;
+  - `CompletionMeta` gives transport vs content generation, plus reasoning tokens/chars;
+  - a 4xx naming `reasoning_effort` becomes `ReasoningModeUnsupported` and is never retried.
+- **`provider-http.ts`:** an optional `rejected()` hook explains a non-retryable 4xx.
+- **Probe:**
+  - the 6 required checks are unchanged;
+  - transport now reports «content generated: yes/no» explicitly;
+  - mini-schema uses the production policy (60 + 1024);
+  - **+2 non-required diagnostics** of `reasoning_effort=none` per model: `disabled`, `ignored`, `rejected` or `inconclusive`. They never fail the probe;
+  - the probe LLM call limit is 4 → 6.
+- **`run.ts`:** the worst-case plan uses the planned `max_tokens`. The dry-run «worst case by limits» rose from 1441 to 1648 ₽. That figure is informational: the job and stage budgets are unchanged.
+- **Unchanged:** scoring, network proxy, budgets, research criteria.
+
+**Money.** Reasoning tokens are part of `completion_tokens` and bounded by `max_tokens`: the 13.11 Qwen responses show `completion_tokens == max_tokens`. The reservation uses the `max_tokens` actually sent, and a reply above it sets a billing anomaly.
+
+Final probe worst case: the sum of all 8 reservations is **3.11 ₽ ≤ 3.82 ₽**, so even if every call stayed at its worst case, the probe fits the remaining budget.
+
+**Tests** (`server/test/live-reasoning.test.ts`, 15 tests):
+- **Recorded:** the four REAL 13.11 responses (`recordings/ai-studio-reasoning-2026-11-13.json`).
+- **Constructed** (marked): «reasoning off» success and «mode rejected».
+- **Covered:**
+  - reasoning filled with empty content;
+  - `finish_reason=length`;
+  - valid JSON;
+  - JSON only in reasoning_content refused;
+  - an unsupported mode, rejected and not retried;
+  - a successful disable;
+  - an ignored mode;
+  - the policy per model and operation, including the verified/unsupported switch;
+  - pipeline `max_tokens` (extract/discovery/analyse/skeptic);
+  - the reservation covering reasoning;
+  - the billing anomaly;
+  - the probe report replayed from the real responses.
+
+**Checks:**
+- `lint` ✔, `typecheck` ✔, `build` ✔.
+- `CI=true npm test` with PostgreSQL ✔: **452 tests in 25 files**.
+- The dry-run is ready.
+
+**Final probe** (after separate approval): `--probe --retry --max-spend-rub 5`, with the same trial ID and the `vl_phase_b_probe` DB in this container.
+
+**Expectations for Qwen:**
+- the mini-schema passes if its reasoning fits 1024 tokens;
+- the diagnostics show whether `none` works. If it is `disabled`, a separate small change can mark it `verified`.
+
+**Risks:**
+- Qwen reasoning longer than the reserve would again give a length failure, now reported clearly;
+- the 4096 reserve for analysis is not yet measured on real candidates (stage 2).
+
+No paid request, no merge, no cloud resource.
+
+---
+
 ## VL-004B-proxy — provider calls through HTTPS_PROXY (2026-11-13)
 **Why.** The authorised probe on 13.11.2026 stopped at the first search with HTTP 401 «Unknown api key 'dumm****aces'», so the dummy key reached Yandex.
 - `NodeTransport` connects directly (`agent: false`) and ignores `HTTPS_PROXY`.
