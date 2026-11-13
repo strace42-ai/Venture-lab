@@ -39,6 +39,20 @@ Search 5xx and authorization errors are documented as not billed. If a tariff ch
    export YANDEX_API_KEY=<secret>      # or YANDEX_IAM_TOKEN
    export VL_LIVE_EXECUTE=phase-b-authorized   # separate activation flag; set only after Phase B is authorised
    ```
+   **Claude Code cloud environment (network secrets).** Here the real key never enters the container:
+   - **Where the key lives.** The environment stores it as a *network secret* for each host: header `Authorization`, prefix `Api-Key`.
+   - **What the app sends.** `YANDEX_API_KEY` holds a dummy value, so the app sends `Authorization: Api-Key <dummy>`.
+   - **Who substitutes the key.** The agent proxy named in `HTTPS_PROXY` replaces the dummy, but **only for requests sent through it**:
+     - the provider transport (`server/live/net/provider-proxy.ts`) sends exactly the two paid endpoints through a CONNECT tunnel when `HTTPS_PROXY` is set:
+       - `searchapi.api.cloud.yandex.net/v2/web/search`;
+       - `ai.api.cloud.yandex.net/v1/chat/completions`;
+     - without `HTTPS_PROXY` it connects directly, as before;
+     - a malformed or non-`http://` `HTTPS_PROXY` is refused before any request.
+   - **Web reader.** The web reader never uses the proxy, and its SSRF guard, DNS pinning and robots.txt are unchanged.
+   - **TLS.** TLS is verified with Node's trust store: the proxy CA must be trusted. In this environment `NODE_OPTIONS=--use-openssl-ca` already does that. Elsewhere, set `NODE_EXTRA_CA_CERTS` to the proxy CA bundle; never disable verification.
+   - **Dry-run.** `--dry-run` prints the route («Маршрут платных запросов»).
+   - **What the tests do not prove.** The offline tests show that the tunnel is used. Only an authorised real request shows that the secret is substituted.
+
 6. **Network allowlist on the host.** The host needs outbound HTTPS to:
    - `searchapi.api.cloud.yandex.net`;
    - `ai.api.cloud.yandex.net`;

@@ -26,6 +26,7 @@ import { join } from 'node:path';
 import { describeConfig, loadLiveConfig, readinessProblems, type LiveConfig } from '../live/config';
 import { paidRunGate, STAGE_CAPS_RUB, TRIAL_BUDGET_RUB } from '../live/gate';
 import { NodeTransport, systemResolver } from '../live/net/transport';
+import { describeProviderRoute, providerTransportFromEnv, proxyFromEnv, type ProviderTransport } from '../live/net/provider-proxy';
 import { CapturingTransport, defaultRawDir } from '../live/raw-capture';
 import { livePlan, parseSeeds, runPaidStage } from '../live/run';
 import { exportReviewCsv } from '../machine/export';
@@ -95,6 +96,11 @@ async function live(): Promise<void> {
     console.log(`Границы прогона: кандидатов ≤ ${plan.bounds.candidates}, поисковых запросов ≤ ${plan.bounds.searches}, страниц ≤ ${plan.bounds.reads}, вызовов моделей ≤ ${plan.bounds.llmCalls}`);
     console.log(`Худший случай по лимитам: ${rub(plan.worstCaseKop)} (${plan.note})`);
     console.log(`Испытание Phase B: общий потолок ${TRIAL_BUDGET_RUB} ₽; ступени probe ${STAGE_CAPS_RUB.probe} ₽ · stage2 ${STAGE_CAPS_RUB.stage2} ₽ · stage3 ${STAGE_CAPS_RUB.stage3} ₽; поиск не чаще 1 запроса в ${cfg.searchMinIntervalMs} мс.`);
+    try {
+      console.log(`Маршрут платных запросов: ${describeProviderRoute(proxyFromEnv(process.env))}`);
+    } catch (e) {
+      problems.push((e as Error).message);
+    }
     console.log(problems.length ? `✖ Платный запуск сейчас невозможен: ${problems.join('; ')}` : '✔ Конфигурация готова; платный запуск требует отдельного разрешения (Phase B), VL_LIVE_EXECUTE и --execute.');
     return;
   }
@@ -124,12 +130,23 @@ async function live(): Promise<void> {
     process.exitCode = 2;
     return;
   }
+  // Provider route (HTTPS_PROXY tunnel for the two paid endpoints, else direct). Fail closed before any I/O.
+  let providerTransport: ProviderTransport;
+  try {
+    providerTransport = providerTransportFromEnv(process.env);
+  } catch (e) {
+    console.error('✖ Платный запуск отклонён (ни одного запроса не сделано):');
+    console.error(`  - ${(e as Error).message}`);
+    process.exitCode = 2;
+    return;
+  }
   const seeds = opt('--seeds') ? parseSeeds(JSON.parse(readFileSync(opt('--seeds')!, 'utf8'))) : undefined;
   const rawDir = defaultRawDir(gate.trial.id); // records go to <rawDir>/<trial_id_stage>/attempt-<n>/ — never overwritten
   const lockFile = process.env.VL_LOCK_FILE ?? join(homedir(), '.venture-lab', 'live-paid.lock');
-  const capture = new CapturingTransport(new NodeTransport(), rawDir, [process.env.YANDEX_API_KEY, process.env.YANDEX_IAM_TOKEN, cfg!.folderId]);
+  const capture = new CapturingTransport(providerTransport, rawDir, [process.env.YANDEX_API_KEY, process.env.YANDEX_IAM_TOKEN, cfg!.folderId]);
   const pool = createPool(loadConfig().databaseUrl);
   try {
+    console.log(`• Маршрут платных запросов: ${describeProviderRoute(providerTransport.proxy)}`);
     console.log(`• LIVE ${gate.trial.stage}: испытание ${gate.trial.id}, потолок ступени ${gate.maxSpendKop / 100} ₽, общий потолок ${gate.trial.budgetKop / 100} ₽; модели ${cfg!.analystModel} / ${cfg!.skepticModel}; сырые ответы → ${rawDir}`);
     const r = await runPaidStage(pool, cfg!, gate, { providerTransport: capture, webTransport: new NodeTransport(), resolver: systemResolver }, { seeds, lockFile, retry: flags.has('--retry') });
     print(r);
