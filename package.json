@@ -30,6 +30,7 @@
     "research:worker:tick": "tsx server/cli/worker.ts tick",
     "research:worker:status": "tsx server/cli/worker.ts status",
     "research:worker:export": "tsx server/cli/worker.ts export",
+    "research:worker:recover": "tsx server/cli/worker.ts recover",
     "research:benchmark": "tsx server/cli/benchmark.ts"
   },
   "dependencies": {

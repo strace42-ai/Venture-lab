@@ -96,6 +96,8 @@ jobs:
           if VL_LIVE_PROVIDER=yandex YANDEX_FOLDER_ID=b1gcifolder0000000 YANDEX_API_KEY=ci-dummy-not-a-key VL_LIVE_EXECUTE=phase-b-authorized VL_TRIAL_ID=ci-trial npm run research:worker:run -- --live --once --execute --probe --max-spend-rub 5; then echo "probe ran in CI"; exit 1; fi
           # no schedule for live
           if npm run research:worker:tick -- --live; then echo "live tick was not refused"; exit 1; fi
+          # recovery (succeeded → incomplete) is DB-only, audited, and refuses a stage that never ran
+          if npm run research:worker:recover -- --live --trial ci-none --stage stage2 --mark-incomplete --apply; then echo "recover accepted a missing stage"; exit 1; fi
           # review export works offline (empty trial → header only)
           npm run research:worker:export -- --live --trial ci-none --out /tmp/review.csv
           head -1 /tmp/review.csv | grep -q "^kind,job_key,trial_stage" 

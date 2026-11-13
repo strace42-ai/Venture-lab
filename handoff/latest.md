@@ -1,5 +1,95 @@
 # Venture Lab — Latest handoff
 
+## VL-004B-stage2-resume — strict analyst schema, «incomplete» status, safe resume, evidence kept, extraction regressions (2026-11-13)
+**Input.** Stage2 of `phase-b-pilot-01` (Touch Stay) on 13.11.2026.
+- The analyst got HTTP 400 «Invalid JSON Schema: all fields must be required, 'highImpact' is optional».
+- The job was nevertheless `succeeded`, and `--retry` refused a `succeeded` stage.
+- The collected sources were not stored.
+- The founder's audit also listed extraction defects.
+
+**P1 — strict schema** (`server/live/strict-schema.ts`, `ai-studio.ts`):
+- **New `analystStrictWire`:**
+  - all fields required;
+  - `highImpact` boolean;
+  - `absence` object|null;
+  - `scores` is a FIXED object of all 12 dimensions, each `{value: 0–5|null, claims}`; null = no score, never 0.
+- **`analystFromWire()`** converts explicitly into the internal proposal. Then `analystProposalSchema` validates it, unchanged.
+- **The formula and the evidence rules are unchanged.**
+- **`strictWireJson()`:**
+  - sanitizes (validation-only keywords are enforced locally; `type:[T,null]` becomes the proven `anyOf [T,null]`; `const` becomes `enum`);
+  - then verifies strict mode: all properties required, `additionalProperties:false`, no dictionaries, `anyOf` only `T|null`, no `$ref`/`allOf`/…;
+  - **only keywords Yandex accepted on 13.11** are sent (the set is derived from the raw accepted requests);
+  - a non-strict schema throws BEFORE any reservation or request.
+- **Tests:** a regression for «all fields must be required»; every wire is checked.
+
+**P1 — technical incompleteness and resume** (migration **009**):
+- **`incomplete`** status for jobs and attempts. A trial run whose candidate stopped for a technical reason (analyst/skeptic unavailable or output rejected) ends `incomplete`, never `succeeded`. A DB trigger forbids `incomplete → succeeded`.
+- **Runs of a stage:**
+  - `trial_run`; run 1 = the old key; run n = `…:r<n>`; a unique index on (trial, stage, run); at most 3 runs;
+  - `--retry` after `incomplete` starts a NEW run;
+  - the new run's budget = the stage cap minus everything the earlier runs committed (the trial ledger stays cumulative);
+  - stage order is checked against the latest run.
+- **`--retry` after `failed`** = a new attempt in the same job, with that job's research date (same month only; refused across months).
+- **Recovery `research:worker:recover`** (`server/live/recover.ts`), DB only:
+  - proves a technical stop from stored rows (`quality_gate` technical hold, 0 skeptic-reviewed claims, 0 competitors, 0 snapshots);
+  - dry-run by default; `--apply` changes only the job status and writes `mr_job_events`;
+  - attempts, ledger, assessments and reviews are untouched;
+  - tried on a COPY of the real database (`vl_phase_b_probe`): «аналитик: HTTP 400», 27 ledger rows, 11.88 ₽, of which 7.79 ₽ unknown; applied once, refused the second time;
+  - the real database was not touched.
+- **`mr_job_events`** is append-only.
+
+**P1 — evidence kept:**
+- on an analyst or skeptic failure, the sources (URL, fetch status, grounded offer, provenance), the searches and the code-checked claims (skeptic `not_reviewed`) are stored, plus the reason in `mr_reviews`;
+- new rows carry `attempt` (`mr_sources` / `mr_searches` / `mr_reviews`; NOT VALID check for new rows);
+- the candidate is not assessed: DISCOVERED, grade D, never ranked;
+- the TOP-10 is untouched (no snapshot for a trial).
+
+**P2 — extraction** (`grounding.ts`, tests on the REAL stage2 extractions, `recordings/stage2-extractions-2026-11-13.json`):
+- **Job quotes:** promotional copy («Black Friday», «% off», «скидка») never proves a function. A quote must share a term with the job (slug words or the candidate's RU keywords, prefix stems). This is a necessary condition only: a quote that mentions guests but describes guest identification (E-regcard) still passes — a semantic check is separate work.
+- **Price:** an amount with a currency or a free tier; long sentences and «Get started free» CTAs are refused.
+- **Market:** the model's «ru» is not kept as a label on a page with no Russian text (Touch Stay). The possible-rival rules use `marketVerified` and are unchanged. One Phase A assertion was updated deliberately: AutoScan Reader is labelled `west`, still a possible direct rival, and the TOP is unchanged.
+- **`pageKind`:** the model's label is not stored and can only LOWER trust: «independent» still needs verifiable markup.
+- **Defect found by the regression test:** a judgement dimension (speedToPilot, mvpFeasible, fastTest, retention, defensibility, riskManageable) citing a claim whose quote is not on any page escaped the «no 5 from prose» cap (`UNSOURCED_CAP` = 4), because the cap checked only for an empty citation list.
+  - **Fix:** a cited but unproven claim counts as no source, which matches the rule's stated intent.
+  - Evidence dimensions were already safe (null).
+  - The formula is unchanged.
+  - **Open (founder decision):** judgement dimensions still accept the model's UNSOURCED score up to 4 by design. A fabricated reply therefore still scores above the recorded baseline (6 × 4), though no higher than the same reply as prose.
+
+**Unchanged:** scoring formula, selection criteria, network proxy, budgets.
+
+**Benchmark:** identical states, scores and rivals. The only change is the synthetic cost (55.14 → 56.24 ₽), because the strict analyst reply is longer.
+
+**Tests:**
+- `live-resume.test.ts` (6, PostgreSQL):
+  - the real case: a DB at 008 with the pilot's stage2 rows (`succeeded`, 400, 7.79 ₽ unknown);
+  - upgrade to 009;
+  - dry-run, then apply; never back; history byte-identical;
+  - stage3 blocked;
+  - `--retry` gives run r2 with budget 4812: strict analyst plus skeptic, claims reviewed, rivals stored, trial ledger cumulative, nothing published, old run unchanged;
+  - the new behaviour: an analyst 400 gives `incomplete` with the evidence kept; `--retry` then gives r2.
+- `live-strict-extraction.test.ts` (20 tests).
+- Updated: the migration list and one direct-SQL test now passes `attempt`.
+
+**Small defect found, not fixed:** raw-capture redaction can leave a lone backslash when a phone number follows `\n` inside a JSON-encoded string. The record becomes invalid JSON; no secret leaks. Repaired in the fixture only.
+
+**Checks:**
+- `lint` ✔, `typecheck` ✔, `build` ✔.
+- `CI=true npm test` with PostgreSQL ✔: **492 tests in 27 files**.
+- CLI smokes ✔: migrate ×2, fixture worker 4/10 and `already-succeeded`, dry-run, recover refusal.
+- New CI smoke for `recover`.
+
+**Remaining stage2 budget** (exact, by the ledger): 6000 − 1188 = **4812 kop = 48.12 ₽**. The trial: 30000 − (107 + 1188) = 28705 kop.
+
+**Before any paid resume:**
+- reconcile the 400 and the 502 with Billing;
+- apply 009 to `vl_phase_b_probe`;
+- run recover, first as a dry-run, then with `--apply`;
+- then a separately authorised `--retry`.
+
+No paid request, no merge, no cloud resource.
+
+---
+
 ## VL-004B-reasoning-verified — «none» verified, probe search retries, proxy-error accounting (2026-11-13)
 **Input:** the third real probe on 13.11.2026.
 - The trial `phase-b-probe-20261113` is closed: 3/3 attempts used, 2.24 ₽ spent by the ledger.

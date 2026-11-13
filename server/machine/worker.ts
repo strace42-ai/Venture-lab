@@ -44,7 +44,16 @@ export interface TrialSpec {
   /** Cumulative ceiling of the whole trial, kopecks (immutable once the trial exists). */
   budgetKop: number;
   stage: TrialStage;
+  /** Run of the stage (default 1). A run n > 1 resumes after an `incomplete` run; it is a new job. */
+  run?: number;
+  /** Ceiling of the stage over ALL its runs, kopecks (cumulative; the new run gets what is left). */
+  stageCapKop?: number;
+  /** The incomplete run this run continues (audit). */
+  resumesJobId?: number;
 }
+
+/** Maximum runs of one trial stage. */
+export const MAX_TRIAL_RUNS = 3;
 
 export class TrialRefused extends Error {}
 
@@ -75,7 +84,7 @@ export interface RunOptions {
   failAt?: 'pipeline' | 'persist';
 }
 
-export type RunStatus = 'succeeded' | 'already-succeeded' | 'already-running' | 'partial' | 'failed' | 'exhausted' | 'monthly-cap';
+export type RunStatus = 'succeeded' | 'already-succeeded' | 'already-running' | 'partial' | 'failed' | 'exhausted' | 'monthly-cap' | 'incomplete' | 'already-incomplete';
 
 export interface RunResult {
   status: RunStatus;
@@ -87,8 +96,8 @@ export interface RunResult {
   spent?: number;
 }
 
-export function jobKeyFor(feed: Feed, asOf: ISODate, trial?: Pick<TrialSpec, 'id' | 'stage'>): string {
-  return trial ? `trial:${trial.id}:${trial.stage}` : `daily:${feed}:${asOf}`;
+export function jobKeyFor(feed: Feed, asOf: ISODate, trial?: Pick<TrialSpec, 'id' | 'stage' | 'run'>): string {
+  return trial ? `trial:${trial.id}:${trial.stage}${(trial as TrialSpec).run && (trial as TrialSpec).run! > 1 ? `:r${(trial as TrialSpec).run}` : ''}` : `daily:${feed}:${asOf}`;
 }
 
 /** «Today» in the worker timezone (YYYY-MM-DD). */
@@ -141,20 +150,46 @@ async function acquire(pool: Pool, o: Required<Pick<RunOptions, 'feed' | 'asOf' 
       const idx = TRIAL_STAGE_ORDER.indexOf(o.trial.stage);
       if (idx > 0) {
         const prev = TRIAL_STAGE_ORDER[idx - 1]!;
-        const p = (await c.query<{ status: string }>('SELECT status FROM mr_jobs WHERE trial_id = $1 AND trial_stage = $2', [o.trial.id, prev])).rows[0];
+        // the LATEST run of the previous stage decides (an incomplete run never unlocks the next stage)
+        const p = (await c.query<{ status: string }>('SELECT status FROM mr_jobs WHERE trial_id = $1 AND trial_stage = $2 ORDER BY trial_run DESC LIMIT 1', [o.trial.id, prev])).rows[0];
         if (p?.status !== 'succeeded') throw new TrialRefused(`ступень ${o.trial.stage} испытания ${o.trial.id} возможна только после успешной ступени ${prev} (сейчас: ${p?.status ?? 'не запускалась'})`);
       }
     }
-    await c.query(
-      `INSERT INTO mr_jobs (job_key, feed, as_of, timezone, status, max_attempts, budget_limit, monthly_cap, pipeline_version, trial_id, trial_stage)
-       VALUES ($1, $2, $3, $4, 'queued', $5, $6, $7, $8, $9, $10) ON CONFLICT (job_key) DO NOTHING`,
-      [key, o.feed, o.asOf, WORKER_TIMEZONE, o.maxAttempts, o.budget, o.monthlyBudget, PIPELINE_VERSION, o.trial?.id ?? null, o.trial?.stage ?? null],
+    // A trial stage's cap is cumulative over its runs: a new run's job budget is what the earlier runs left.
+    let budget = o.budget;
+    const run = o.trial ? (o.trial.run ?? 1) : null;
+    if (o.trial && run! > 1 && !(await c.query('SELECT 1 FROM mr_jobs WHERE job_key = $1', [key])).rowCount) {
+      const earlier = (
+        await c.query<{ s: number }>(
+          `SELECT ${COMMITTED} AS s FROM mr_attempts a JOIN mr_jobs j ON j.id = a.job_id WHERE j.trial_id = $1 AND j.trial_stage = $2 AND j.trial_run < $3`,
+          [o.trial.id, o.trial.stage, run],
+        )
+      ).rows[0]!.s;
+      const cap = o.trial.stageCapKop ?? o.budget;
+      budget = Math.min(o.budget, cap - earlier);
+      if (budget <= 0) throw new TrialRefused(`бюджет ступени ${o.trial.stage} испытания ${o.trial.id} исчерпан прежними прогонами (${earlier} из ${cap} коп.)`);
+    }
+    const inserted = await c.query(
+      `INSERT INTO mr_jobs (job_key, feed, as_of, timezone, status, max_attempts, budget_limit, monthly_cap, pipeline_version, trial_id, trial_stage, trial_run)
+       VALUES ($1, $2, $3, $4, 'queued', $5, $6, $7, $8, $9, $10, $11) ON CONFLICT (job_key) DO NOTHING RETURNING id`,
+      [key, o.feed, o.asOf, WORKER_TIMEZONE, o.maxAttempts, budget, o.monthlyBudget, PIPELINE_VERSION, o.trial?.id ?? null, o.trial?.stage ?? null, run],
     );
+    if (inserted.rowCount && o.trial && run! > 1) {
+      await c.query("INSERT INTO mr_job_events (job_id, kind, from_status, to_status, reason, evidence) VALUES ($1, 'run_started', NULL, 'queued', $2, $3)", [
+        inserted.rows[0].id,
+        `прогон ${run} ступени ${o.trial.stage}: продолжение технически незавершённого прогона; бюджет прогона ${budget} коп. из остатка ступени`,
+        JSON.stringify({ resumesJobId: o.trial.resumesJobId ?? null, run, budgetKop: budget, stageCapKop: o.trial.stageCapKop ?? null }),
+      ]);
+    }
     const job = (await c.query<JobRow>('SELECT id, status, attempts, max_attempts, lease_until, budget_limit FROM mr_jobs WHERE job_key = $1 FOR UPDATE', [key])).rows[0]!;
     const done = (status: RunStatus, message: string): RunResult => ({ status, jobKey: key, jobId: job.id, attempt: job.attempts, message });
     if (job.status === 'succeeded') {
       await c.query('COMMIT');
       return done('already-succeeded', `Задание ${key} уже выполнено — повторный запуск ничего не меняет.`);
+    }
+    if (job.status === 'incomplete') {
+      await c.query('COMMIT');
+      return done('already-incomplete', `Задание ${key} технически не завершено — его история неизменна; продолжение только новым прогоном ступени (--retry).`);
     }
     if (job.status === 'running' && job.lease_until && job.lease_until > now) {
       await c.query('COMMIT');
@@ -262,7 +297,7 @@ async function insertUsage(c: PoolClient, feed: Feed, jobId: number, attempt: nu
 }
 
 /** Settle an attempt in the ledger (actual usage replaces the reservation) and recompute the job's spend. */
-async function settleAttempt(c: PoolClient, feed: Feed, jobId: number, attempt: number, ctx: CallContext, status: 'succeeded' | 'failed' | 'partial', now: Date) {
+async function settleAttempt(c: PoolClient, feed: Feed, jobId: number, attempt: number, ctx: CallContext, status: 'succeeded' | 'failed' | 'partial' | 'incomplete', now: Date) {
   await insertUsage(c, feed, jobId, attempt, ctx.usage);
   // A superseded attempt keeps its status; only its actual usage is recorded.
   await c.query(
@@ -350,7 +385,7 @@ async function persist(pool: Pool, feed: Feed, asOf: ISODate, jobId: number, att
     if (own.rows[0]?.attempts !== attempt || own.rows[0]?.status !== 'running') throw new Error('задание перехвачено другой попыткой — результат не записан');
 
     for (const s of result.discoverySearches) {
-      await c.query('INSERT INTO mr_searches (job_id, candidate_id, feed, agent, purpose, region, query, result_count, status) VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8)', [jobId, feed, s.agent, s.purpose, s.region, s.query, s.resultCount, s.status]);
+      await c.query('INSERT INTO mr_searches (job_id, candidate_id, feed, agent, purpose, region, query, result_count, status, attempt) VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9)', [jobId, feed, s.agent, s.purpose, s.region, s.query, s.resultCount, s.status, attempt]);
     }
 
     const ids = new Map<string, number>();
@@ -371,12 +406,12 @@ async function persist(pool: Pool, feed: Feed, asOf: ISODate, jobId: number, att
       for (const s of cand.sources) {
         await c.query(
           `INSERT INTO mr_sources (job_id, candidate_id, feed, source_key, url, publisher, region, source_type, fetch_status, http_status, content_hash, excerpt, observed_at, agent,
-                                   canonical_url, fetched_at, page_title, content_type, failure, offer, extraction_model, provenance)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+                                   canonical_url, fetched_at, page_title, content_type, failure, offer, extraction_model, provenance, attempt)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)`,
           [
             jobId, id, feed, s.key, s.url, s.publisher, s.region, s.sourceType, s.fetchStatus, s.httpStatus, s.contentHash, s.excerpt, asOf, s.agent,
             s.canonicalUrl ?? null, s.fetchedAt ?? null, s.title?.slice(0, 500) ?? null, s.contentType?.slice(0, 200) ?? null, s.failure?.slice(0, 500) ?? null,
-            s.offer ? JSON.stringify(s.offer) : null, s.offer?.grounding?.extractor ?? null, s.provenance ? JSON.stringify(s.provenance) : null,
+            s.offer ? JSON.stringify(s.offer) : null, s.offer?.grounding?.extractor ?? null, s.provenance ? JSON.stringify(s.provenance) : null, attempt,
           ],
         );
       }
@@ -388,7 +423,7 @@ async function persist(pool: Pool, feed: Feed, asOf: ISODate, jobId: number, att
         );
       }
       for (const s of cand.searches) {
-        await c.query('INSERT INTO mr_searches (job_id, candidate_id, feed, agent, purpose, region, query, result_count, status) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [jobId, id, feed, s.agent, s.purpose, s.region, s.query, s.resultCount, s.status]);
+        await c.query('INSERT INTO mr_searches (job_id, candidate_id, feed, agent, purpose, region, query, result_count, status, attempt) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)', [jobId, id, feed, s.agent, s.purpose, s.region, s.query, s.resultCount, s.status, attempt]);
       }
       for (const co of cand.competitors) {
         await c.query(
@@ -397,7 +432,7 @@ async function persist(pool: Pool, feed: Feed, asOf: ISODate, jobId: number, att
         );
       }
       for (const r of cand.reviews) {
-        await c.query('INSERT INTO mr_reviews (job_id, candidate_id, feed, reviewer, model, decision, summary, findings, cited_claims) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)', [jobId, id, feed, r.reviewer, r.model, r.decision, r.summary, r.findings, r.citedClaims]);
+        await c.query('INSERT INTO mr_reviews (job_id, candidate_id, feed, reviewer, model, decision, summary, findings, cited_claims, attempt) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)', [jobId, id, feed, r.reviewer, r.model, r.decision, r.summary, r.findings, r.citedClaims, attempt]);
       }
       const a = cand.assessment;
       const scoreCols = DIMENSION_KEYS.map((d) => DIM_COLUMN[d]);
@@ -420,9 +455,11 @@ async function persist(pool: Pool, feed: Feed, asOf: ISODate, jobId: number, att
     }
 
     if (!publish) {
-      // Trial stage: research is stored for review, but nothing is published into the live TOP-10.
-      await settleAttempt(c, feed, jobId, attempt, ctx, 'succeeded', now);
-      await c.query("UPDATE mr_jobs SET status = 'succeeded', lease_until = NULL, finished_at = $2, error = NULL WHERE id = $1", [jobId, now]);
+      // Trial stage: research is stored for review, but nothing is published into the live TOP-10. If any
+      // candidate's research stopped for a technical reason, the job is INCOMPLETE — never «succeeded».
+      const incomplete = incompleteSummary(result);
+      await settleAttempt(c, feed, jobId, attempt, ctx, incomplete ? 'incomplete' : 'succeeded', now);
+      await c.query(`UPDATE mr_jobs SET status = $3, lease_until = NULL, finished_at = $2, error = $4 WHERE id = $1`, [jobId, now, incomplete ? 'incomplete' : 'succeeded', incomplete]);
       await c.query('COMMIT');
       return null;
     }
@@ -467,6 +504,12 @@ async function persist(pool: Pool, feed: Feed, asOf: ISODate, jobId: number, att
   } finally {
     c.release();
   }
+}
+
+/** Why a trial run is technically incomplete (null = every candidate's research ran to its end). */
+export function incompleteSummary(result: Awaited<ReturnType<typeof runPipeline>>): string | null {
+  const xs = result.candidates.filter((x) => x.incomplete);
+  return xs.length ? `исследование технически не завершено: ${xs.map((x) => `${x.externalId} — ${x.incomplete!.stage}: ${x.incomplete!.reason}`).join('; ')}`.slice(0, 2000) : null;
 }
 
 async function knownSeeds(pool: Pool, feed: Feed, asOf: ISODate): Promise<(DiscoverySeed & { lastAssessed: string | null })[]> {
@@ -585,6 +628,10 @@ export async function runWorkerJob(pool: Pool, opts: RunOptions & { probe?: (ctx
     const snapshot = await persist(pool, o.feed, o.asOf, job.id, attempt, result, ctx, now(), opts.failAt, carry, !o.trial);
     if (!snapshot) {
       const held = result.candidates.filter((x) => x.assessment.state !== 'AUTOMATED_EVIDENCE_PASSED').length;
+      const incomplete = o.trial ? incompleteSummary(result) : null;
+      if (incomplete) {
+        return { status: 'incomplete', jobKey: key, jobId: job.id, attempt, spent: ctx.spent, message: `Ступень испытания технически НЕ завершена (${key}): ${incomplete}. Собранные источники и поиски сохранены; кандидат не оценён. В живой TOP-10 не публикуется. Продолжение — только явно (--retry), новым прогоном.` };
+      }
       return { status: 'succeeded', jobKey: key, jobId: job.id, attempt, spent: ctx.spent, message: `Ступень испытания выполнена (${key}): кандидатов ${result.candidates.length}, отложено ${held}. В живой TOP-10 не публикуется.` };
     }
     return {

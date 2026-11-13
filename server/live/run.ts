@@ -6,7 +6,7 @@ import { YANDEX_TARIFFS, inputTokenBound, llmCostKop, searchCostKop, tariffFor }
 import { planReasoning } from './reasoning';
 import { buildLiveProviders, type LiveBundle, type LiveDeps } from './providers';
 import type { LiveConfig } from './config';
-import { jobKeyFor, runWorkerJob, TrialRefused, workerToday, type RunOptions, type RunResult, type TrialSpec } from '../machine/worker';
+import { MAX_TRIAL_RUNS, runWorkerJob, TrialRefused, workerToday, type RunOptions, type RunResult, type TrialSpec } from '../machine/worker';
 import { discoverySeedSchema } from '../machine/schemas';
 import type { DiscoverySeed } from '../machine/types';
 import type { Pool } from '../db/pool';
@@ -98,20 +98,44 @@ export function parseSeeds(json: unknown): DiscoverySeed[] {
 export async function runPaidStage(
   pool: Pool,
   cfg: LiveConfig,
-  gate: { trial: TrialSpec; maxSpendKop: number },
+  gateIn: { trial: TrialSpec; maxSpendKop: number },
   deps: LiveDeps,
   x: { seeds?: DiscoverySeed[]; lockFile: string; now?: () => Date; retry?: boolean },
 ): Promise<RunResult & { probe?: ProbeCheck[] }> {
+  let gate = gateIn;
   return withPaidExecutionLock(pool, x.lockFile, async () => {
     const now = x.now ?? (() => new Date());
-    const asOf = workerToday(now());
-    // A failed stage (e.g. a failed probe) is never re-run implicitly: only with an explicit --retry. The new
-    // attempt shares the stage's job budget and the trial ledger — nothing is reset.
-    const prev = (await pool.query<{ status: string; attempts: number; max_attempts: number }>('SELECT status, attempts, max_attempts FROM mr_jobs WHERE job_key = $1', [jobKeyFor('live', asOf, gate.trial)])).rows[0];
-    if (prev && prev.status !== 'succeeded' && prev.status !== 'running' && !x.retry) {
-      throw new TrialRefused(`ступень ${gate.trial.stage} испытания ${gate.trial.id} завершилась со статусом «${prev.status}» (попыток ${prev.attempts}/${prev.max_attempts}); повтор — только явно с --retry, расходы прошлых попыток остаются в журнале`);
+    let asOf = workerToday(now());
+    // Which run of the stage? Nothing is ever re-run implicitly, and nothing is reset:
+    //  - failed (an exception, nothing persisted) → --retry = a new ATTEMPT of the same job, dated with that
+    //    job's research date (same month only);
+    //  - incomplete (research stopped for a technical reason; what it collected is stored) → --retry = a new
+    //    RUN, i.e. a new job `…:r<n>` whose budget is what the stage cap has left after all earlier runs; the
+    //    incomplete run and its history stay untouched;
+    //  - succeeded → nothing to repeat.
+    const latest = (
+      await pool.query<{ id: number; status: string; attempts: number; max_attempts: number; trial_run: number; as_of: string }>(
+        "SELECT id, status, attempts, max_attempts, trial_run, to_char(as_of, 'YYYY-MM-DD') AS as_of FROM mr_jobs WHERE trial_id = $1 AND trial_stage = $2 ORDER BY trial_run DESC LIMIT 1",
+        [gate.trial.id, gate.trial.stage],
+      )
+    ).rows[0];
+    let trial: TrialSpec = { ...gate.trial, run: latest?.trial_run ?? 1 };
+    if (latest && latest.status === 'incomplete') {
+      if (!x.retry) throw new TrialRefused(`ступень ${gate.trial.stage} испытания ${gate.trial.id} технически не завершена (прогон ${latest.trial_run}); продолжение — только явно с --retry (новый прогон), история и расходы прежнего прогона сохраняются`);
+      if (latest.trial_run >= MAX_TRIAL_RUNS) throw new TrialRefused(`ступень ${gate.trial.stage}: исчерпаны прогоны (${latest.trial_run}/${MAX_TRIAL_RUNS})`);
+      trial = { ...trial, run: latest.trial_run + 1, resumesJobId: latest.id };
+    } else if (latest && latest.status !== 'succeeded' && latest.status !== 'running') {
+      if (!x.retry) {
+        throw new TrialRefused(`ступень ${gate.trial.stage} испытания ${gate.trial.id} завершилась со статусом «${latest.status}» (попыток ${latest.attempts}/${latest.max_attempts}); повтор — только явно с --retry, расходы прошлых попыток остаются в журнале`);
+      }
+      // same job, new attempt: keep the job's research date (its rows reference it); never across months
+      if (latest.as_of.slice(0, 7) !== asOf.slice(0, 7)) throw new TrialRefused(`повтор задания от ${latest.as_of} в другом месяце (${asOf}) не выполняется — месячный учёт расходов`);
+      asOf = latest.as_of;
+    } else if (latest && latest.status === 'running') {
+      asOf = latest.as_of;
     }
-    if (x.retry && (!prev || prev.status === 'succeeded')) throw new TrialRefused(`--retry: ступень ${gate.trial.stage} не завершалась неуспешно — повторять нечего`);
+    if (x.retry && (!latest || latest.status === 'succeeded')) throw new TrialRefused(`--retry: ступень ${gate.trial.stage} не завершалась неуспешно — повторять нечего`);
+    gate = { ...gate, trial };
     if (gate.trial.stage === 'probe') {
       if (x.seeds) throw new Error('пробный вызов не принимает кандидатов');
       const bundle = buildLiveProviders(cfg, deps);

@@ -249,7 +249,8 @@ describeDb('VL-004B live worker on recorded HTTP (Case G)', () => {
       const top = (pool: TestDb['pool']) => pool.query("SELECT e.rank, e.title, e.market_score, e.confidence, e.evidence_grade FROM mr_snapshot_entries e JOIN mr_snapshots s ON s.id = e.snapshot_id WHERE s.feed = 'live' AND s.as_of = '2026-11-12' ORDER BY e.rank").then((x) => x.rows);
       expect(await top(t.pool)).toEqual(await top(db.pool));
       const rival = (await t.pool.query("SELECT market, kind, market_verified FROM mr_competitors WHERE name = 'AutoScan Reader'")).rows[0];
-      expect(rival).toEqual({ market: 'ru', kind: 'direct', market_verified: false });
+      // audit 13.11.2026 (P2): the model's «ru» is not kept as a label on an English page with no RU signal; still a possible direct rival
+      expect(rival).toEqual({ market: 'west', kind: 'direct', market_verified: false });
       const forum = (await t.pool.query("SELECT source_type, provenance FROM mr_sources WHERE url = 'https://forum.tdi.example.org/autoscan-help' LIMIT 1")).rows[0];
       expect(forum.source_type).toBe('unknown');
       expect(forum.provenance.independence).toBe('unverified');

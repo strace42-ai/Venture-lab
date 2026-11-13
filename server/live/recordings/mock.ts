@@ -1,3 +1,4 @@
+import { DIMENSION_KEYS } from '../../../src/domain/scoring';
 /**
  * Recorded transports for offline tests and the offline benchmark (VL-004B Phase A).
  *  - RecordedWeb: DNS + public pages. It enforces DNS pinning: a request must target the address the
@@ -82,6 +83,18 @@ function skepticResponse(d: SkepticData) {
   };
 }
 
+type LegacyAnalyst = { claims: ({ highImpact?: boolean; absence?: unknown } & Record<string, unknown>)[]; scores: Record<string, { value: number; claims: string[] }>; founderFit: unknown; ruQueries: string[]; rationale: string };
+/** The recorded (legacy) analyst proposal in the strict wire form: every field present, unscored = null. */
+export function toStrictAnalyst(a: LegacyAnalyst) {
+  return {
+    claims: a.claims.map((c) => ({ ...c, highImpact: c.highImpact ?? false, absence: c.absence ?? null })),
+    scores: Object.fromEntries(DIMENSION_KEYS.map((d) => [d, a.scores[d] ?? { value: null, claims: [] }])),
+    founderFit: a.founderFit ?? null,
+    ruQueries: a.ruQueries,
+    rationale: a.rationale,
+  };
+}
+
 export class RecordedProviders implements Transport {
   readonly requests: { url: string; task: string | null; body: unknown; headers: Record<string, string> }[] = [];
   private n = 0;
@@ -120,7 +133,8 @@ export class RecordedProviders implements Transport {
       else if (task === 'discover_seeds') content = JSON.stringify(DISCOVERY_OUTPUT);
       else if (task === 'analyse_candidate') {
         const a = ANALYST[(data.seed as { externalId: string }).externalId];
-        content = typeof a === 'string' ? a : JSON.stringify(a ?? { claims: [], scores: {}, founderFit: null, ruQueries: [], rationale: 'нет записи' });
+        // A strict json_schema model returns every field: the recorded proposals are replayed in that form.
+        content = typeof a === 'string' ? a : JSON.stringify(toStrictAnalyst((a ?? { claims: [], scores: {}, founderFit: null, ruQueries: [], rationale: 'нет записи' }) as LegacyAnalyst));
       } else if (task === 'extract_offer') content = JSON.stringify(EXTRACT[(data.page as { url: string }).url] ?? { isProductPage: false, name: null, market: 'unknown', jobs: [], price: null, pageKind: 'unknown' });
       else if (task === 'skeptic_challenge') content = JSON.stringify(skepticResponse(data as unknown as SkepticData));
       else if (task === 'probe_schema') content = JSON.stringify({ ok: true, word: 'тест' });

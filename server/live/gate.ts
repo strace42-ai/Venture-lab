@@ -66,5 +66,5 @@ export function paidRunGate(env: NodeJS.ProcessEnv, f: PaidFlags, cfg: LiveConfi
   if (f.maxSpendRub === undefined || !Number.isFinite(f.maxSpendRub) || f.maxSpendRub <= 0) p.push('нужен явный --max-spend-rub N');
   else if (stage && f.maxSpendRub > cap) p.push(`--max-spend-rub ${f.maxSpendRub} выше потолка ступени ${stage} (${cap} ₽)`);
   if (p.length || !stage) return { ok: false, problems: p };
-  return { ok: true, trial: { id: trialId, budgetKop: Math.round(budgetRub * 100), stage }, maxSpendKop: Math.floor(f.maxSpendRub! * 100) };
+  return { ok: true, trial: { id: trialId, budgetKop: Math.round(budgetRub * 100), stage, stageCapKop: STAGE_CAPS_RUB[stage!] * 100 }, maxSpendKop: Math.floor(f.maxSpendRub! * 100) };
 }
