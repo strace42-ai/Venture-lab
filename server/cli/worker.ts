@@ -116,6 +116,7 @@ async function live(): Promise<void> {
     asOf: opt('--as-of'),
     seedsFile: opt('--seeds'),
     noDiscovery: flags.has('--no-discovery'),
+    retry: flags.has('--retry'),
   }, cfg, cfgError);
   if (!gate.ok) {
     console.error('✖ Платный запуск отклонён (ни одного запроса не сделано):');
@@ -124,13 +125,13 @@ async function live(): Promise<void> {
     return;
   }
   const seeds = opt('--seeds') ? parseSeeds(JSON.parse(readFileSync(opt('--seeds')!, 'utf8'))) : undefined;
-  const rawDir = defaultRawDir(gate.trial.id);
+  const rawDir = defaultRawDir(gate.trial.id); // records go to <rawDir>/<trial_id_stage>/attempt-<n>/ — never overwritten
   const lockFile = process.env.VL_LOCK_FILE ?? join(homedir(), '.venture-lab', 'live-paid.lock');
   const capture = new CapturingTransport(new NodeTransport(), rawDir, [process.env.YANDEX_API_KEY, process.env.YANDEX_IAM_TOKEN, cfg!.folderId]);
   const pool = createPool(loadConfig().databaseUrl);
   try {
     console.log(`• LIVE ${gate.trial.stage}: испытание ${gate.trial.id}, потолок ступени ${gate.maxSpendKop / 100} ₽, общий потолок ${gate.trial.budgetKop / 100} ₽; модели ${cfg!.analystModel} / ${cfg!.skepticModel}; сырые ответы → ${rawDir}`);
-    const r = await runPaidStage(pool, cfg!, gate, { providerTransport: capture, webTransport: new NodeTransport(), resolver: systemResolver }, { seeds, lockFile });
+    const r = await runPaidStage(pool, cfg!, gate, { providerTransport: capture, webTransport: new NodeTransport(), resolver: systemResolver }, { seeds, lockFile, retry: flags.has('--retry') });
     print(r);
     if (r.probe) for (const c of r.probe) console.log(`  ${c.ok ? '✔' : '✖'} ${c.check}: ${c.detail}`);
     if (r.spent !== undefined) console.log(`  Учтено в журнале: ${rub(r.spent)} (лимит приложения не заменяет бюджет и оповещения в Yandex Cloud Billing).`);

@@ -153,6 +153,23 @@ Rivals with an unproven market are shown but not counted: 2 of 2. Independent pu
 - **Cost.** One run with the default bounds (3 new + 3 rechecks) cost about 55 ₽ on recorded data; the token counts are synthetic. Searches dominate (≈14 per candidate).
 - **Pre-existing layout issue.** On the 1440 dashboard, the evidence-grade column of the TOP table scrolls inside its card (unchanged since VL-004A).
 
+## VL-004B-prep — audit fixes (audit of `d49a831`)
+| # | Finding | Fix | Tests (`server/test/live-prep.test.ts`) |
+|---|---|---|---|
+| **P1** | A failed probe (`ok:false` checks) still became a **succeeded** job, so stage 2 could run after a broken XML or model check. | The probe returns `{ passed, report, failure }`. The job is `succeeded` **only if all 6 required checks pass**. Otherwise it is `failed`: real usage is settled in the ledger and the next stage stays blocked by the existing stage-order check.<br>A failed stage is **never re-run implicitly**: only with an explicit `--retry`, which makes a new attempt in the same stage budget (5 ₽, at most 2 retries), without resetting costs. `--retry` on a succeeded stage is refused. | **PostgreSQL integration:**<br>• (a) **XML with 0 documents** → probe `failed`; all real calls are in `mr_usage` with costs > 0; attempt `failed` with `used` = cost; stage 2 is refused **before any provider or page request**, and no stage-2 job is created.<br>• (b) **invalid model JSON** in the minimal-schema check → `failed`; stage 2 is refused with 0 requests; a probe re-run without `--retry` is refused with 0 requests; with `--retry` → attempt 2 `succeeded`, the first attempt's costs are unchanged, and both attempts together stay ≤ 5 ₽; stage 2 is then allowed; `--retry` on a succeeded probe is refused. |
+| **P1** | Raw responses could overwrite each other between stages: `seq` started from zero in one shared folder, and `writeFileSync` overwrote. | Path = `<raw>/trial_<id>_<stage>/attempt-<n>/<seq>-<host>-<status>.json`, derived from the request's **ledger id** (= `mr_usage.request_id`, also stored inside the record with job key and attempt). Files are created with O_EXCL (`wx`) and are **never overwritten**; an impossible clash is kept as a separate `-clash-` file and reported. | **Probe, stage 2, stage 3** in the **same** directory, each with a fresh transport, same hosts, HTTP 200:<br>• every record is kept, 1 file per provider request, 0 clashes;<br>• all earlier files are **byte-identical** afterwards (SHA-256);<br>• one folder per stage;<br>• the ledger ids of the records equal the `mr_usage.request_id` set exactly.<br>Unit test: the same ledger id twice leaves the original untouched and stores the clash separately. |
+| P2 | Model independence | The gate refuses an analyst and skeptic from the same family **even with `VL_ALLOW_SINGLE_MODEL=true`**: degraded mode is never allowed for paid runs. | Probe and stage 2 are both refused with the «VL_ALLOW_SINGLE_MODEL здесь не действует» reason. |
+| P2 | Fail-closed gate | `cfg = null` is always a problem («конфигурация live не загружена»), with or without `cfgError`. | Both variants assert `ok === false`, a non-empty problems list and the message (the old `toBeTruthy()` was replaced). |
+| P2 | Symlinks | `assertOutsideRepo` compares the **real path** (`realpath` of the longest existing prefix plus the not-yet-existing tail) against the real repo root; `CapturingTransport` re-checks after `mkdir`. | A symlink outside the repo pointing into it is refused; a non-existent tail under such a link is refused; a transport on such a link is refused before anything is created. |
+
+Checks:
+- `lint` ✔, `typecheck` ✔, `build` ✔;
+- **419 tests** (23 files) on PostgreSQL ✔, of which `live-prep` has 42;
+- benchmark unchanged;
+- the CLI still refuses `--execute --probe` without permission (exit 2, no request).
+
+No change to scoring or research logic. **No paid request, no cloud resource, no deploy, no merge.**
+
 ## VL-004B-prep (2026-11-13) — offline preparation for the Phase B trial (no paid call)
 Implemented on branch `claude/vl-004b-prep` (stacked on PR #7 → PR #6). Audit remarks on the plan addressed:
 

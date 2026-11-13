@@ -16,6 +16,9 @@ export const PROBE_QUERIES = [
   { query: 'Touch Stay', region: 'world' as const },
 ];
 
+/** 2 searches + (transport + minimal schema) × 2 models — every one is required for a passed probe. */
+export const PROBE_REQUIRED_CHECKS = PROBE_QUERIES.length + 2 * 2;
+
 const miniSchema = z.strictObject({ ok: z.boolean(), word: z.string().max(40) });
 
 export interface ProbeCheck {

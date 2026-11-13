@@ -5,12 +5,12 @@
 import { YANDEX_TARIFFS, inputTokenBound, llmCostKop, searchCostKop, tariffFor } from './prices';
 import { buildLiveProviders, type LiveBundle, type LiveDeps } from './providers';
 import type { LiveConfig } from './config';
-import { runWorkerJob, workerToday, type RunOptions, type RunResult, type TrialSpec } from '../machine/worker';
+import { jobKeyFor, runWorkerJob, TrialRefused, workerToday, type RunOptions, type RunResult, type TrialSpec } from '../machine/worker';
 import { discoverySeedSchema } from '../machine/schemas';
 import type { DiscoverySeed } from '../machine/types';
 import type { Pool } from '../db/pool';
 import { withPaidExecutionLock } from './paid-lock';
-import { runProbe, type ProbeCheck } from './probe';
+import { PROBE_REQUIRED_CHECKS, runProbe, type ProbeCheck } from './probe';
 import type { ISODate } from '../../src/domain/types';
 
 export interface LiveRunInput {
@@ -97,11 +97,18 @@ export async function runPaidStage(
   cfg: LiveConfig,
   gate: { trial: TrialSpec; maxSpendKop: number },
   deps: LiveDeps,
-  x: { seeds?: DiscoverySeed[]; lockFile: string; now?: () => Date },
+  x: { seeds?: DiscoverySeed[]; lockFile: string; now?: () => Date; retry?: boolean },
 ): Promise<RunResult & { probe?: ProbeCheck[] }> {
   return withPaidExecutionLock(pool, x.lockFile, async () => {
     const now = x.now ?? (() => new Date());
     const asOf = workerToday(now());
+    // A failed stage (e.g. a failed probe) is never re-run implicitly: only with an explicit --retry. The new
+    // attempt shares the stage's job budget and the trial ledger — nothing is reset.
+    const prev = (await pool.query<{ status: string; attempts: number; max_attempts: number }>('SELECT status, attempts, max_attempts FROM mr_jobs WHERE job_key = $1', [jobKeyFor('live', asOf, gate.trial)])).rows[0];
+    if (prev && prev.status !== 'succeeded' && prev.status !== 'running' && !x.retry) {
+      throw new TrialRefused(`ступень ${gate.trial.stage} испытания ${gate.trial.id} завершилась со статусом «${prev.status}» (попыток ${prev.attempts}/${prev.max_attempts}); повтор — только явно с --retry, расходы прошлых попыток остаются в журнале`);
+    }
+    if (x.retry && (!prev || prev.status === 'succeeded')) throw new TrialRefused(`--retry: ступень ${gate.trial.stage} не завершалась неуспешно — повторять нечего`);
     if (gate.trial.stage === 'probe') {
       if (x.seeds) throw new Error('пробный вызов не принимает кандидатов');
       const bundle = buildLiveProviders(cfg, deps);
@@ -110,12 +117,16 @@ export async function runPaidStage(
         asOf,
         budget: gate.maxSpendKop,
         monthlyBudget: cfg.monthlyBudgetKop,
-        maxAttempts: 1,
+        maxAttempts: 3, // the first try + at most 2 explicit --retry, all within the same 5 ₽ stage budget
         rateLimits: { search: 2, read: 0, llm: 4 },
         trial: gate.trial,
         independence: bundle.independence,
         now,
-        probe: (ctx) => runProbe(bundle, { analyst: cfg.analystModel, skeptic: cfg.skepticModel }, ctx),
+        probe: async (ctx) => {
+          const checks = await runProbe(bundle, { analyst: cfg.analystModel, skeptic: cfg.skepticModel }, ctx);
+          const failed = checks.filter((c) => !c.ok);
+          return { passed: failed.length === 0 && checks.length === PROBE_REQUIRED_CHECKS, report: checks, failure: failed.map((c) => `${c.check}: ${c.detail}`).join('; ') || undefined };
+        },
       });
       return r as RunResult & { probe?: ProbeCheck[] };
     }

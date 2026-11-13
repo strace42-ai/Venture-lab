@@ -9,7 +9,8 @@
  *  - probe = transport + minimal schema; raw responses outside git, redacted; CSV export for review.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -24,7 +25,7 @@ import { SEEDS } from '../live/recordings/world';
 import { parseSeeds, runPaidStage } from '../live/run';
 import { YandexSearchProvider } from '../live/yandex-search';
 import { csvCell, exportReviewCsv } from '../machine/export';
-import { CallContext } from '../machine/types';
+import { CallContext, type DiscoverySeed } from '../machine/types';
 import { runWorkerJob, workerToday, type TrialSpec } from '../machine/worker';
 import { createTestDb, describeDb, type TestDb } from './helpers';
 
@@ -121,7 +122,25 @@ describe('one paid gate for --probe and stage runs', () => {
     expect(problems(ENV, ok, loadLiveConfig({ ...ENV, VL_ANALYST_MODEL: 'yandexgpt-5.1' }))).toMatch(/не разрешена: нет закреплённого тарифа/);
     expect(problems(ENV, ok, loadLiveConfig({ ...ENV, VL_SKEPTIC_MODEL: 'qwen3.6-35b-a3b' }))).toMatch(/одного семейства/);
     expect(problems(ENV, ok, loadLiveConfig({ ...ENV, YANDEX_API_KEY: undefined }))).toMatch(/YANDEX_API_KEY/);
-    expect(problems(ENV, ok, null)).toBeTruthy();
+  });
+
+  it('fail-closed: cfg = null is refused with AND without a cfgError', () => {
+    for (const err of [undefined, 'Некорректная конфигурация live: X']) {
+      const g = paidRunGate(ENV, ok, null, err);
+      expect(g.ok).toBe(false);
+      if (!g.ok) {
+        expect(g.problems.length).toBeGreaterThan(0);
+        expect(g.problems.join(' | ')).toMatch(/конфигурация live не загружена/);
+      }
+    }
+  });
+
+  it('Phase B forbids a same-family analyst/skeptic even with VL_ALLOW_SINGLE_MODEL=true (degraded mode is not allowed for paid runs)', () => {
+    const degraded = loadLiveConfig({ ...ENV, VL_SKEPTIC_MODEL: 'qwen3.6-35b-a3b', VL_ALLOW_SINGLE_MODEL: 'true' });
+    const g = paidRunGate(ENV, ok, degraded);
+    expect(g.ok).toBe(false);
+    if (!g.ok) expect(g.problems.join(' | ')).toMatch(/VL_ALLOW_SINGLE_MODEL здесь не действует/);
+    expect(paidRunGate(ENV, stage2, degraded).ok).toBe(false);
   });
 });
 
@@ -168,6 +187,31 @@ describe('raw responses: outside git, redacted', () => {
     expect(() => assertOutsideRepo(join(root, 'node_modules', '.cache', 'x'))).toThrow(/внутри репозитория/); // ignored ≠ allowed
     expect(() => assertOutsideRepo(tmp())).not.toThrow();
   });
+
+  it('symlinks are resolved: a directory outside the repo that REALLY points inside it is refused', () => {
+    const root = repoRootOf()!;
+    const base = tmp();
+    symlinkSync(join(root, 'research'), join(base, 'looks-outside'));
+    expect(() => assertOutsideRepo(join(base, 'looks-outside'))).toThrow(/фактически .*research/);
+    expect(() => assertOutsideRepo(join(base, 'looks-outside', 'not-yet', 'raw'))).toThrow(/внутри репозитория/); // non-existent tail
+    symlinkSync(root, join(base, 'repo-link'));
+    expect(() => new CapturingTransport(new RecordedProviders(), join(base, 'repo-link', 'tmp-raw'), [])).toThrow(/внутри репозитория/);
+    expect(existsSync(join(root, 'tmp-raw'))).toBe(false); // refused BEFORE anything was created
+  });
+
+  it('a record is never overwritten: the same ledger id twice → the original stays, the clash is kept separately', async () => {
+    const d = tmp();
+    const t = new CapturingTransport(new RecordedProviders(), d, []);
+    const req = { method: 'POST' as const, url: new URL('https://searchapi.api.cloud.yandex.net/v2/web/search'), address: null, headers: { 'x-client-request-id': 'trial:t1:probe#1#1' }, body: JSON.stringify({ query: { queryText: 'Touch Stay', searchType: 'SEARCH_TYPE_COM', page: '0' } }), timeoutMs: 1000, maxBytes: 1e6 };
+    await t.request(req);
+    const first = t.files[0]!;
+    const before = readFileSync(first, 'utf8');
+    await t.request(req);
+    expect(readFileSync(first, 'utf8')).toBe(before);
+    expect(t.clashes).toHaveLength(1);
+    expect(t.files[1]).not.toBe(first);
+    expect(first).toMatch(/trial_t1_probe\/attempt-1\/00001-searchapi\.api\.cloud\.yandex\.net-200\.json$/);
+  });
 });
 
 describeDb('trial ledger, probe, seeds, isolation, export (recorded HTTP + PostgreSQL)', () => {
@@ -210,16 +254,18 @@ describeDb('trial ledger, probe, seeds, isolation, export (recorded HTTP + Postg
     expect((await db.pool.query('SELECT count(*)::int AS n FROM mr_snapshots')).rows[0].n).toBe(0);
     const job = (await db.pool.query("SELECT job_key, as_of::text, trial_stage, status FROM mr_jobs WHERE trial_stage = 'probe'")).rows[0];
     expect(job).toEqual({ job_key: 'trial:phase-b-test:probe', as_of: TODAY, trial_stage: 'probe', status: 'succeeded' });
-    // raw capture
-    const files = readdirSync(rawDir);
+    // raw capture: <raw>/trial_phase-b-test_probe/attempt-1/<seq>-<host>-<status>.json
+    const files = capture.files;
     expect(files).toHaveLength(6);
+    expect(readdirSync(join(rawDir, 'trial_phase-b-test_probe', 'attempt-1'))).toHaveLength(6);
     for (const f of files) {
-      const t = readFileSync(join(rawDir, f), 'utf8');
+      const t = readFileSync(f, 'utf8');
       expect(t).not.toContain(ENV.YANDEX_API_KEY!);
       expect(t).not.toContain(ENV.YANDEX_FOLDER_ID!);
-      expect(statSync(join(rawDir, f)).mode & 0o077).toBe(0);
+      expect(statSync(f).mode & 0o077).toBe(0);
+      expect(JSON.parse(t)).toMatchObject({ jobKey: 'trial:phase-b-test:probe', attempt: 1 });
     }
-    expect(readFileSync(join(rawDir, files[0]!), 'utf8')).toMatch(/decodedRawData.*yandexsearch/s);
+    expect(readFileSync(files[0]!, 'utf8')).toMatch(/decodedRawData.*yandexsearch/s);
   });
 
   it('stage 2 with seeds: NO discovery at all (no discovery search, no discovery model call), real date, no snapshot', async () => {
@@ -303,5 +349,107 @@ describeDb('trial ledger, probe, seeds, isolation, export (recorded HTTP + Postg
     expect(parseSeeds(JSON.parse(readFileSync(join(root, 'research/phase-b/seeds-stage2.json'), 'utf8')))).toHaveLength(1);
     expect(parseSeeds(JSON.parse(readFileSync(join(root, 'research/phase-b/seeds-stage3.json'), 'utf8')))).toHaveLength(4);
     expect(() => parseSeeds([SEEDS.guest, SEEDS.guest])).toThrow(/повторяющиеся/);
+  });
+});
+
+describeDb('audit P1: a failed probe blocks stage 2; raw records survive every stage', () => {
+  let db: TestDb;
+  const dir = tmp();
+  beforeAll(async () => {
+    db = await createTestDb();
+  });
+  afterAll(async () => {
+    await db?.drop();
+  });
+  const mk = (hooks: ConstructorParameters<typeof RecordedProviders>[0] = {}) => {
+    const prov = new RecordedProviders(hooks);
+    const web = new RecordedWeb();
+    return { prov, web, deps: { providerTransport: prov, webTransport: web, resolver: web, sleep: async () => {}, clock: virtualClock() } };
+  };
+  const gate = (id: string, stage: TrialSpec['stage'], rub: number) => ({ trial: { id, budgetKop: 30_000, stage }, maxSpendKop: rub * 100 });
+  const usage = async (jobKey: string) =>
+    (await db.pool.query<{ n: number; s: number }>('SELECT count(*)::int AS n, COALESCE(sum(u.cost), 0)::int AS s FROM mr_usage u JOIN mr_jobs j ON j.id = u.job_id WHERE j.job_key = $1', [jobKey])).rows[0]!;
+
+  it('bad XML in the probe (0 documents) → probe FAILED with its real costs in the ledger; stage 2 is refused and sends nothing', async () => {
+    const empty = mk({ search: (q) => (q.type === 'SEARCH_TYPE_RU' ? { results: [] } : undefined) }); // XML with no <doc>
+    const r = await runPaidStage(db.pool, cfg, gate('bad-xml', 'probe', 5), empty.deps, { lockFile: join(dir, 'a'), now: NOW });
+    expect(r.status).toBe('failed');
+    expect(r.message).toMatch(/проба не пройдена: search:ru/);
+    expect(r.probe!.find((c) => c.check === 'search:ru')!.ok).toBe(false);
+    const job = (await db.pool.query("SELECT status, attempts, error FROM mr_jobs WHERE job_key = 'trial:bad-xml:probe'")).rows[0];
+    expect(job).toMatchObject({ status: 'failed', attempts: 1 });
+    const u = await usage('trial:bad-xml:probe');
+    expect(u.n).toBe(empty.prov.requests.length); // every real call is in the ledger
+    expect(u.s).toBeGreaterThan(0);
+    const att = (await db.pool.query("SELECT a.status, a.used FROM mr_attempts a JOIN mr_jobs j ON j.id = a.job_id WHERE j.job_key = 'trial:bad-xml:probe'")).rows[0];
+    expect(att).toEqual({ status: 'failed', used: u.s });
+    // stage 2 is blocked — before any provider request
+    const s2 = mk();
+    await expect(runPaidStage(db.pool, cfg, gate('bad-xml', 'stage2', 60), s2.deps, { seeds: [SEEDS.guest!], lockFile: join(dir, 'b'), now: NOW })).rejects.toThrow(/только после успешной ступени probe \(сейчас: failed\)/);
+    expect(s2.prov.requests).toHaveLength(0);
+    expect(s2.web.requests).toHaveLength(0);
+    expect((await db.pool.query("SELECT count(*)::int AS n FROM mr_jobs WHERE job_key = 'trial:bad-xml:stage2'")).rows[0].n).toBe(0);
+  });
+
+  it('invalid model JSON in the probe → FAILED; no implicit re-run; an explicit --retry is a NEW attempt in the same 5 ₽ budget, costs kept', async () => {
+    const bad = mk({ llm: (task) => (task === 'probe_schema' ? { content: '{"ok": tru' } : undefined) });
+    const r1 = await runPaidStage(db.pool, cfg, gate('bad-json', 'probe', 5), bad.deps, { lockFile: join(dir, 'c'), now: NOW });
+    expect(r1.status).toBe('failed');
+    expect(r1.probe!.filter((c) => !c.ok).map((c) => c.check)).toEqual(['mini-schema:analyst:qwen3.6-35b-a3b', 'mini-schema:skeptic:deepseek-v4.1-flash']);
+    const spentFirst = (await usage('trial:bad-json:probe')).s;
+    expect(spentFirst).toBeGreaterThan(0);
+    // stage 2 blocked
+    const s2 = mk();
+    await expect(runPaidStage(db.pool, cfg, gate('bad-json', 'stage2', 60), s2.deps, { seeds: [SEEDS.guest!], lockFile: join(dir, 'd'), now: NOW })).rejects.toThrow(/сейчас: failed/);
+    expect(s2.prov.requests).toHaveLength(0);
+    // re-running the probe WITHOUT --retry is refused, nothing sent
+    const again = mk();
+    await expect(runPaidStage(db.pool, cfg, gate('bad-json', 'probe', 5), again.deps, { lockFile: join(dir, 'e'), now: NOW })).rejects.toThrow(/повтор — только явно с --retry/);
+    expect(again.prov.requests).toHaveLength(0);
+    // explicit retry with healthy providers: attempt 2, first attempt's costs stay
+    const good = mk();
+    const r2 = await runPaidStage(db.pool, cfg, gate('bad-json', 'probe', 5), good.deps, { lockFile: join(dir, 'f'), now: NOW, retry: true });
+    expect(r2).toMatchObject({ status: 'succeeded', attempt: 2 });
+    const atts = (await db.pool.query("SELECT a.attempt, a.status, a.used FROM mr_attempts a JOIN mr_jobs j ON j.id = a.job_id WHERE j.job_key = 'trial:bad-json:probe' ORDER BY attempt")).rows;
+    expect(atts.map((a) => a.status)).toEqual(['failed', 'succeeded']);
+    expect(atts[0].used).toBe(spentFirst);
+    expect(atts[0].used + atts[1].used).toBeLessThanOrEqual(500); // one 5 ₽ stage budget across attempts
+    // now stage 2 is allowed
+    const ok2 = mk();
+    expect((await runPaidStage(db.pool, cfg, gate('bad-json', 'stage2', 60), ok2.deps, { seeds: [SEEDS.guest!], lockFile: join(dir, 'g'), now: NOW })).status).toBe('succeeded');
+    // --retry on a succeeded stage is refused
+    await expect(runPaidStage(db.pool, cfg, gate('bad-json', 'probe', 5), mk().deps, { lockFile: join(dir, 'h'), now: NOW, retry: true })).rejects.toThrow(/повторять нечего/);
+  });
+
+  it('raw records of probe, stage 2 and stage 3 (same hosts, HTTP 200) all survive; earlier files are byte-identical afterwards', async () => {
+    const raw = join(tmp(), 'raw'); // the SAME directory for all stages, as defaultRawDir() gives
+    const hashes = new Map<string, string>();
+    const snapshot = () => {
+      for (const [f, h] of hashes) expect(createHash('sha256').update(readFileSync(f)).digest('hex'), f).toBe(h);
+    };
+    let total = 0;
+    const stages: [TrialSpec['stage'], number, DiscoverySeed[] | undefined][] = [['probe', 5, undefined], ['stage2', 60, [SEEDS.guest!]], ['stage3', 235, [SEEDS.quotes!]]];
+    for (const [stage, rub, seeds] of stages) {
+      const prov = new RecordedProviders();
+      const web = new RecordedWeb();
+      const cap = new CapturingTransport(prov, raw, [ENV.YANDEX_API_KEY]); // a fresh transport per stage = a fresh CLI process
+      const r = await runPaidStage(db.pool, cfg, gate('raw-keep', stage, rub), { providerTransport: cap, webTransport: web, resolver: web, sleep: async () => {}, clock: virtualClock() }, { seeds, lockFile: join(dir, `r-${stage}`), now: NOW });
+      expect(r.status).toBe('succeeded');
+      expect(cap.files).toHaveLength(prov.requests.length);
+      expect(cap.clashes).toHaveLength(0);
+      snapshot(); // nothing written earlier changed
+      for (const f of cap.files) {
+        expect(hashes.has(f)).toBe(false); // never the same path as an earlier record
+        hashes.set(f, createHash('sha256').update(readFileSync(f)).digest('hex'));
+        expect(JSON.parse(readFileSync(f, 'utf8')).jobKey).toBe(`trial:raw-keep:${stage}`);
+      }
+      total += prov.requests.length;
+    }
+    expect(hashes.size).toBe(total);
+    expect(readdirSync(raw).sort()).toEqual(['trial_raw-keep_probe', 'trial_raw-keep_stage2', 'trial_raw-keep_stage3']);
+    // every record links to exactly one usage row (same ledger id)
+    const ids = (await db.pool.query<{ request_id: string }>("SELECT u.request_id FROM mr_usage u JOIN mr_jobs j ON j.id = u.job_id WHERE j.trial_id = 'raw-keep' AND u.operation <> 'read'")).rows.map((x) => x.request_id).sort();
+    const recIds = [...hashes.keys()].map((f) => JSON.parse(readFileSync(f, 'utf8')).ledgerId as string).sort();
+    expect(recIds).toEqual(ids);
   });
 });

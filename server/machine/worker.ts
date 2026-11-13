@@ -521,7 +521,14 @@ async function finishSucceeded(pool: Pool, feed: Feed, jobId: number, attempt: n
 }
 
 /** Run (or resume) the daily autonomous job for `feed` / `asOf` — or one stage of a live trial. Never asks for approval. */
-export async function runWorkerJob(pool: Pool, opts: RunOptions & { probe?: (ctx: CallContext) => Promise<unknown> }): Promise<RunResult & { probe?: unknown }> {
+/** Outcome of a trial probe: the job succeeds ONLY when every required check passed. */
+export interface ProbeOutcome {
+  passed: boolean;
+  report: unknown;
+  failure?: string;
+}
+
+export async function runWorkerJob(pool: Pool, opts: RunOptions & { probe?: (ctx: CallContext) => Promise<ProbeOutcome> }): Promise<RunResult & { probe?: unknown }> {
   const now = opts.now ?? (() => new Date());
   if (opts.feed === 'live' && !opts.providers && !opts.probe) {
     throw new Error('Живые провайдеры не настроены (VL-004B). Используйте --fixture.');
@@ -552,9 +559,15 @@ export async function runWorkerJob(pool: Pool, opts: RunOptions & { probe?: (ctx
   try {
     if (opts.failAt === 'pipeline') throw new Error('injected pipeline failure (test)');
     if (opts.probe) {
-      const report = await opts.probe(ctx);
+      const out = await opts.probe(ctx);
+      if (!out.passed) {
+        // A failed probe is a FAILED job: its real usage is settled in the ledger and the next stage stays blocked.
+        const msg = `проба не пройдена: ${out.failure ?? 'обязательная проверка не прошла'}`;
+        await finishUnsuccessful(pool, o.feed, job.id, attempt, ctx, 'failed', msg, now());
+        return { status: 'failed', jobKey: key, jobId: job.id, attempt, spent: ctx.spent, probe: out.report, message: `Пробный вызов не пройден (${key}): ${msg}. Следующая ступень заблокирована; повтор — только явно (--retry).` };
+      }
       await finishSucceeded(pool, o.feed, job.id, attempt, ctx, now());
-      return { status: 'succeeded', jobKey: key, jobId: job.id, attempt, spent: ctx.spent, probe: report, message: `Пробный вызов выполнен (${key}); в рейтинг ничего не публикуется.` };
+      return { status: 'succeeded', jobKey: key, jobId: job.id, attempt, spent: ctx.spent, probe: out.report, message: `Пробный вызов выполнен (${key}); в рейтинг ничего не публикуется.` };
     }
     const providers = (opts.providers ?? fixtureProviders)(o.asOf);
     const noDiscovery = opts.discovery === false;

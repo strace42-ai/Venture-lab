@@ -11,7 +11,7 @@
  *  - stage 2/3 only with `--seeds <file> --no-discovery`; no `--as-of` (a paid run is dated with the real day).
  * The gate does no I/O and makes no request.
  */
-import { readinessProblems, type LiveConfig } from './config';
+import { modelFamily, readinessProblems, type LiveConfig } from './config';
 import { tariffFor } from './prices';
 import type { TrialSpec, TrialStage } from '../machine/worker';
 
@@ -27,6 +27,8 @@ export interface PaidFlags {
   asOf?: string;
   seedsFile?: string;
   noDiscovery: boolean;
+  /** Explicit re-run of a stage that ended unsuccessfully (never implicit). */
+  retry?: boolean;
 }
 
 export type GateResult = { ok: true; trial: TrialSpec; maxSpendKop: number } | { ok: false; problems: string[] };
@@ -37,10 +39,13 @@ export function paidRunGate(env: NodeJS.ProcessEnv, f: PaidFlags, cfg: LiveConfi
   if (!f.execute) p.push(`${f.probe ? '--probe' : 'платный запуск'} требует --execute`);
   if (env.CI) p.push('платные live-вызовы запрещены в CI');
   if (env.VL_LIVE_EXECUTE !== 'phase-b-authorized') p.push('не активирован: требуется VL_LIVE_EXECUTE=phase-b-authorized (ставится только после разрешения Phase B)');
-  if (cfgError) p.push(cfgError);
-  if (cfg) {
+  // Fail-closed: no configuration → refused, whether or not an error message came with it.
+  if (!cfg) p.push(`конфигурация live не загружена${cfgError ? `: ${cfgError}` : ''} — платный запуск невозможен`);
+  else {
     p.push(...readinessProblems(cfg));
     for (const m of [cfg.analystModel, cfg.skepticModel]) if (!tariffFor(m)) p.push(`модель ${m} не разрешена: нет закреплённого тарифа — стоимость нельзя ограничить`);
+    // Phase B requires an INDEPENDENT second model: same family is refused even with VL_ALLOW_SINGLE_MODEL=true.
+    if (modelFamily(cfg.analystModel) === modelFamily(cfg.skepticModel)) p.push(`Phase B требует независимого скептика: аналитик и скептик из одного семейства (${modelFamily(cfg.analystModel)}) — запрещено, VL_ALLOW_SINGLE_MODEL здесь не действует`);
   }
   const trialId = env.VL_TRIAL_ID ?? '';
   if (!/^[a-z0-9][a-z0-9-]{2,40}$/.test(trialId)) p.push('нужен VL_TRIAL_ID (идентификатор испытания: латиница, цифры, дефис)');
