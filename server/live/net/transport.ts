@@ -7,6 +7,7 @@ import { lookup } from 'node:dns/promises';
 import http from 'node:http';
 import https from 'node:https';
 import { isIP } from 'node:net';
+import type { Duplex } from 'node:stream';
 import zlib from 'node:zlib';
 
 export interface TransportRequest {
@@ -61,8 +62,24 @@ export class NoNetworkTransport implements Transport {
  * TLS SNI and the Host header use the URL's hostname; bodies are capped AFTER decompression (zip
  * bombs), the whole exchange is bounded by `timeoutMs`. Never follows redirects itself.
  */
+/**
+ * Opens an already-TLS-verified stream to `host:port` (e.g. a CONNECT tunnel through HTTPS_PROXY). Only the
+ * provider transport uses one (`provider-proxy.ts`); the web reader never does.
+ */
+export type TunnelConnect = (
+  target: { host: string; port: number; timeoutMs: number },
+  cb: (err: Error | null, socket?: Duplex) => void,
+) => void;
+
 export class NodeTransport implements Transport {
+  /** `tunnel` absent → a direct connection (the only mode the web reader uses). */
+  constructor(private readonly tunnel?: TunnelConnect) {}
+
   async request(req: TransportRequest): Promise<TransportResponse> {
+    if (this.tunnel && (req.address || req.url.protocol !== 'https:')) {
+      // A tunnel resolves the host on the proxy side, so it can never honour an SSRF-pinned address.
+      throw new TransportError('туннель через прокси — только для https без закреплённого адреса');
+    }
     const mod = req.url.protocol === 'https:' ? https : http;
     const host = req.url.hostname.replace(/^\[|\]$/g, '');
     return new Promise<TransportResponse>((resolve, reject) => {
@@ -92,6 +109,22 @@ export class NodeTransport implements Transport {
           if (o?.all) cb(null, [{ address: pinned, family }]);
           else cb(null, pinned, family);
         }) as unknown as https.RequestOptions['lookup'];
+      }
+      if (this.tunnel) {
+        const tunnel = this.tunnel;
+        const port = Number(req.url.port || 443);
+        // No agent: one tunnel per request, closed after the response (no pooled socket reuse).
+        opts.agent = undefined;
+        // Without an agent Node assumes port 80; keep the Host header exactly `host` for :443.
+        opts.port = port;
+        opts.defaultPort = 443;
+        opts.createConnection = (_o, oncreate) => {
+          tunnel({ host, port, timeoutMs: req.timeoutMs }, (err, socket) => {
+            if (err || !socket) oncreate(err ?? new TransportError('туннель не создан'), undefined as unknown as Duplex);
+            else oncreate(null, socket);
+          });
+          return undefined;
+        };
       }
       const r = mod.request(opts, (res) => {
         const headers: Record<string, string> = {};
@@ -123,7 +156,8 @@ export class NodeTransport implements Transport {
         r.destroy();
         done(() => reject(new TransportTimeout(`таймаут ${req.timeoutMs} мс`)));
       }, req.timeoutMs);
-      r.on('error', (e) => done(() => reject(new TransportError(e.message))));
+      // Tunnel errors arrive already typed (timeout vs failure); direct-mode socket errors are wrapped as before.
+      r.on('error', (e) => done(() => reject(e instanceof TransportTimeout || e instanceof TransportError ? e : new TransportError(e.message))));
       if (req.body) r.write(req.body);
       r.end();
     });

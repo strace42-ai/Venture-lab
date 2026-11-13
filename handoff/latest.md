@@ -1,5 +1,69 @@
 # Venture Lab — Latest handoff
 
+## VL-004B-proxy — provider calls through HTTPS_PROXY (2026-11-13)
+**Why.** The authorised probe on 13.11.2026 stopped at the first search with HTTP 401 «Unknown api key 'dumm****aces'», so the dummy key reached Yandex.
+- `NodeTransport` connects directly (`agent: false`) and ignores `HTTPS_PROXY`.
+- The Claude Code network secret is substituted only by that proxy.
+
+Logged cost: 0 ₽ (`not_billed`).
+
+**Change** (branch `claude/vl-004b-provider-proxy`, base `claude/vl-004b-prep` @ `4b057e2`):
+- **New `server/live/net/provider-proxy.ts`** with `ProviderTransport`:
+  - when `HTTPS_PROXY` is set, the exact endpoints `searchapi.api.cloud.yandex.net/v2/web/search` and `ai.api.cloud.yandex.net/v1/chat/completions` (https, port 443, no userinfo) go through an HTTP CONNECT tunnel;
+  - TLS to the target is verified normally (servername = host);
+  - everything else, and everything when no proxy is set, keeps the direct transport;
+  - a malformed or non-`http://` proxy fails closed, and there is never a silent direct fallback.
+- **`NodeTransport`** takes an optional tunnel:
+  - with a tunnel it refuses pinned-address or plain-http requests, and sets `defaultPort` 443 so that `Host` stays the bare host;
+  - typed tunnel errors (timeout/failure) are preserved;
+  - direct mode is unchanged.
+- **`worker.ts`:**
+  - only `providerTransport` (inside `CapturingTransport`) uses it, and the web reader keeps `new NodeTransport()`;
+  - dry-run and paid runs print the route.
+- **Unchanged:**
+  - timeouts, size caps, Search rate limiter, cost reservation and reconciliation, 401/403 never retried, 429/5xx policy;
+  - the paid gate, trial ledger and raw capture;
+  - SafeFetcher, SSRF guard, DNS pinning, robots.txt.
+- **Docs:** `docs/live-provider-setup.md`, network-secrets note.
+
+**Tests:** `server/test/live-proxy.test.ts`, 17 tests, offline. They use a local CONNECT proxy, local TLS servers and a throw-away openssl CA. They cover:
+- endpoint matching and `HTTPS_PROXY` parsing;
+- both endpoints tunnelled, with `Authorization` absent from CONNECT;
+- other paths and pinned requests kept direct;
+- the full Search adapter with limiter and ledger, and 401 not retried and not billed;
+- an untrusted CA and a wrong-name certificate refused with no fallback;
+- a redirect returned, not followed;
+- the size cap and the timeout;
+- a refused CONNECT;
+- the web `NodeTransport` ignoring `HTTPS_PROXY`;
+- the wiring.
+
+Two real defects were found and fixed by these tests: `Host: …:80` without an agent, and a lost timeout type.
+
+**Checks:** all run locally on this branch.
+- `lint` ✔, `typecheck` ✔, `build` ✔.
+- `CI=true npm test` with PostgreSQL ✔: **437 tests in 24 files**.
+- Dry-run shows the route through `127.0.0.1:39219`.
+- Gate refusals: without `VL_LIVE_EXECUTE` → exit 2; bad proxy → refused.
+- **Environment check:** a CONNECT through the real agent proxy to both hosts, with the TLS handshake only and no HTTP request:
+  - CONNECT returned 200 and TLS was authorised;
+  - the certificates were issued by the proxy interception CA and trusted via `--use-openssl-ca`;
+  - no extra configuration is needed.
+
+**Trial state:** the probe database `vl_phase_b_probe` is intact, unchanged since the failed probe:
+- `trial:phase-b-probe-20261113:probe` is `failed` with 1/3 attempts and 0 ₽ spent;
+- 1 usage row, `not_billed`.
+
+A re-run must use `--retry` (attempt 2 within the same 5 ₽ stage cap). **The DB lives only in this container**: if it is lost, report that before any paid action.
+
+**Not proven offline:** the real secret substitution. Only the next authorised request shows it.
+
+**Known (out of scope):** the Yandex request id is captured in the raw file, but `mr_usage.provider_request_id` stayed empty for the 401.
+
+**No paid request, no merge, no cloud resource.**
+
+---
+
 **Task:** VL-004B / Live Research Provider Adapters, Evidence Safety & Controlled Trial — **Phase A only** (`tasks/current-task.md` v1.0)
 **Status:** PHASE A IMPLEMENTED + AUDIT ROUNDS 1–3 FIXES (round 1 on `9fe7bac`, round 2 on `feb9a52`, round 3 on `a5026da`), offline only. **No paid API call was made, no cloud resource created, no deploy.** PR open, **not merged**. Phase B is blocked until the founder authorises it.
 **As of:** 2026-11-13 · **Implementer:** Claude Code
